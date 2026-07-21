@@ -4,6 +4,7 @@
  * un branchement Supabase ultérieur (mêmes colonnes).
  */
 import type { PayrollResult } from "@/lib/payroll-engine";
+import type { JournalEntry } from "@/lib/payroll-accounting";
 
 export type Regime = "SMIG" | "SMAG";
 export type ContractType = "CDI" | "CDD" | "ANAPEC" | "Interim" | "Stagiaire";
@@ -190,12 +191,79 @@ export interface BankBaseline {
   validated_at: string;
 }
 
+/* ---- Registre des accidents du travail (Loi 18-12 ; Code du travail) ---- */
+export type WorkAccidentSeverity = "benin" | "avec_arret" | "grave" | "mortel";
+export type WorkAccidentStatus = "ouvert" | "clos";
+
+/**
+ * Un accident du travail consigné au registre légal de l'employeur.
+ * Le registre enregistre et suit ; il ne calcule pas les indemnités (hors périmètre).
+ */
+export interface WorkAccident {
+  id: string;
+  firm_id: string;
+  employee_id: string;
+  /** Date de l'accident (ISO, aaaa-mm-jj). */
+  date: string;
+  /** Heure (HH:MM), optionnelle. */
+  time?: string;
+  /** Lieu / poste de travail. */
+  location?: string;
+  /** Circonstances détaillées (obligatoire). */
+  circumstances: string;
+  /** Nature des lésions (ex. fracture, brûlure…). */
+  injury_nature?: string;
+  /** Siège des lésions (partie du corps). */
+  injury_site?: string;
+  /** Témoins éventuels. */
+  witnesses?: string;
+  severity: WorkAccidentSeverity;
+  /** Arrêt de travail consécutif. */
+  work_stoppage: boolean;
+  /** Nombre de jours d'arrêt (si arrêt). */
+  stoppage_days?: number;
+  /** Déclaré à l'assureur / CNSS. */
+  declared: boolean;
+  /** Date de la déclaration (ISO). */
+  declaration_date?: string;
+  /** Référence / n° de la déclaration. */
+  declaration_ref?: string;
+  status: WorkAccidentStatus;
+  notes?: string;
+  /** ISO — horodatage de création de la fiche. */
+  created_at: string;
+}
+
+/**
+ * Clôture / validation des écritures comptables d'une période (verrou + instantané figé).
+ * Les écritures étant dérivées des bulletins, la validation FIGE un snapshot : une
+ * modification ultérieure d'un bulletin n'altère plus une période validée. Le retour en
+ * brouillon supprime cette clôture et rend la période à nouveau modifiable.
+ */
+export interface AccountingClosure {
+  /** Clé stable : `${firm_id}_${year}_${month}`. */
+  id: string;
+  firm_id: string;
+  year: number;
+  month: number;
+  /** Instantané figé des écritures au moment de la validation. */
+  entries: JournalEntry[];
+  /** ISO. */
+  validated_at: string;
+  /** Identifiant (username) du valideur. */
+  validated_by: string;
+}
+
 export interface AppState {
   firms: Firm[];
   employees: Employee[];
   periods: PayrollPeriod[];
   payslips: Payslip[];
   leaves: Leave[];
+  /** Registre des accidents du travail. */
+  workAccidents?: WorkAccident[];
+  /** Clôtures comptables validées (verrou + snapshot par période). */
+  accountingClosures?: AccountingClosure[];
   /** Comptes de connexion à l'application (auth locale). */
   users?: AppUser[];
   currentFirmId: string;

@@ -3,45 +3,49 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutDashboard, Users, Calculator, FileText, ShieldAlert,
   CalendarDays, Settings, Moon, Sun, Sprout, BookText, FileSignature,
-  Search, UserRound, ShieldCheck, Bot, ScanSearch, LogOut, Menu, X,
+  Search, UserRound, ShieldCheck, Bot, ScanSearch, LogOut, Menu, X, HardHat, Languages,
 } from "lucide-react";
 import { actions, currentFirm, deriveAlerts, useStore } from "@/data/store";
 import type { AppRole } from "@/data/types";
 import { Select } from "@/components/ui/kit";
 import { logout, ROLE_LABELS, useSession } from "@/lib/auth";
 import { cn } from "@/lib/cn";
+import { useLang, useT, toggleLang, type TKey } from "@/lib/i18n";
 
 const ADMIN_ROLES: AppRole[] = ["super_admin", "firm_admin"];
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean };
-const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
-  { label: "Pilotage", items: [
-    { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
+type NavItem = { to: string; labelKey: TKey; icon: typeof LayoutDashboard; adminOnly?: boolean };
+const NAV_GROUPS: { labelKey: TKey; items: NavItem[] }[] = [
+  { labelKey: "nav.group.pilotage", items: [
+    { to: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
   ] },
-  { label: "Paie & RH", items: [
-    { to: "/employees", label: "Salariés", icon: Users },
-    { to: "/documents", label: "Documents RH", icon: FileSignature },
-    { to: "/payroll", label: "Paie", icon: Calculator },
-    { to: "/leaves", label: "Congés", icon: CalendarDays },
+  { labelKey: "nav.group.paierh", items: [
+    { to: "/employees", labelKey: "nav.employees", icon: Users },
+    { to: "/documents", labelKey: "nav.documents", icon: FileSignature },
+    { to: "/payroll", labelKey: "nav.payroll", icon: Calculator },
+    { to: "/leaves", labelKey: "nav.leaves", icon: CalendarDays },
   ] },
-  { label: "Comptabilité", items: [
-    { to: "/accounting", label: "Écritures comptables", icon: BookText },
-    { to: "/audit", label: "Audit comptable", icon: ScanSearch },
+  { labelKey: "nav.group.compta", items: [
+    { to: "/accounting", labelKey: "nav.accounting", icon: BookText },
+    { to: "/audit", labelKey: "nav.audit", icon: ScanSearch },
   ] },
-  { label: "Conformité", items: [
-    { to: "/declarations", label: "Déclarations", icon: FileText },
-    { to: "/compliance", label: "Conformité", icon: ShieldAlert },
-    { to: "/securite", label: "Sécurité / Audit RIB", icon: ShieldCheck, adminOnly: true },
+  { labelKey: "nav.group.conformite", items: [
+    { to: "/declarations", labelKey: "nav.declarations", icon: FileText },
+    { to: "/compliance", labelKey: "nav.compliance", icon: ShieldAlert },
+    { to: "/accidents", labelKey: "nav.accidents", icon: HardHat },
+    { to: "/securite", labelKey: "nav.security", icon: ShieldCheck, adminOnly: true },
   ] },
-  { label: "Système", items: [
-    { to: "/assistant", label: "Assistant IA", icon: Bot },
-    { to: "/settings", label: "Paramètres", icon: Settings },
+  { labelKey: "nav.group.systeme", items: [
+    { to: "/assistant", labelKey: "nav.assistant", icon: Bot },
+    { to: "/settings", labelKey: "nav.settings", icon: Settings },
   ] },
 ];
 
 export default function Layout() {
   const s = useStore();
   const session = useSession();
+  const t = useT();
+  const lang = useLang();
   const firm = currentFirm(s);
   const role = session?.role ?? s.currentRole ?? "firm_admin";
   const canSee = (item: NavItem) => !item.adminOnly || ADMIN_ROLES.includes(role);
@@ -80,8 +84,8 @@ export default function Layout() {
         <Sprout size={20} />
       </div>
       <div className="leading-tight">
-        <div className="font-display text-[15px] font-bold">Belkora Paie</div>
-        <div className="text-[11px] text-muted-foreground -mt-0.5">Maroc · RH & Paie</div>
+        <div className="font-display text-[15px] font-bold">{t("brand.title")}</div>
+        <div className="text-[11px] text-muted-foreground -mt-0.5">{t("brand.subtitle")}</div>
       </div>
     </div>
   );
@@ -89,11 +93,11 @@ export default function Layout() {
   const navList = (
     <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-5">
       {groups.map((group) => (
-        <div key={group.label} className="space-y-1">
+        <div key={group.labelKey} className="space-y-1">
           <div className="px-3 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-            {group.label}
+            {t(group.labelKey)}
           </div>
-          {group.items.map(({ to, label, icon: Icon }) => (
+          {group.items.map(({ to, labelKey, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -115,7 +119,7 @@ export default function Layout() {
                       isActive ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground",
                     )}
                   />
-                  <span className="truncate">{label}</span>
+                  <span className="truncate">{t(labelKey)}</span>
                   {to === "/compliance" && critical > 0 && (
                     <span className="ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-destructive px-1 text-[11px] font-semibold text-destructive-foreground">
                       {critical}
@@ -135,7 +139,7 @@ export default function Layout() {
       value={firm.id}
       onChange={(ev) => actions.setCurrentFirm(ev.target.value)}
       className="w-full sm:w-56 sm:max-w-[60vw]"
-      aria-label="Société active"
+      aria-label={t("header.firm")}
     >
       {s.firms.map((f) => (
         <option key={f.id} value={f.id}>
@@ -152,7 +156,7 @@ export default function Layout() {
         <div className="flex items-center px-5 h-16 border-b">{brand}</div>
         {navList}
         <div className="p-4 border-t text-[11px] text-muted-foreground">
-          Réf. Maroc 2025-2026 · SMIG 17,92 DH/h
+          {t("shell.footer")}
         </div>
       </aside>
 
@@ -166,7 +170,7 @@ export default function Layout() {
               <button
                 onClick={() => setNavOpen(false)}
                 className="grid h-9 w-9 place-items-center rounded-md border border-input hover:bg-accent"
-                aria-label="Fermer le menu"
+                aria-label={t("header.menuClose")}
               >
                 <X size={18} />
               </button>
@@ -174,7 +178,7 @@ export default function Layout() {
             <div className="border-b p-3">{firmSelect}</div>
             {navList}
             <div className="p-4 border-t text-[11px] text-muted-foreground">
-              Réf. Maroc 2025-2026 · SMIG 17,92 DH/h
+              {t("shell.footer")}
             </div>
           </aside>
         </div>
@@ -187,7 +191,7 @@ export default function Layout() {
             <button
               onClick={() => setNavOpen(true)}
               className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-input hover:bg-accent md:hidden"
-              aria-label="Ouvrir le menu"
+              aria-label={t("header.menuOpen")}
             >
               <Menu size={18} />
             </button>
@@ -201,11 +205,23 @@ export default function Layout() {
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Sélecteur société : dans le header dès md, sinon dans le tiroir mobile. */}
             <div className="hidden md:block">{firmSelect}</div>
+            {/* Bascule de langue FR / AR (RTL en arabe). */}
+            <button
+              onClick={() => toggleLang()}
+              className="grid h-9 shrink-0 place-items-center gap-1 rounded-md border border-input px-2.5 hover:bg-accent"
+              title={t("header.lang")}
+              aria-label={t("header.lang")}
+            >
+              <span className="flex items-center gap-1.5 text-[13px] font-semibold">
+                <Languages size={16} />
+                {lang === "fr" ? "العربية" : "FR"}
+              </span>
+            </button>
             <button
               onClick={() => setDark((d) => !d)}
               className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-input hover:bg-accent"
-              title="Basculer le thème"
-              aria-label="Basculer le thème"
+              title={t("header.theme")}
+              aria-label={t("header.theme")}
             >
               {dark ? <Sun size={17} /> : <Moon size={17} />}
             </button>
@@ -222,10 +238,10 @@ export default function Layout() {
                   {(session.full_name || session.username).slice(0, 2).toUpperCase()}
                 </span>
                 <button
-                  onClick={() => { if (window.confirm("Se déconnecter de l'application ?")) logout(); }}
+                  onClick={() => { if (window.confirm(t("header.logoutConfirm"))) logout(); }}
                   className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-input hover:bg-accent"
-                  title="Se déconnecter"
-                  aria-label="Se déconnecter"
+                  title={t("header.logout")}
+                  aria-label={t("header.logout")}
                 >
                   <LogOut size={17} />
                 </button>
@@ -248,6 +264,7 @@ const stripDiacritics = (v: string) =>
 /** Recherche globale de salariés (toutes sociétés) — nom, matricule, CIN, CNSS, poste, site. */
 function GlobalSearch() {
   const s = useStore();
+  const t = useT();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -295,7 +312,7 @@ function GlobalSearch() {
           if (e.key === "Enter" && results[0]) go(results[0].e.firm_id, `${results[0].e.first_name} ${results[0].e.last_name}`);
           if (e.key === "Escape") setOpen(false);
         }}
-        placeholder="Rechercher un salarié…"
+        placeholder={t("header.search")}
         className={cn(
           "h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -305,7 +322,7 @@ function GlobalSearch() {
       {open && q.trim().length >= 2 && (
         <div className="absolute left-0 right-0 top-11 z-50 overflow-hidden rounded-md border bg-card shadow-lg">
           {results.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-muted-foreground">Aucun salarié trouvé.</div>
+            <div className="px-3 py-3 text-sm text-muted-foreground">{t("header.noResult")}</div>
           ) : (
             results.map(({ e, firm }) => (
               <button

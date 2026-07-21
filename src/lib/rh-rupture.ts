@@ -21,6 +21,18 @@ import {
   type LegalBlock,
   type LegalDoc,
 } from "./rh-legal";
+import { num } from "./format";
+
+/** Décomposition chiffrée du solde de tout compte, injectée dans le reçu (calcul auto). */
+export interface StcBreakdown {
+  lines: { label: string; amount: number }[];
+  grossTotal: number;
+  cnss: number;
+  amo: number;
+  ir: number;
+  otherDeductions: number;
+  net: number;
+}
 
 export type RuptureType = "pv-fin-travaux" | "accord-amiable" | "recu-solde";
 export type Civility = "M." | "Mme" | null;
@@ -60,10 +72,12 @@ export interface RhRuptureView {
   /** Accord : date d'effet de la rupture + autres sommes éventuelles. */
   effectDate?: string;
   autresSommes?: string;
-  /** Reçu : bornes du contrat + net payé (jamais calculé — saisi ou placeholder). */
+  /** Reçu : bornes du contrat + net payé (saisi, ou issu du calcul automatique du STC). */
   contractStart?: string;
   contractEnd?: string;
   netAmount?: string;
+  /** Décomposition chiffrée issue du moteur STC — quand présente, le reçu affiche les vrais montants. */
+  stc?: StcBreakdown;
   /** En-tête & signature. */
   issueDate: string;
   issueCity?: string;
@@ -127,18 +141,31 @@ function accordBlocks(v: RhRuptureView): LegalBlock[] {
 function recuBlocks(v: RhRuptureView): LegalBlock[] {
   const f = v.firm;
   const ident = [f.name.toUpperCase(), f.rc && `RC ${f.rc}`, f.ice && `ICE ${f.ice}`].filter(Boolean).join(", ");
-  const net = val(v.netAmount);
+  // Si le calcul automatique est disponible, on affiche les vrais montants ; sinon placeholders.
+  const b = v.stc;
+  const net = b ? `${num(b.net)}` : val(v.netAmount);
+  const decompo: string[] = b
+    ? [
+        ...b.lines.map((l) => `${l.label} : ${num(l.amount)} DH`),
+        `Total brut : ${num(b.grossTotal)} DH`,
+        `Retenue CNSS salariale : (–) ${num(b.cnss)} DH`,
+        `Retenue AMO salariale : (–) ${num(b.amo)} DH`,
+        `Retenue IR : (–) ${num(b.ir)} DH`,
+        ...(b.otherDeductions > 0 ? [`Autres retenues (avances, prêts…) : (–) ${num(b.otherDeductions)} DH`] : []),
+        `NET PAYÉ : ${num(b.net)} DH`,
+      ]
+    : [
+        `Salaire des jours travaillés non encore payés : ${PH} DH`,
+        `Indemnité compensatrice de congés payés (art. 231) : ${PH} DH`,
+        `Autres sommes dues (heures supplémentaires, indemnités…) : ${PH} DH`,
+        `Total brut : ${PH} DH`,
+        `Retenues sociales et fiscales (CNSS, AMO, IR) : (–) ${PH} DH`,
+        `NET PAYÉ : ${net} DH`,
+      ];
   return [
     { k: "p", t: `Je soussigné(e) (Prénom et NOM) : ${fullName(v.employee) || PH}, CIN n° ${val(v.cin ?? v.employee.cin)}, N° CNSS ${val(v.cnss ?? v.employee.cnss_number)}, ayant été employé(e) par la société ${ident}, en qualité d'ouvrier de chantier : ${val(v.jobTitle ?? v.employee.position)}, dans le cadre d'un contrat pour accomplir un travail déterminé sur le chantier ${val(v.site ?? v.employee.site)}, du ${valDate(v.contractStart)} au ${valDate(v.contractEnd)},` },
     { k: "p", t: `reconnais avoir reçu de l'Employeur, à la cessation de mon contrat, la somme nette de ${net} DH, pour solde de tout compte, se décomposant comme suit :` },
-    { k: "ul", items: [
-      `Salaire des jours travaillés non encore payés : ${PH} DH`,
-      `Indemnité compensatrice de congés payés (art. 231) : ${PH} DH`,
-      `Autres sommes dues (heures supplémentaires, indemnités…) : ${PH} DH`,
-      `Total brut : ${PH} DH`,
-      `Retenues sociales et fiscales (CNSS, AMO, IR) : (–) ${PH} DH`,
-      `NET PAYÉ : ${net} DH`,
-    ] },
+    { k: "ul", items: decompo },
     { k: "check", items: [`Virement bancaire (réf. : ${PH})`, "Espèces"] },
     { k: "p", t: "Le présent reçu :" },
     { k: "ul", items: [
@@ -216,8 +243,11 @@ export function ruptureMissingFields(v: RhRuptureView): string[] {
     if (!(v.cnss ?? v.employee.cnss_number)?.trim()) out.push("N° CNSS");
     if (!v.contractStart?.trim()) out.push("Début du contrat");
     if (!v.contractEnd?.trim()) out.push("Fin du contrat");
-    if (!v.netAmount?.trim()) out.push("Net payé");
-    out.push("Décomposition des montants");
+    // Le calcul automatique du STC remplit le net et la décomposition.
+    if (!v.stc) {
+      if (!v.netAmount?.trim()) out.push("Net payé");
+      out.push("Décomposition des montants");
+    }
   }
   if (!(v.signatoryName ?? v.firm.signatory_name)?.trim()) out.push("Signataire employeur");
   return out;

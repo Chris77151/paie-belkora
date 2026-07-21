@@ -29,6 +29,8 @@ Supabase de la spécification pour un branchement ultérieur.
 | 7 pages : Tableau de bord, Salariés, Paie, Déclarations, Conformité, Congés, Paramètres | ✅ |
 | Bulletin de paie : PDF (jsPDF + logo), LaTeX (.tex), HTML imprimable | ✅ |
 | **Documents RH** (gabarit MBD, PDF + HTML) : attestations/certificats · contrats de travail chantier · **kit disciplinaire** (avertissement → licenciement, art. 37-39/62) · **kit rupture** (PV de fin de travaux, accord de rupture amiable, reçu pour solde de tout compte — art. 33/73-76) · **kit mineurs** (autorisation du représentant légal + contrat travail déterminé mineur, art. 143-181) **bilingue FR / AR (arabe RTL)** — zéro invention, champs absents en pointillé | ✅ |
+| **Calcul automatique du solde de tout compte (STC)** (`src/lib/stc-engine.ts`, moteur pur + 28 tests) : préavis (art. 43 — cadres 1/2/3 mois, non-cadres 8 j/1 mois/2 mois), indemnité légale de licenciement (art. 52-53 — 96/144/192/240 h par année, **exonérée**), congés payés non pris (art. 231), dommages-intérêts licenciement abusif (art. 41 — 1,5 mois/an plaf. 36 mois), indemnité de fin de CDD (7 %), puis traitement social/fiscal (CNSS/AMO/IR) → **NET**. Le motif de départ pilote les postes ; décompte injecté dans le reçu. Aucun taux en dur (barèmes dans `params.ts`). | ✅ + 28 tests |
+| **Bascule de langue FR / AR** (`src/lib/i18n.ts`) : bouton dans l'en-tête, `dir="rtl"` + police arabe en mode arabe (MSA, ponctuation ، ؛ ؟), coquille traduite (navigation, en-tête, pied), préférence mémorisée. Dictionnaire extensible clé par clé. | ✅ |
 | Calcul en masse, saisie variable, validation & gel de période | ✅ |
 | Bordereau CNSS + fichier BDS DAMANCOM, état 9421/IR | ✅ |
 | Moteur d'alertes de conformité (CNSS, CIN, mineur, CDD, contrat) | ✅ |

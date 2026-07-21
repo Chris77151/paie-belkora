@@ -14,7 +14,8 @@ import {
   Kpi,
 } from "@/components/ui/kit";
 import { dateFr, num } from "@/lib/format";
-import type { LeaveType } from "@/data/types";
+import { getParams } from "@/lib/params";
+import type { Employee, LeaveType } from "@/data/types";
 
 const LEAVE_LABEL: Record<LeaveType, string> = {
   conge_paye: "Congé payé",
@@ -24,7 +25,34 @@ const LEAVE_LABEL: Record<LeaveType, string> = {
   maternite: "Maternité",
 };
 
-const ACQUIS_PER_MONTH = 1.5;
+/** Âge en années à une date donnée (null si date de naissance absente). */
+function ageAt(birth_date: string | undefined, at: Date): number | null {
+  if (!birth_date) return null;
+  return (at.getTime() - new Date(birth_date).getTime()) / (365.25 * 8.64e7);
+}
+
+/**
+ * Congés payés acquis (jours ouvrables), majorations légales incluses (Code du travail) :
+ *  - art. 231 : 1,5 j/mois de service, porté à 2 j/mois pour les salariés de moins de 18 ans ;
+ *  - art. 232 : + majoration d'ancienneté de 1,5 j par tranche entière de 5 ans de service,
+ *    la part de majoration étant plafonnée pour que le congé annuel ne dépasse pas 30 jours.
+ * Modèle cumulatif depuis l'embauche (simplification conservée de l'app), donc le plafond de
+ * 30 j s'applique à la seule majoration d'ancienneté, pas au cumul de base.
+ */
+function acquiredLeave(emp: Employee, at: Date): number {
+  const p = getParams(at.getFullYear());
+  const months = Math.max(0, (at.getTime() - new Date(emp.hire_date).getTime()) / (30.4375 * 8.64e7));
+  const age = ageAt(emp.birth_date, at);
+  const isMinor = age !== null && age < 18;
+  const baseMonthly = isMinor ? p.paidLeaveMinorPerMonth : p.paidLeavePerMonth;
+
+  const years = months / 12;
+  const tranches = Math.floor(years / p.paidLeaveSeniorityTrancheYears);
+  const seniorityBonusCap = Math.max(0, p.paidLeaveMaxDays - baseMonthly * 12);
+  const seniorityBonus = Math.min(tranches * p.paidLeaveSeniorityBonusDays, seniorityBonusCap);
+
+  return months * baseMonthly + seniorityBonus;
+}
 
 export default function Leaves() {
   const s = useStore();
@@ -56,9 +84,7 @@ export default function Leaves() {
       employees
         .filter((e) => e.is_active)
         .map((e) => {
-          const months =
-            (today.getTime() - new Date(e.hire_date).getTime()) / (30.4375 * 8.64e7);
-          const acquis = Math.max(0, months) * ACQUIS_PER_MONTH;
+          const acquis = acquiredLeave(e, today);
           const pris = leaves
             .filter((l) => l.employee_id === e.id && l.type === "conge_paye")
             .reduce((a, l) => a + l.days, 0);
@@ -174,8 +200,9 @@ export default function Leaves() {
             </tbody>
           </Table>
           <p className="mt-3 text-xs text-muted-foreground">
-            Acquisition de 1,5 jour ouvrable par mois de service (art. 231), hors majoration
-            d'ancienneté (1,5 jour supplémentaire par tranche de 5 ans).
+            Acquisition de 1,5 jour ouvrable par mois de service — 2 jours/mois pour les
+            salariés de moins de 18 ans (art. 231), majoration d'ancienneté incluse : +1,5 jour
+            par tranche entière de 5 ans de service, plafonnée à 30 jours au total (art. 232).
           </p>
         </CardContent>
       </Card>

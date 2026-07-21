@@ -77,8 +77,53 @@ export interface PayrollParams {
   transportIntraUrbanCap: number; // 500 DH/mois
   transportOutsideUrbanCap: number; // 750 DH/mois
 
-  /** Congés payés. */
-  paidLeavePerMonth: number; // 1,5 jour/mois
+  /** Congés payés (Code du travail, art. 231-232). */
+  paidLeavePerMonth: number; // 1,5 jour ouvrable/mois (art. 231) — 18 j/an
+  paidLeaveMinorPerMonth: number; // 2 jours/mois pour les salariés de moins de 18 ans (art. 231) — 24 j/an
+  paidLeaveSeniorityBonusDays: number; // majoration d'ancienneté : +1,5 jour (art. 232)
+  paidLeaveSeniorityTrancheYears: number; // par tranche entière de 5 ans de service (art. 232)
+  paidLeaveMaxDays: number; // plafond total du congé annuel : 30 jours ouvrables (art. 232)
+
+  /** Solde de tout compte — barèmes de rupture (Code du travail + CGI). */
+  stc: StcParams;
+}
+
+/** Barème de préavis : durée en mois OU en jours, par seuil d'ancienneté (années révolues). */
+export interface PreavisBracket {
+  /** Ancienneté minimale (années) pour appliquer ce niveau. */
+  minYears: number;
+  /** Durée du préavis en mois (indemnité = salaire mensuel × months). */
+  months?: number;
+  /** Durée du préavis en jours ouvrables (indemnité = (salaire/26) × days). */
+  days?: number;
+}
+
+/** Tranche d'indemnité de licenciement (art. 52-53) : heures de salaire par année. */
+export interface LicenciementTranche {
+  /** Borne haute de la tranche d'ancienneté (années). Infinity pour la dernière. */
+  upToYears: number;
+  /** Heures de salaire dues par année d'ancienneté dans cette tranche. */
+  hoursPerYear: number;
+}
+
+/** Paramètres du calcul de solde de tout compte (STC). */
+export interface StcParams {
+  /** Heures mensuelles servant de diviseur pour le taux horaire de référence (191 h). */
+  monthlyHoursRef: number;
+  /** Jours ouvrables mensuels servant de diviseur pour le taux journalier (26 j). */
+  workingDaysPerMonth: number;
+  /** Barème de préavis (art. 43) selon la catégorie. */
+  preavis: { cadre: PreavisBracket[]; nonCadre: PreavisBracket[] };
+  /** Ancienneté minimale (en mois) ouvrant droit à l'indemnité de licenciement (art. 52). */
+  licenciementMinSeniorityMonths: number;
+  /** Barème de l'indemnité légale de licenciement (art. 53). */
+  licenciement: LicenciementTranche[];
+  /** Dommages-intérêts licenciement abusif (art. 41) : mois de salaire par année. */
+  abusiveMonthsPerYear: number;
+  /** Plafond des dommages-intérêts (art. 41), en mois de salaire. */
+  abusiveMaxMonths: number;
+  /** Indemnité de fin de CDD : taux sur le total brut perçu. */
+  cddEndRate: number;
 }
 
 const PARAMS_2026: PayrollParams = {
@@ -137,6 +182,39 @@ const PARAMS_2026: PayrollParams = {
   transportOutsideUrbanCap: 750,
 
   paidLeavePerMonth: 1.5,
+  paidLeaveMinorPerMonth: 2,
+  paidLeaveSeniorityBonusDays: 1.5,
+  paidLeaveSeniorityTrancheYears: 5,
+  paidLeaveMaxDays: 30,
+
+  stc: {
+    monthlyHoursRef: 191,
+    workingDaysPerMonth: 26,
+    // Préavis (art. 43) — cadres 1/2/3 mois ; non-cadres 8 j / 1 mois / 2 mois.
+    preavis: {
+      cadre: [
+        { minYears: 0, months: 1 },
+        { minYears: 1, months: 2 },
+        { minYears: 5, months: 3 },
+      ],
+      nonCadre: [
+        { minYears: 0, days: 8 },
+        { minYears: 1, months: 1 },
+        { minYears: 5, months: 2 },
+      ],
+    },
+    licenciementMinSeniorityMonths: 6,
+    // Indemnité légale de licenciement (art. 53) — heures de salaire par année.
+    licenciement: [
+      { upToYears: 5, hoursPerYear: 96 },
+      { upToYears: 10, hoursPerYear: 144 },
+      { upToYears: 15, hoursPerYear: 192 },
+      { upToYears: Infinity, hoursPerYear: 240 },
+    ],
+    abusiveMonthsPerYear: 1.5, // art. 41
+    abusiveMaxMonths: 36, // plafond art. 41
+    cddEndRate: 0.07, // indemnité de fin de CDD
+  },
 };
 
 const REGISTRY: Record<number, PayrollParams> = {

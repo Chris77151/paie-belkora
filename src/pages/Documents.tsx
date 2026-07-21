@@ -25,6 +25,9 @@ import {
   Select,
   Textarea,
   PageHeader,
+  Table,
+  Th,
+  Td,
 } from "@/components/ui/kit";
 import { cn } from "@/lib/cn";
 import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
@@ -71,7 +74,17 @@ import {
   openRuptureHtml,
   type RuptureType,
   type RhRuptureView,
+  type StcBreakdown,
 } from "@/lib/rh-rupture";
+import {
+  computeStc,
+  DEPARTURE_REASONS,
+  type DepartureReason,
+  type EmployeeCategory,
+  type StcResult,
+} from "@/lib/stc-engine";
+import { mad, num } from "@/lib/format";
+import { Calculator, Wallet } from "lucide-react";
 import {
   MINEUR_TYPES,
   buildMineurDoc,
@@ -955,6 +968,19 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
   const [contractEnd, setContractEnd] = useState<string>("");
   const [netAmount, setNetAmount] = useState<string>("");
   const [chefChantier, setChefChantier] = useState<string>("");
+
+  // ---- Calcul automatique du solde de tout compte (STC) ----
+  const [stcOn, setStcOn] = useState<boolean>(false);
+  const [reason, setReason] = useState<DepartureReason>("fin_travail_determine");
+  const [category, setCategory] = useState<EmployeeCategory>("non_cadre");
+  const [monthlyGross, setMonthlyGross] = useState<string>("");
+  const [daysWorked, setDaysWorked] = useState<string>("26");
+  const [workingDays, setWorkingDays] = useState<string>("26");
+  const [leaveDays, setLeaveDays] = useState<string>("");
+  const [preavisDispensed, setPreavisDispensed] = useState<boolean>(false);
+  const [abusive, setAbusive] = useState<boolean>(false);
+  const [cddTotal, setCddTotal] = useState<string>("");
+  const [otherDeductions, setOtherDeductions] = useState<string>("");
   const [issueDate, setIssueDate] = useState<string>(todayIso());
   const [issueCity, setIssueCity] = useState<string>("");
   const [signatoryName, setSignatoryName] = useState<string>("");
@@ -964,6 +990,44 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
   const isPV = type === "pv-fin-travaux";
   const isAccord = type === "accord-amiable";
   const isRecu = type === "recu-solde";
+
+  // Salaire brut mensuel de référence : saisi, sinon dérivé du dossier (taux horaire × heures).
+  const refGross = monthlyGross.trim()
+    ? Number(monthlyGross.replace(",", "."))
+    : Math.round(employee.base_hourly_rate * employee.monthly_hours * 100) / 100;
+
+  const stcResult: StcResult | null = useMemo(() => {
+    if (!isRecu || !stcOn) return null;
+    if (!contractStart || !contractEnd || !(refGross > 0)) return null;
+    return computeStc({
+      year: new Date(contractEnd).getFullYear() || new Date().getFullYear(),
+      reason,
+      category,
+      monthlyGrossRef: refGross,
+      hireDate: contractStart,
+      endDate: contractEnd,
+      daysWorkedLastMonth: Number(daysWorked) || 0,
+      workingDaysLastMonth: Number(workingDays) || 26,
+      accruedLeaveDays: leaveDays.trim() === "" ? null : Number(leaveDays.replace(",", ".")),
+      preavisDispensed,
+      abusive,
+      cddTotalGross: cddTotal.trim() ? Number(cddTotal.replace(",", ".")) : 0,
+      dependents: employee.dependents ?? 0,
+      otherDeductions: otherDeductions.trim() ? Number(otherDeductions.replace(",", ".")) : 0,
+    });
+  }, [isRecu, stcOn, contractStart, contractEnd, refGross, reason, category, daysWorked, workingDays, leaveDays, preavisDispensed, abusive, cddTotal, otherDeductions, employee.dependents]);
+
+  const stcBreakdown: StcBreakdown | undefined = stcResult
+    ? {
+        lines: stcResult.lines.map((l) => ({ label: l.label, amount: l.gross })),
+        grossTotal: stcResult.grossTotal,
+        cnss: stcResult.cnssSalarie,
+        amo: stcResult.amoSalarie,
+        ir: stcResult.ir,
+        otherDeductions: stcResult.otherDeductions,
+        net: stcResult.netAPayer,
+      }
+    : undefined;
 
   const view: RhRuptureView = {
     firm,
@@ -983,6 +1047,7 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
     contractStart: contractStart || undefined,
     contractEnd: contractEnd || undefined,
     netAmount: netAmount || undefined,
+    stc: stcBreakdown,
     chefChantier: chefChantier || undefined,
     issueDate,
     issueCity: issueCity || undefined,
@@ -1099,9 +1164,85 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
                   <Input type="date" value={contractEnd} onChange={(e) => setContractEnd(e.target.value)} />
                 </Field>
               </div>
-              <Field label="Net payé (DH)" hint="Montant reçu — jamais calculé ni inventé. La décomposition reste en pointillé.">
-                <Input value={netAmount} onChange={(e) => setNetAmount(e.target.value)} placeholder="Ex. 4 250,00" />
-              </Field>
+
+              {/* Bascule : calcul automatique du STC ou saisie manuelle du net. */}
+              <label className="flex items-start gap-2.5 rounded-md border border-primary/30 bg-accent/40 p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={stcOn}
+                  onChange={(e) => setStcOn(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-primary"
+                />
+                <span className="text-[13px]">
+                  <span className="flex items-center gap-1.5 font-medium text-foreground">
+                    <Calculator size={14} className="text-primary" /> Calcul automatique du solde de tout compte
+                  </span>
+                  <span className="text-muted-foreground">
+                    Préavis (art. 43), indemnité de licenciement (art. 52-53), congés (art. 231),
+                    CNSS/AMO/IR — décompte injecté dans le reçu.
+                  </span>
+                </span>
+              </label>
+
+              {stcOn ? (
+                <div className="space-y-3 rounded-md border border-border/60 p-3">
+                  <Field label="Motif de départ" hint={DEPARTURE_REASONS.find((r) => r.value === reason)?.hint}>
+                    <Select value={reason} onChange={(e) => setReason(e.target.value as DepartureReason)}>
+                      {DEPARTURE_REASONS.map((r) => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Catégorie">
+                      <Select value={category} onChange={(e) => setCategory(e.target.value as EmployeeCategory)}>
+                        <option value="non_cadre">Non-cadre (ouvrier/employé)</option>
+                        <option value="cadre">Cadre</option>
+                      </Select>
+                    </Field>
+                    <Field label="Salaire brut mensuel de réf. (DH)" hint={monthlyGross.trim() ? undefined : `Dérivé du dossier : ${num(refGross)}`}>
+                      <Input value={monthlyGross} onChange={(e) => setMonthlyGross(e.target.value)} placeholder={num(refGross)} />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Jours travaillés (dernier mois)">
+                      <Input value={daysWorked} onChange={(e) => setDaysWorked(e.target.value)} />
+                    </Field>
+                    <Field label="Jours ouvrables du mois">
+                      <Input value={workingDays} onChange={(e) => setWorkingDays(e.target.value)} />
+                    </Field>
+                  </div>
+                  <Field label="Jours de congés acquis non pris" hint="Vide = estimé depuis l'ancienneté">
+                    <Input value={leaveDays} onChange={(e) => setLeaveDays(e.target.value)} placeholder="Ex. 12" />
+                  </Field>
+                  {reason === "fin_cdd" && (
+                    <Field label="Total brut perçu pendant le CDD (DH)" hint="Base de l'indemnité de fin de CDD (7 %)">
+                      <Input value={cddTotal} onChange={(e) => setCddTotal(e.target.value)} placeholder="Ex. 45 600" />
+                    </Field>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    {(reason === "licenciement" || reason === "rupture_amiable") && (
+                      <label className="flex items-center gap-2 text-[13px] text-foreground">
+                        <input type="checkbox" checked={preavisDispensed} onChange={(e) => setPreavisDispensed(e.target.checked)} className="h-4 w-4 accent-primary" />
+                        Préavis dispensé par l'employeur (→ indemnité compensatrice)
+                      </label>
+                    )}
+                    {(reason === "licenciement" || reason === "faute_grave") && (
+                      <label className="flex items-center gap-2 text-[13px] text-foreground">
+                        <input type="checkbox" checked={abusive} onChange={(e) => setAbusive(e.target.checked)} className="h-4 w-4 accent-primary" />
+                        Licenciement abusif (→ dommages-intérêts art. 41)
+                      </label>
+                    )}
+                  </div>
+                  <Field label="Autres retenues (avances, prêts…) DH" hint="Optionnel">
+                    <Input value={otherDeductions} onChange={(e) => setOtherDeductions(e.target.value)} placeholder="0" />
+                  </Field>
+                </div>
+              ) : (
+                <Field label="Net payé (DH)" hint="Montant reçu — saisi manuellement. Activez le calcul auto pour la décomposition.">
+                  <Input value={netAmount} onChange={(e) => setNetAmount(e.target.value)} placeholder="Ex. 4 250,00" />
+                </Field>
+              )}
             </>
           )}
 
@@ -1137,6 +1278,7 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
       <div className="space-y-5">
         <LegalNotice />
         <PrefilledCard rows={prefilled} />
+        {isRecu && stcOn && <StcResultCard result={stcResult} />}
         <MissingCard missing={missing} />
         <Card>
           <CardHeader>
@@ -1147,6 +1289,92 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+/** Décompte détaillé du solde de tout compte (calcul automatique). */
+function StcResultCard({ result }: { result: StcResult | null }) {
+  if (!result) {
+    return (
+      <Card className="border-primary/30">
+        <CardContent className="pt-5 text-sm text-muted-foreground">
+          Renseignez le <span className="font-medium text-foreground">début</span> et la{" "}
+          <span className="font-medium text-foreground">fin du contrat</span> (et un salaire de référence)
+          pour lancer le calcul automatique du solde de tout compte.
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <Card className="border-primary/40">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Wallet size={17} className="text-primary" /> Solde de tout compte — décompte
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          <Badge tone="sage">Ancienneté : {num(result.seniorityYears)} ans</Badge>
+          <Badge tone="sage">Taux horaire : {num(result.hourlyRate)} DH</Badge>
+          <Badge tone="sage">Taux journalier : {num(result.dailyRate)} DH</Badge>
+        </div>
+
+        <div className="overflow-x-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Poste</Th>
+                <Th>Base</Th>
+                <Th className="text-right">Brut (DH)</Th>
+                <Th className="text-right">Régime</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.lines.map((l) => (
+                <tr key={l.key}>
+                  <Td className="font-medium">{l.label}{l.detail ? <span className="block text-[11px] text-muted-foreground">{l.detail}</span> : null}</Td>
+                  <Td className="text-muted-foreground">{l.article}</Td>
+                  <Td className="text-right tabular-nums">{num(l.gross)}</Td>
+                  <Td className="text-right">
+                    <Badge tone={l.taxable ? "warning" : "sage"}>{l.taxable ? "imposable" : "exonéré"}</Badge>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+
+        <div className="space-y-1.5 rounded-md bg-muted/50 p-3 text-sm">
+          <Row label="Total brut" value={mad(result.grossTotal)} strong />
+          <Row label="dont part exonérée" value={mad(result.exonereTotal)} muted />
+          <Row label="dont part imposable" value={mad(result.taxableTotal)} muted />
+          <div className="my-1 border-t" />
+          <Row label="CNSS salariale (4,48 %, plaf. 6 000)" value={`– ${num(result.cnssSalarie)}`} />
+          <Row label="AMO salariale (2,26 %)" value={`– ${num(result.amoSalarie)}`} />
+          <Row label={`IR (tranche ${(result.irMarginalRate * 100).toFixed(0)} %)`} value={`– ${num(result.ir)}`} />
+          {result.otherDeductions > 0 && <Row label="Autres retenues" value={`– ${num(result.otherDeductions)}`} />}
+          <div className="my-1 border-t" />
+          <Row label="NET À PAYER" value={mad(result.netAPayer)} strong accent />
+        </div>
+
+        {result.notes.length > 0 && (
+          <ul className="space-y-1 text-[12px] text-muted-foreground">
+            {result.notes.map((n, i) => (
+              <li key={i} className="flex gap-1.5"><span className="text-warning">•</span>{n}</li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Row({ label, value, strong, muted, accent }: { label: string; value: string; strong?: boolean; muted?: boolean; accent?: boolean }) {
+  return (
+    <div className={cn("flex items-center justify-between gap-3", muted && "text-muted-foreground text-[13px]", strong && "font-semibold")}>
+      <span>{label}</span>
+      <span className={cn("tabular-nums", accent && "text-primary text-base")}>{value}</span>
     </div>
   );
 }

@@ -4,6 +4,7 @@
  */
 import { useSyncExternalStore } from "react";
 import type {
+  AccountingClosure,
   AppRole,
   AppState,
   AppUser,
@@ -14,6 +15,7 @@ import type {
   Firm,
   Payslip,
   PayrollPeriod,
+  WorkAccident,
 } from "./types";
 import { seed, SUPER_ADMIN } from "./seed";
 
@@ -49,6 +51,8 @@ function migrate(s: AppState): AppState {
   if (s.currentRole == null) s.currentRole = "firm_admin";
   if (s.bankAudit == null) s.bankAudit = [];
   if (s.bankBaseline == null) s.bankBaseline = [];
+  if (!Array.isArray(s.workAccidents)) s.workAccidents = [];
+  if (!Array.isArray(s.accountingClosures)) s.accountingClosures = [];
   // Comptes utilisateurs : garantir la présence ET les credentials du super utilisateur.
   // Le compte racine est « indestructible » (cf. seed.ts) : par conception anti-lockout,
   // ses identifiants documentés font autorité. On réaffirme donc depuis le seed son
@@ -273,6 +277,36 @@ export const actions = {
     set((s) => {
       const others = (s.bankBaseline ?? []).filter((b) => b.firm_id !== firmId);
       s.bankBaseline = [...others, ...baseline];
+    });
+  },
+  /* ---- Registre des accidents du travail ---- */
+  upsertWorkAccident(a: WorkAccident) {
+    set((s) => {
+      s.workAccidents = s.workAccidents ?? [];
+      const i = s.workAccidents.findIndex((x) => x.id === a.id);
+      if (i >= 0) s.workAccidents[i] = a;
+      else s.workAccidents.push(a);
+    });
+  },
+  removeWorkAccident(id: string) {
+    set((s) => {
+      s.workAccidents = (s.workAccidents ?? []).filter((x) => x.id !== id);
+    });
+  },
+  /* ---- Clôture comptable (validation/verrou d'une période) ---- */
+  /** Fige les écritures d'une période (validation). Écrase une clôture existante de même id. */
+  validateAccounting(closure: AccountingClosure) {
+    set((s) => {
+      s.accountingClosures = s.accountingClosures ?? [];
+      const i = s.accountingClosures.findIndex((c) => c.id === closure.id);
+      if (i >= 0) s.accountingClosures[i] = closure;
+      else s.accountingClosures.push(closure);
+    });
+  },
+  /** Remet une période en brouillon : supprime le verrou et le snapshot figé. */
+  revertAccounting(id: string) {
+    set((s) => {
+      s.accountingClosures = (s.accountingClosures ?? []).filter((c) => c.id !== id);
     });
   },
   reset() {

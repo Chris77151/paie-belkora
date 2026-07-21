@@ -9,6 +9,7 @@ import Payroll from "./pages/Payroll";
 import Accounting from "./pages/Accounting";
 import Declarations from "./pages/Declarations";
 import Compliance from "./pages/Compliance";
+import Accidents from "./pages/Accidents";
 import Leaves from "./pages/Leaves";
 import Security from "./pages/Security";
 import Audit from "./pages/Audit";
@@ -28,6 +29,7 @@ const router = createHashRouter([
       { path: "accounting", element: <Accounting /> },
       { path: "declarations", element: <Declarations /> },
       { path: "compliance", element: <Compliance /> },
+      { path: "accidents", element: <Accidents /> },
       { path: "leaves", element: <Leaves /> },
       { path: "securite", element: <Security /> },
       { path: "audit", element: <Audit /> },
