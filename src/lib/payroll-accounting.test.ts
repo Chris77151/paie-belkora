@@ -1,0 +1,64 @@
+import { describe, it, expect } from "vitest";
+import { computePayslip, type PayrollInput } from "./payroll-engine";
+import { buildPayrollEntry, buildSettlementEntry, sumResults } from "./payroll-accounting";
+import { DEFAULT_ACCOUNTS } from "./accounting-accounts";
+
+const aboubi: PayrollInput = {
+  year: 2026, month: 7, regime: "SMIG", hireDate: "2026-07-04", dependents: 0,
+  hourlyRate: 17.92, daysWorked: 26, hoursNormal: 191,
+  hoursOt25: 0, hoursOt50: 0, hoursOt100: 0,
+  panier: 806, transport: 130, salissure: 3.3, otherGross: 4.5,
+};
+
+describe("Écriture de paie (journal OD)", () => {
+  const totals = sumResults([computePayslip(aboubi)]);
+  const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7);
+
+  it("est équilibrée (débit = crédit)", () => {
+    expect(entry.balanced).toBe(true);
+    expect(entry.totalDebit).toBe(entry.totalCredit);
+  });
+  it("total = coût employeur 5 089,32", () => {
+    expect(entry.totalDebit).toBe(5089.32);
+  });
+  it("débit 6171 = brut 4 366,52", () => {
+    const l = entry.lines.find((x) => x.account === "6171");
+    expect(l?.debit).toBe(4366.52);
+  });
+  it("crédit 4432 = net 4 135,52", () => {
+    const l = entry.lines.find((x) => x.account === "4432");
+    expect(l?.credit).toBe(4135.52);
+  });
+  it("crédit 4441 = CNSS+AMO+AF 898,96 (hors TFP)", () => {
+    const l = entry.lines.find((x) => x.account === "4441");
+    expect(l?.credit).toBe(898.96);
+  });
+  it("crédit 4457 = TFP 54,84 (taxe, hors CNSS)", () => {
+    const l = entry.lines.find((x) => x.account === "4457");
+    expect(l?.credit).toBe(54.84);
+  });
+  it("ligne IR à 0 est éliminée", () => {
+    expect(entry.lines.find((x) => x.account === "44525")).toBeUndefined();
+  });
+});
+
+describe("Écriture de règlement (journal BQ)", () => {
+  const totals = sumResults([computePayslip(aboubi)]);
+  const entry = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7);
+  it("est équilibrée et solde la banque (net + CNSS + IR)", () => {
+    expect(entry.balanced).toBe(true);
+    const bank = entry.lines.find((x) => x.account === "5141");
+    expect(bank?.credit).toBe(5089.32); // net + CNSS total + IR(0)
+  });
+});
+
+describe("Agrégation multi-salariés", () => {
+  it("somme correctement 3 bulletins et reste équilibrée", () => {
+    const rs = [computePayslip(aboubi), computePayslip(aboubi), computePayslip(aboubi)];
+    const totals = sumResults(rs);
+    expect(totals.headcount).toBe(3);
+    const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7);
+    expect(entry.balanced).toBe(true);
+    expect(entry.totalDebit).toBe(5089.32 * 3);
+  });
+});

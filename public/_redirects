@@ -1,0 +1,5 @@
+# Netlify — appliqué aussi en glisser-déposer (fichier copié dans dist/)
+# Proxy Odoo (contourne l'absence de CORS). Renseigner l'URL "/odoo" dans Paramètres.
+/odoo/*  https://pepiniere-belkora.odoo.com/:splat  200
+# Filet SPA (routeur hash-based : par prudence)
+/*  /index.html  200

@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  ────────────────────────────────────────────────────────────────────────────
+  Design system Belkora Paie & RH — « spectre émeraude »
+  Palette dérivée du logo BELKORA (feuilles vertes + mot-symbole vert forêt).
+  Un seul et unique spectre chromatique : une famille émeraude (teinte OKLCH ~150)
+  déclinée en variations perceptuellement régulières (générées en OKLCH puis
+  transcrites en HSL). Neutres subtilement teintés vers le vert de la marque pour
+  une cohésion inconsciente. Registre « product » : couleur = sens (action,
+  sélection, état), jamais décoration. Contrastes vérifiés WCAG AA/AAA.
+
+    Feuille principale (émeraude)  #088838   → primaire / actions
+    Feuille claire (kelly)         #38A838   → accent secondaire « sage »
+    Mot-symbole (vert forêt)       #186848   → encres profondes / statut « payé »
+  ────────────────────────────────────────────────────────────────────────────
+*/
+@layer base {
+  :root {
+    --background: 129 58% 99%;
+    --foreground: 141 20% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 141 20% 12%;
+
+    /* Émeraude de marque — action primaire (5.0:1 sur blanc) */
+    --primary: 142 71% 29%;
+    --primary-foreground: 129 44% 98%;
+    --primary-soft: 129 50% 93%;
+
+    /* Kelly (feuille claire) — accent secondaire, dosé */
+    --sage: 85 40% 39%;
+    --sage-foreground: 89 66% 98%;
+
+    --gold: 39 52% 51%;
+
+    --secondary: 129 30% 95%;
+    --secondary-foreground: 140 13% 17%;
+
+    --muted: 129 25% 95%;
+    --muted-foreground: 133 7% 38%;
+
+    --accent: 129 53% 93%;
+    --accent-foreground: 115 51% 20%;
+
+    --success: 139 53% 34%;
+    --warning: 36 100% 35%;
+    --destructive: 359 62% 49%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 129 13% 87%;
+    --input: 129 11% 84%;
+    --ring: 142 71% 29%;
+
+    --radius: 0.7rem;
+
+    /* Statuts de période de paie — progression de wayfinding dans la famille froide-verte */
+    --status-draft: 129 4% 47%;      /* brouillon — neutre sauge */
+    --status-validated: 142 71% 29%; /* validée — émeraude de marque */
+    --status-declared: 189 100% 29%; /* déclarée — sarcelle (bifurcation info) */
+    --status-paid: 153 100% 20%;     /* payée — vert forêt profond */
+
+    /* Data-viz — palette catégorielle de la famille de marque (teinte + clarté distinctes) */
+    --chart-1: 135 56% 34%;  /* émeraude */
+    --chart-2: 72 53% 40%;   /* kelly */
+    --chart-3: 185 100% 28%; /* sarcelle */
+    --chart-4: 38 61% 53%;   /* or */
+    --chart-5: 157 100% 18%; /* forêt */
+  }
+
+  .dark {
+    --background: 141 40% 5%;
+    --foreground: 129 17% 91%;
+
+    --card: 141 25% 8%;
+    --card-foreground: 129 17% 91%;
+
+    --primary: 131 37% 54%;
+    --primary-foreground: 141 43% 4%;
+    --primary-soft: 136 46% 15%;
+
+    --sage: 85 34% 49%;
+    --sage-foreground: 131 37% 4%;
+
+    --gold: 39 61% 56%;
+
+    --secondary: 140 15% 13%;
+    --secondary-foreground: 129 17% 91%;
+
+    --muted: 140 14% 12%;
+    --muted-foreground: 129 5% 61%;
+
+    --accent: 135 40% 15%;
+    --accent-foreground: 121 44% 77%;
+
+    --success: 135 42% 55%;
+    --warning: 39 76% 53%;
+    --destructive: 2 65% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 140 12% 18%;
+    --input: 140 11% 19%;
+    --ring: 131 37% 54%;
+
+    --status-draft: 129 4% 57%;
+    --status-validated: 131 37% 54%;
+    --status-declared: 191 51% 50%;
+    --status-paid: 139 34% 49%;
+
+    --chart-1: 131 33% 49%;
+    --chart-2: 73 41% 52%;
+    --chart-3: 184 57% 43%;
+    --chart-4: 38 69% 61%;
+    --chart-5: 148 38% 40%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "tnum" 1, "cv05" 1;
+  }
+  /* Encres de titre — la famille émeraude porte la hiérarchie sans crier */
+  h1, h2, h3 {
+    @apply font-display tracking-tight;
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+    color: hsl(var(--foreground));
+  }
+  /* Anneau de focus cohérent sur toute surface interactive native */
+  :focus-visible {
+    outline: none;
+  }
+}
+
+@layer components {
+  .num {
+    @apply font-mono tabular-nums;
+  }
+  /* Lavis émeraude subtil en coin de carte — profondeur, pas décoration */
+  .card-grad {
+    background:
+      radial-gradient(130% 130% at 100% 0%, hsl(var(--primary) / 0.05), transparent 55%),
+      hsl(var(--card));
+  }
+  .scrollbar-thin::-webkit-scrollbar { height: 8px; width: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border)); border-radius: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
+/* Motion : intentionnelle, jamais imposée. Respect strict de la préférence système. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

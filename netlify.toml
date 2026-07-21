@@ -1,0 +1,32 @@
+# Déploiement Netlify — Belkora Paie & RH (build statique Vite)
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# --- Proxy Odoo (contourne l'absence de CORS côté Odoo SaaS) ---
+# Renseigner l'URL "/odoo" dans Paramètres → Connexion Odoo pour que l'import passe par ici.
+# Remplacer la cible si l'instance Odoo change.
+[[redirects]]
+  from = "/odoo/*"
+  to = "https://pepiniere-belkora.odoo.com/:splat"
+  status = 200
+  force = true
+
+# --- Filet de sécurité SPA (le routeur est hash-based, donc surtout par prudence) ---
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# --- En-têtes de sécurité ---
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # Outil interne : on évite l'indexation par les moteurs de recherche.
+    X-Robots-Tag = "noindex, nofollow"

@@ -1,0 +1,316 @@
+/**
+ * Store applicatif — persistance locale (localStorage), API remplaçable par Supabase.
+ * Fournit un état réactif via `useStore()` et des mutations typées.
+ */
+import { useSyncExternalStore } from "react";
+import type {
+  AppRole,
+  AppState,
+  AppUser,
+  BankAuditEvent,
+  BankBaseline,
+  ComplianceAlert,
+  Employee,
+  Firm,
+  Payslip,
+  PayrollPeriod,
+} from "./types";
+import { seed, SUPER_ADMIN } from "./seed";
+
+const KEY = "gca-paie-rh-state-v1";
+
+/**
+ * Réconcilie un état persisté avec le seed courant : backfill des champs ajoutés
+ * APRÈS la 1re écriture localStorage. Sans cela, un localStorage ancien masque
+ * définitivement les nouveaux défauts du seed (ex. `odoo_company_id`), et l'import
+ * Odoo échoue alors même que le seed fournit l'ID. Idempotent, ne touche pas aux
+ * données saisies, ignore les firmes créées à la main (id absent du seed).
+ */
+function migrate(s: AppState): AppState {
+  const byId = new Map(seed().firms.map((f) => [f.id, f]));
+  // Champs légaux ajoutés après coup : on ne comble QUE les valeurs absentes (jamais d'écrasement d'une saisie).
+  const LEGAL_BACKFILL: (keyof Firm)[] = [
+    "legal_form", "share_capital", "rc_city", "patente", "phone", "email",
+  ];
+  for (const f of s.firms) {
+    const seeded = byId.get(f.id);
+    if (!seeded) continue;
+    if (f.odoo_company_id == null && seeded.odoo_company_id != null) {
+      f.odoo_company_id = seeded.odoo_company_id;
+    }
+    for (const k of LEGAL_BACKFILL) {
+      const cur = f[k];
+      if ((cur == null || cur === "") && seeded[k] != null) {
+        (f[k] as Firm[keyof Firm]) = seeded[k];
+      }
+    }
+  }
+  // Backfill des champs ajoutés après la 1re écriture localStorage.
+  if (s.currentRole == null) s.currentRole = "firm_admin";
+  if (s.bankAudit == null) s.bankAudit = [];
+  if (s.bankBaseline == null) s.bankBaseline = [];
+  // Comptes utilisateurs : garantir la présence ET les credentials du super utilisateur.
+  // Le compte racine est « indestructible » (cf. seed.ts) : par conception anti-lockout,
+  // ses identifiants documentés font autorité. On réaffirme donc depuis le seed son
+  // username ET son password_hash — sinon un localStorage issu d'une version antérieure
+  // fige un ancien hash et provoque « Mot de passe incorrect » malgré le bon mot de passe.
+  // Les comptes secondaires (non is_super) ne sont jamais touchés.
+  if (!Array.isArray(s.users)) s.users = [];
+  const superUser = s.users.find((u) => u.is_super || u.id === SUPER_ADMIN.id);
+  if (!superUser) {
+    s.users.unshift(structuredClone(SUPER_ADMIN));
+  } else {
+    superUser.username = SUPER_ADMIN.username;
+    superUser.password_hash = SUPER_ADMIN.password_hash;
+    superUser.is_super = true;
+    superUser.is_active = true;
+    superUser.role = "super_admin";
+  }
+  return s;
+}
+
+function load(): AppState {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) return migrate(JSON.parse(raw) as AppState);
+  } catch {
+    /* ignore */
+  }
+  return seed();
+}
+
+let state: AppState = load();
+const listeners = new Set<() => void>();
+
+function persist() {
+  localStorage.setItem(KEY, JSON.stringify(state));
+  listeners.forEach((l) => l());
+}
+
+function set(mutator: (s: AppState) => void) {
+  const next: AppState = structuredClone(state);
+  mutator(next);
+  state = next;
+  persist();
+}
+
+/* ---- abonnement React ---- */
+function subscribe(cb: () => void) {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}
+export function useStore(): AppState {
+  return useSyncExternalStore(subscribe, () => state, () => state);
+}
+
+/* ---- identifiants ---- */
+let counter = 0;
+export function uid(prefix = "id"): string {
+  counter += 1;
+  return `${prefix}_${Date.now().toString(36)}_${counter}`;
+}
+
+/* ---- sélecteurs ---- */
+export const getState = () => state;
+export const currentFirm = (s: AppState): Firm =>
+  s.firms.find((f) => f.id === s.currentFirmId) ?? s.firms[0];
+export const employeesOfFirm = (s: AppState, firmId: string) =>
+  s.employees.filter((e) => e.firm_id === firmId);
+export const periodsOfFirm = (s: AppState, firmId: string) =>
+  s.periods.filter((p) => p.firm_id === firmId);
+export const payslipsOfPeriod = (s: AppState, periodId: string) =>
+  s.payslips.filter((p) => p.period_id === periodId);
+
+/* ---- mutations ---- */
+export const actions = {
+  setCurrentFirm(id: string) {
+    set((s) => {
+      s.currentFirmId = id;
+    });
+  },
+  upsertFirm(firm: Firm) {
+    set((s) => {
+      const i = s.firms.findIndex((f) => f.id === firm.id);
+      if (i >= 0) s.firms[i] = firm;
+      else s.firms.push(firm);
+    });
+  },
+  upsertEmployee(emp: Employee) {
+    set((s) => {
+      const i = s.employees.findIndex((e) => e.id === emp.id);
+      if (i >= 0) s.employees[i] = emp;
+      else s.employees.push(emp);
+    });
+  },
+  removeEmployee(id: string) {
+    set((s) => {
+      s.employees = s.employees.filter((e) => e.id !== id);
+    });
+  },
+  ensurePeriod(firmId: string, year: number, month: number): PayrollPeriod {
+    let found = state.periods.find(
+      (p) => p.firm_id === firmId && p.year === year && p.month === month,
+    );
+    if (!found) {
+      const period: PayrollPeriod = { id: uid("per"), firm_id: firmId, year, month, status: "draft" };
+      set((s) => {
+        s.periods.push(period);
+      });
+      found = period;
+    }
+    return found;
+  },
+  setPeriodStatus(periodId: string, status: PayrollPeriod["status"]) {
+    set((s) => {
+      const p = s.periods.find((x) => x.id === periodId);
+      if (p) p.status = status;
+    });
+  },
+  upsertPayslip(slip: Payslip) {
+    set((s) => {
+      const i = s.payslips.findIndex(
+        (p) => p.period_id === slip.period_id && p.employee_id === slip.employee_id,
+      );
+      if (i >= 0) s.payslips[i] = slip;
+      else s.payslips.push(slip);
+    });
+  },
+  bulkUpsertPayslips(slips: Payslip[]) {
+    set((s) => {
+      for (const slip of slips) {
+        const i = s.payslips.findIndex(
+          (p) => p.period_id === slip.period_id && p.employee_id === slip.employee_id,
+        );
+        if (i >= 0) s.payslips[i] = slip;
+        else s.payslips.push(slip);
+      }
+    });
+  },
+  setOdooConfig(cfg: AppState["odoo"]) {
+    set((s) => {
+      s.odoo = cfg;
+    });
+  },
+  /** Mémorise l'id hr.employee renvoyé par Odoo après une création (sync app -> Odoo),
+   *  pour que les synchronisations suivantes apparient par clé forte et n'insèrent pas de doublon. */
+  attachOdooIds(pairs: { employee_id: string; odoo_id: number }[]) {
+    if (!pairs.length) return;
+    const byEmp = new Map(pairs.map((p) => [p.employee_id, p.odoo_id]));
+    set((s) => {
+      for (const e of s.employees) {
+        const oid = byEmp.get(e.id);
+        if (oid != null) (e as Employee & { _odoo_id?: number })._odoo_id = oid;
+      }
+    });
+  },
+  /** Fusionne des salariés importés : met à jour l'existant (clé matricule ou CIN), sinon ajoute. */
+  mergeEmployees(list: Employee[]): { added: number; updated: number } {
+    let added = 0;
+    let updated = 0;
+    set((s) => {
+      for (const emp of list) {
+        const i = s.employees.findIndex(
+          (e) =>
+            e.firm_id === emp.firm_id &&
+            ((emp.matricule && e.matricule === emp.matricule) || (emp.cin && e.cin === emp.cin)),
+        );
+        if (i >= 0) {
+          s.employees[i] = { ...s.employees[i], ...emp, id: s.employees[i].id };
+          updated += 1;
+        } else {
+          s.employees.push(emp);
+          added += 1;
+        }
+      }
+    });
+    return { added, updated };
+  },
+  removeFirm(id: string) {
+    set((s) => {
+      if (s.firms.length <= 1) return; // garder au moins une société
+      s.firms = s.firms.filter((f) => f.id !== id);
+      s.employees = s.employees.filter((e) => e.firm_id !== id);
+      if (s.currentFirmId === id) s.currentFirmId = s.firms[0].id;
+    });
+  },
+  /* ---- Utilisateurs (authentification locale) ---- */
+  addUser(user: AppUser) {
+    set((s) => {
+      s.users = s.users ?? [];
+      s.users.push(user);
+    });
+  },
+  updateUser(user: AppUser) {
+    set((s) => {
+      const list = s.users ?? [];
+      const i = list.findIndex((u) => u.id === user.id);
+      if (i < 0) return;
+      // Le super utilisateur ne peut être ni désactivé ni rétrogradé (anti-lockout).
+      list[i] = list[i].is_super ? { ...user, is_super: true, is_active: true, role: "super_admin" } : user;
+      s.users = list;
+    });
+  },
+  removeUser(id: string) {
+    set((s) => {
+      s.users = (s.users ?? []).filter((u) => u.id !== id || u.is_super); // jamais le super
+    });
+  },
+  /* ---- Sécurité / audit RIB ---- */
+  setCurrentRole(role: AppRole) {
+    set((s) => {
+      s.currentRole = role;
+    });
+  },
+  /** Remplace le rapport d'audit d'une société (les autres sociétés sont conservées). */
+  setBankAudit(firmId: string, events: BankAuditEvent[]) {
+    set((s) => {
+      const others = (s.bankAudit ?? []).filter((e) => e.firm_id !== firmId);
+      s.bankAudit = [...others, ...events];
+    });
+  },
+  /** Établit/rafraîchit la base de référence des RIB validés d'une société. */
+  setBankBaseline(firmId: string, baseline: BankBaseline[]) {
+    set((s) => {
+      const others = (s.bankBaseline ?? []).filter((b) => b.firm_id !== firmId);
+      s.bankBaseline = [...others, ...baseline];
+    });
+  },
+  reset() {
+    state = seed();
+    persist();
+  },
+};
+
+/* ---- moteur d'alertes de conformité (dérivé, non persisté) ---- */
+export function deriveAlerts(s: AppState, firmId: string): ComplianceAlert[] {
+  const out: ComplianceAlert[] = [];
+  const today = new Date();
+  for (const e of employeesOfFirm(s, firmId).filter((x) => x.is_active)) {
+    const name = `${e.first_name} ${e.last_name}`;
+    if (!e.cnss_number)
+      out.push(alert(firmId, e.id, "cnss_missing", "critical", `${name} : non immatriculé CNSS (obligation légale)`));
+    if (!e.cin)
+      out.push(alert(firmId, e.id, "cin_missing", "warning", `${name} : CIN absente du dossier`));
+    if (e.birth_date && e.hazardous_site) {
+      const age = (today.getTime() - new Date(e.birth_date).getTime()) / 3.15576e10;
+      if (age < 18)
+        out.push(alert(firmId, e.id, "minor_hazardous", "critical", `${name} : mineur sur site dangereux (art. 143-147)`));
+    }
+    if (e.contract_type === "CDD" && e.contract_end) {
+      const days = (new Date(e.contract_end).getTime() - today.getTime()) / 8.64e7;
+      if (days >= 0 && days <= 30)
+        out.push(alert(firmId, e.id, "cdd_expiring", "warning", `${name} : CDD expirant dans ${Math.round(days)} j`));
+    }
+  }
+  return out;
+}
+
+function alert(
+  firm_id: string,
+  employee_id: string,
+  type: ComplianceAlert["type"],
+  severity: ComplianceAlert["severity"],
+  message: string,
+): ComplianceAlert {
+  return { id: `${type}_${employee_id}`, firm_id, employee_id, type, severity, message, resolved: false };
+}
