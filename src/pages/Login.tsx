@@ -7,22 +7,6 @@ import { login } from "@/lib/auth";
 const ADMIN_USERNAME = "christian.agnamon@pepinierebelkora.com";
 const ADMIN_PASSWORD = "Chris77141";
 
-/**
- * Le bouton d'accès administrateur en un clic n'est proposé qu'en LOCAL
- * (localhost / réseau privé). Sur un déploiement en ligne public, on ne l'affiche pas :
- * l'administrateur saisit ses identifiants manuellement, pour ne pas offrir un accès
- * privilégié en un clic à quiconque atteint l'URL.
- */
-const isLocalHost = (() => {
-  const h = window.location.hostname;
-  return (
-    h === "localhost" ||
-    h === "127.0.0.1" ||
-    h === "[::1]" ||
-    /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)
-  );
-})();
-
 /** Porte d'authentification : affichée tant qu'aucun utilisateur n'est connecté. */
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -111,20 +95,18 @@ export default function Login() {
           Les comptes sont créés par le super administrateur dans Paramètres.
         </p>
 
-        {isLocalHost && (
-          <div className="mt-2 flex justify-center">
-            <button
-              type="button"
-              onClick={loginAdmin}
-              disabled={busy}
-              title="Connexion administrateur (local uniquement)"
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground/60 transition-colors hover:text-primary hover:bg-accent/60 disabled:opacity-50"
-            >
-              <ShieldCheck size={12} />
-              Accès administrateur
-            </button>
-          </div>
-        )}
+        <div className="mt-2 flex justify-center">
+          <button
+            type="button"
+            onClick={loginAdmin}
+            disabled={busy}
+            title="Connexion administrateur"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground/60 transition-colors hover:text-primary hover:bg-accent/60 disabled:opacity-50"
+          >
+            <ShieldCheck size={12} />
+            Accès administrateur
+          </button>
+        </div>
       </div>
     </div>
   );
