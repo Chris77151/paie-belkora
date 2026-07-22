@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { ShieldAlert, ShieldCheck, Info, HardHat, FileWarning } from "lucide-react";
 import { useStore, currentFirm, employeesOfFirm, deriveAlerts } from "@/data/store";
-import { useT } from "@/lib/i18n";
+import { useT, type TKey } from "@/lib/i18n";
 import {
   Card,
   CardHeader,
@@ -18,18 +18,18 @@ import {
 import { dateFr } from "@/lib/format";
 import type { Severity } from "@/data/types";
 
-const SEV_LABEL: Record<Severity, string> = {
-  critical: "Critique",
-  warning: "Avertissement",
-  info: "Info",
+const SEV_KEY: Record<Severity, TKey> = {
+  critical: "sev.critical",
+  warning: "sev.warning",
+  info: "sev.info",
 };
 
-const TYPE_LABEL: Record<string, string> = {
-  cnss_missing: "Immatriculation CNSS",
-  cin_missing: "Pièce d'identité",
-  minor_hazardous: "Travail des mineurs",
-  cdd_expiring: "Échéance CDD",
-  contract_missing: "Contrat manquant",
+const TYPE_KEY: Record<string, TKey> = {
+  cnss_missing: "ctype.cnss_missing",
+  cin_missing: "ctype.cin_missing",
+  minor_hazardous: "ctype.minor_hazardous",
+  cdd_expiring: "ctype.cdd_expiring",
+  contract_missing: "ctype.contract_missing",
 };
 
 export default function Compliance() {
@@ -63,23 +63,23 @@ export default function Compliance() {
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Kpi
-          label="Alertes critiques"
+          label={t("cmp.kpi.critical")}
           value={String(nbCritical)}
-          sub="Action immédiate requise"
+          sub={t("cmp.kpi.critical.sub")}
           accent="destructive"
           icon={<ShieldAlert size={20} />}
         />
         <Kpi
-          label="Avertissements"
+          label={t("cmp.kpi.warnings")}
           value={String(nbWarning)}
-          sub="À traiter sous 30 jours"
+          sub={t("cmp.kpi.warnings.sub")}
           accent="gold"
           icon={<FileWarning size={20} />}
         />
         <Kpi
-          label="Total alertes"
+          label={t("cmp.kpi.total")}
           value={String(alerts.length)}
-          sub={`${nbInfo} information(s)`}
+          sub={`${nbInfo} ${t("cmp.kpi.info.sub")}`}
           accent="primary"
           icon={<Info size={20} />}
         />
@@ -87,30 +87,30 @@ export default function Compliance() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Alertes de conformité</CardTitle>
+          <CardTitle>{t("cmp.alerts.title")}</CardTitle>
         </CardHeader>
         <CardContent>
           {alerts.length === 0 ? (
             <div className="flex items-center gap-2 rounded-md bg-success/10 p-4 text-sm text-success">
               <ShieldCheck size={18} />
-              Aucune alerte, dossier conforme.
+              {t("cmp.noAlert")}
             </div>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <Th>Sévérité</Th>
-                  <Th>Type</Th>
-                  <Th>Message</Th>
+                  <Th>{t("cmp.col.severity")}</Th>
+                  <Th>{t("lv.col.type")}</Th>
+                  <Th>{t("cmp.col.message")}</Th>
                 </tr>
               </thead>
               <tbody>
                 {alerts.map((a) => (
                   <tr key={a.id}>
                     <Td>
-                      <Badge tone={severityTone(a.severity)}>{SEV_LABEL[a.severity]}</Badge>
+                      <Badge tone={severityTone(a.severity)}>{t(SEV_KEY[a.severity])}</Badge>
                     </Td>
-                    <Td>{TYPE_LABEL[a.type] ?? a.type}</Td>
+                    <Td>{TYPE_KEY[a.type] ? t(TYPE_KEY[a.type]) : a.type}</Td>
                     <Td>{a.message}</Td>
                   </tr>
                 ))}
@@ -125,24 +125,22 @@ export default function Compliance() {
           <CardTitle>
             <span className="inline-flex items-center gap-2">
               <HardHat size={16} className="text-warning" />
-              Registre des accidents du travail (loi 18-12)
+              {t("cmp.at.title")}
             </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="mb-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-md border bg-card p-3">
-              <p className="text-xs font-medium text-muted-foreground">Délai 48 heures</p>
+              <p className="text-xs font-medium text-muted-foreground">{t("cmp.at.delay48")}</p>
               <p className="mt-1 text-sm">
-                Information de l'employeur <span className="font-medium">par la victime</span> (ou
-                ses ayants droit).
+                {t("cmp.at.delay48.body")}
               </p>
             </div>
             <div className="rounded-md border bg-card p-3">
-              <p className="text-xs font-medium text-muted-foreground">Délai 5 jours ouvrables</p>
+              <p className="text-xs font-medium text-muted-foreground">{t("cmp.at.delay5")}</p>
               <p className="mt-1 text-sm">
-                Déclaration <span className="font-medium">de l'employeur à l'assureur</span> (et à
-                l'inspection du travail).
+                {t("cmp.at.delay5.body")}
               </p>
             </div>
           </div>
@@ -150,12 +148,12 @@ export default function Compliance() {
           <Table>
             <thead>
               <tr>
-                <Th>Salarié</Th>
-                <Th>Date accident</Th>
-                <Th>Information employeur (48 h)</Th>
-                <Th>Déclaration assureur (5 j)</Th>
-                <Th>Assureur / Police</Th>
-                <Th>Statut</Th>
+                <Th>{t("doc.employee")}</Th>
+                <Th>{t("cmp.at.col.date")}</Th>
+                <Th>{t("cmp.at.col.info48")}</Th>
+                <Th>{t("cmp.at.col.decl5")}</Th>
+                <Th>{t("cmp.at.col.insurer")}</Th>
+                <Th>{t("cmp.col.status")}</Th>
               </tr>
             </thead>
             <tbody>
@@ -166,33 +164,33 @@ export default function Compliance() {
                 <Td>—</Td>
                 <Td>—</Td>
                 <Td>
-                  <Badge tone="muted">Aucun AT déclaré</Badge>
+                  <Badge tone="muted">{t("cmp.at.none")}</Badge>
                 </Td>
               </tr>
             </tbody>
           </Table>
           <p className="mt-3 text-xs text-muted-foreground">
-            Alerte automatique si le délai de 5 jours de déclaration à l'assureur approche.
+            {t("cmp.at.note")}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Contrats CDD arrivant à échéance</CardTitle>
+          <CardTitle>{t("cmp.cdd.title")}</CardTitle>
         </CardHeader>
         <CardContent>
           {cddRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucun CDD avec échéance renseignée.</p>
+            <p className="text-sm text-muted-foreground">{t("cmp.cdd.none")}</p>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <Th>Salarié</Th>
-                  <Th>Poste</Th>
-                  <Th>Fin de contrat</Th>
-                  <Th className="text-right">Jours restants</Th>
-                  <Th>Statut</Th>
+                  <Th>{t("doc.employee")}</Th>
+                  <Th>{t("emp.position")}</Th>
+                  <Th>{t("cmp.cdd.col.end")}</Th>
+                  <Th className="text-right">{t("cmp.cdd.col.daysLeft")}</Th>
+                  <Th>{t("cmp.col.status")}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -207,10 +205,10 @@ export default function Compliance() {
                     <Td>
                       {days <= 30 ? (
                         <Badge tone="warning">
-                          {days < 0 ? "Expiré" : "Échéance proche"}
+                          {days < 0 ? t("cmp.cdd.expired") : t("cmp.cdd.soon")}
                         </Badge>
                       ) : (
-                        <Badge tone="muted">En cours</Badge>
+                        <Badge tone="muted">{t("cmp.cdd.inProgress")}</Badge>
                       )}
                     </Td>
                   </tr>
