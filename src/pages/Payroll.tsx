@@ -65,7 +65,7 @@ export default function Payroll() {
 
   function validate() {
     if (!period) return;
-    if (!confirm(`Valider et figer la paie de ${periodLabel(year, month)} ? Les montants ne seront plus recalculés.`)) return;
+    if (!confirm(`${t("pay.validate.confirm1")} ${periodLabel(year, month)}${t("pay.validate.confirm2")}`)) return;
     actions.bulkUpsertPayslips(
       rows.map((r) => ({ ...r.slip, result: computeFor(r.emp, firm, year, month, r.slip.input) })),
     );
@@ -89,12 +89,12 @@ export default function Payroll() {
 
       <Card className="mb-4">
         <CardContent className="pt-5 flex flex-wrap items-end gap-3">
-          <Field label="Année">
+          <Field label={t("pay.year")}>
             <Select value={year} onChange={(e) => setYear(+e.target.value)} className="w-28">
               {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
             </Select>
           </Field>
-          <Field label="Mois">
+          <Field label={t("pay.month")}>
             <Select value={month} onChange={(e) => setMonth(+e.target.value)} className="w-40">
               {MONTHS_FR.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
             </Select>
@@ -102,20 +102,20 @@ export default function Payroll() {
           <div className="flex-1" />
           {!locked ? (
             <>
-              <Button variant="outline" onClick={exportAll}><FileDown size={16} /> Export groupé PDF</Button>
-              <Button onClick={validate}><Lock size={16} /> Valider la période</Button>
+              <Button variant="outline" onClick={exportAll}><FileDown size={16} /> {t("pay.exportGroup")}</Button>
+              <Button onClick={validate}><Lock size={16} /> {t("pay.validate")}</Button>
             </>
           ) : (
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={exportAll}><FileDown size={16} /> Export groupé PDF</Button>
+              <Button variant="outline" onClick={exportAll}><FileDown size={16} /> {t("pay.exportGroup")}</Button>
               {period?.status === "validated" && (
                 <Button variant="sage" onClick={() => actions.setPeriodStatus(period!.id, "declared")}>
-                  <CheckCircle2 size={16} /> Marquer déclarée
+                  <CheckCircle2 size={16} /> {t("pay.markDeclared")}
                 </Button>
               )}
               {period?.status === "declared" && (
                 <Button variant="sage" onClick={() => actions.setPeriodStatus(period!.id, "paid")}>
-                  <CheckCircle2 size={16} /> Marquer payée
+                  <CheckCircle2 size={16} /> {t("pay.markPaid")}
                 </Button>
               )}
             </div>
@@ -124,28 +124,28 @@ export default function Payroll() {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-4 mb-4">
-        <Mini label="Bulletins" value={String(rows.length)} />
-        <Mini label="Masse brute" value={mad(totals.brut)} />
-        <Mini label="Total net" value={mad(totals.net)} />
-        <Mini label="Coût employeur" value={mad(totals.cout)} accent />
+        <Mini label={t("pay.kpi.slips")} value={String(rows.length)} />
+        <Mini label={t("pay.kpi.gross")} value={mad(totals.brut)} />
+        <Mini label={t("pay.kpi.net")} value={mad(totals.net)} />
+        <Mini label={t("pay.kpi.cost")} value={mad(totals.cout)} accent />
       </div>
 
       <Card>
         <div className="flex items-center gap-2 px-5 py-3 border-b text-sm text-muted-foreground">
           <Calculator size={16} className="text-primary" />
-          Bulletins de {periodLabel(year, month)} {locked && <Badge tone="muted" className="ml-1">figés</Badge>}
+          {t("pay.slipsOf")} {periodLabel(year, month)} {locked && <Badge tone="muted" className="ml-1">{t("pay.frozen")}</Badge>}
         </div>
         <Table>
           <thead>
             <tr>
-              <Th>Salarié</Th>
-              <Th className="text-right">Base</Th>
-              <Th className="text-right">Brut</Th>
+              <Th>{t("doc.employee")}</Th>
+              <Th className="text-right">{t("pay.col.base")}</Th>
+              <Th className="text-right">{t("pay.col.gross")}</Th>
               <Th className="text-right">CNSS</Th>
               <Th className="text-right">AMO</Th>
               <Th className="text-right">IR</Th>
-              <Th className="text-right">Net à payer</Th>
-              <Th className="text-center">Bulletin</Th>
+              <Th className="text-right">{t("pay.col.net")}</Th>
+              <Th className="text-center">{t("pay.col.slip")}</Th>
               <Th></Th>
             </tr>
           </thead>
@@ -166,11 +166,11 @@ export default function Payroll() {
                   <div className="flex items-center justify-center gap-1">
                     <Button variant="ghost" size="icon" title="PDF" onClick={() => exportPayslipPdf(view(emp, r, slip.input))}><FileDown size={15} /></Button>
                     <Button variant="ghost" size="icon" title="LaTeX (.tex)" onClick={() => downloadTex(view(emp, r, slip.input), firm.payslip_template_latex)}><FileText size={15} /></Button>
-                    <Button variant="ghost" size="icon" title="HTML imprimable" onClick={() => openHtmlPayslip(view(emp, r, slip.input))}><Printer size={15} /></Button>
+                    <Button variant="ghost" size="icon" title={t("pay.printable")} onClick={() => openHtmlPayslip(view(emp, r, slip.input))}><Printer size={15} /></Button>
                   </div>
                 </Td>
                 <Td className="text-right">
-                  <Button variant="ghost" size="icon" title="Saisie variable" disabled={locked} onClick={() => setEditing(emp)}>
+                  <Button variant="ghost" size="icon" title={t("pay.variableInput")} disabled={locked} onClick={() => setEditing(emp)}>
                     <SlidersHorizontal size={15} />
                   </Button>
                 </Td>
@@ -179,7 +179,7 @@ export default function Payroll() {
           </tbody>
         </Table>
         <div className="px-5 py-2 text-xs text-muted-foreground border-t">
-          Totaux — Brut {mad(totals.brut)} · Net {mad(totals.net)} · Cotisations CNSS {mad(totals.cnss)} · Coût employeur {mad(totals.cout)}
+          {t("pay.totals")} — {t("pay.col.gross")} {mad(totals.brut)} · {t("pay.kpi.net")} {mad(totals.net)} · {t("pay.cnssContrib")} {mad(totals.cnss)} · {t("pay.kpi.cost")} {mad(totals.cout)}
         </div>
       </Card>
 
@@ -212,6 +212,7 @@ function InputEditor({
   slip: { id: string; period_id: string; employee_id: string; input: PayslipInput; result?: PayrollResult | null };
   onClose: () => void;
 }) {
+  const t = useT();
   const s = useStore();
   const firm = currentFirm(s);
   const period = s.periods.find((p) => p.id === slip.period_id)!;
@@ -234,43 +235,43 @@ function InputEditor({
     <div className="fixed inset-0 z-50 flex justify-end bg-foreground/40" onClick={onClose}>
       <div className="h-full w-full max-w-md overflow-y-auto bg-card p-6 shadow-2xl scrollbar-thin" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-display">Saisie — {emp.first_name} {emp.last_name}</h2>
+          <h2 className="text-lg font-display">{t("pay.input.title")} — {emp.first_name} {emp.last_name}</h2>
           <Button variant="ghost" size="icon" onClick={onClose}><X size={18} /></Button>
         </div>
-        <p className="text-xs text-muted-foreground mb-5">{periodLabel(period.year, period.month)} · taux {mad(emp.base_hourly_rate)}/h</p>
+        <p className="text-xs text-muted-foreground mb-5">{periodLabel(period.year, period.month)} · {t("pay.rate")} {mad(emp.base_hourly_rate)}/h</p>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {numField("Jours travaillés", "days_worked")}
-          {numField("Heures normales", "hours_normal")}
-          {numField("HS +25 % (h)", "hours_ot_25", "0.5")}
-          {numField("HS +50 % (h)", "hours_ot_50", "0.5")}
-          {numField("HS +100 % (h)", "hours_ot_100", "0.5")}
-          {numField("Panier (DH)", "panier", "0.01")}
-          {numField("Transport (DH)", "transport", "0.01")}
-          {numField("Salissure (DH)", "salissure", "0.01")}
-          {numField("Autres gains (DH)", "other_gross", "0.01")}
+          {numField(t("pay.f.days"), "days_worked")}
+          {numField(t("pay.f.hours"), "hours_normal")}
+          {numField(t("pay.f.ot25"), "hours_ot_25", "0.5")}
+          {numField(t("pay.f.ot50"), "hours_ot_50", "0.5")}
+          {numField(t("pay.f.ot100"), "hours_ot_100", "0.5")}
+          {numField(t("pay.f.panier"), "panier", "0.01")}
+          {numField(t("pay.f.transport"), "transport", "0.01")}
+          {numField(t("pay.f.salissure"), "salissure", "0.01")}
+          {numField(t("pay.f.other"), "other_gross", "0.01")}
         </div>
         <label className="mt-3 flex items-center gap-2 text-sm">
           <input type="checkbox" checked={!!inp.transport_outside_urban} onChange={(e) => set({ transport_outside_urban: e.target.checked })} />
-          Transport hors périmètre urbain (plafond 750)
+          {t("pay.f.transportOutside")}
         </label>
 
         <div className="mt-5 rounded-lg bg-muted/60 p-4 text-sm space-y-1.5">
-          <Line label="Salaire brut" value={mad(r.salaireBrut)} />
-          <Line label="SBI (imposable)" value={mad(r.sbi)} />
-          <Line label={`Prime ancienneté (${(r.seniorityRate * 100).toFixed(0)} %)`} value={mad(r.primeAnciennete)} />
-          <Line label="CNSS + AMO" value={mad(r.cnssSalarie + r.amoSalarie)} />
-          <Line label={`Abattement frais pro (${(r.fraisProRate * 100).toFixed(0)} %)`} value={`- ${mad(r.fraisPro)}`} />
-          <Line label="SNI (net imposable)" value={mad(r.sni)} />
+          <Line label={t("pay.l.gross")} value={mad(r.salaireBrut)} />
+          <Line label={t("pay.l.sbi")} value={mad(r.sbi)} />
+          <Line label={`${t("pay.l.seniority")} (${(r.seniorityRate * 100).toFixed(0)} %)`} value={mad(r.primeAnciennete)} />
+          <Line label={t("pay.l.cnssAmo")} value={mad(r.cnssSalarie + r.amoSalarie)} />
+          <Line label={`${t("pay.l.fraisPro")} (${(r.fraisProRate * 100).toFixed(0)} %)`} value={`- ${mad(r.fraisPro)}`} />
+          <Line label={t("pay.l.sni")} value={mad(r.sni)} />
           <Line label="IR" value={mad(r.ir)} />
           <div className="border-t pt-1.5 mt-1.5">
-            <Line label="Net à payer" value={mad(r.netAPayer)} strong />
+            <Line label={t("pay.col.net")} value={mad(r.netAPayer)} strong />
           </div>
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={save}>Appliquer</Button>
+          <Button variant="outline" onClick={onClose}>{t("btn.cancel")}</Button>
+          <Button onClick={save}>{t("pay.apply")}</Button>
         </div>
       </div>
     </div>
