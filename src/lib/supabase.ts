@@ -28,7 +28,19 @@ const CONFIG_KEY = "gca-supabase";
 const DEFAULT_WORKSPACE = "belkora";
 const TABLE = "app_state";
 
-/** Lit la configuration : localStorage prioritaire, sinon variables d'environnement Vite. */
+/**
+ * Configuration Supabase par défaut du Groupe Belkora — persistance cloud active d'office
+ * pour tous les postes du site déployé. La clé « publishable » est publique par conception
+ * (protégée côté serveur par les politiques RLS). Un utilisateur peut la surcharger dans
+ * Paramètres (localStorage) ou via les variables d'environnement Vercel.
+ */
+const DEFAULT_CONFIG: SupabaseConfig | null = {
+  url: "https://cbpubcbdryfhwwktrygo.supabase.co",
+  anonKey: "sb_publishable_EspqnLQwY41tXqY1G7-tkw_jxh2v3R3",
+  workspace: DEFAULT_WORKSPACE,
+};
+
+/** Lit la config : localStorage > variables d'environnement Vite > défaut Belkora intégré. */
 export function getSupabaseConfig(): SupabaseConfig | null {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
@@ -43,6 +55,9 @@ export function getSupabaseConfig(): SupabaseConfig | null {
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
   if (envUrl && envKey) {
     return { url: envUrl, anonKey: envKey, workspace: DEFAULT_WORKSPACE };
+  }
+  if (DEFAULT_CONFIG && DEFAULT_CONFIG.url && DEFAULT_CONFIG.anonKey) {
+    return DEFAULT_CONFIG;
   }
   return null;
 }
