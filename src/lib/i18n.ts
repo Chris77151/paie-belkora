@@ -164,6 +164,8 @@ export const DICT = {
 
   // Corps de la page Documents RH — composants partagés et formulaire
   "doc.params": { fr: "Paramètres du document", ar: "إعدادات الوثيقة" },
+  "doc.params.contract": { fr: "Paramètres du contrat", ar: "إعدادات العقد" },
+  "doc.params.sanction": { fr: "Paramètres de la sanction", ar: "إعدادات العقوبة" },
   "doc.preview": { fr: "Aperçu", ar: "معاينة" },
   "doc.type": { fr: "Type de document", ar: "نوع الوثيقة" },
   "doc.employee": { fr: "Salarié", ar: "الأجير" },

@@ -487,6 +487,7 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
 /* ================================================================= 2) Contrat RH ================================================================= */
 
 function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] }) {
+  const t = useT();
   const [empId, setEmpId] = useState<string>(employees[0]?.id ?? "");
   const [model, setModel] = useState<ContractModel>("cdd-chef");
   const [civility, setCivility] = useState<Civility>(null);
@@ -546,7 +547,7 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FileText size={17} className="text-primary" /> Paramètres du contrat
+            <FileText size={17} className="text-primary" /> {t("doc.params.contract")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -688,7 +689,7 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
         <MissingCard missing={missing} />
         <Card>
           <CardHeader>
-            <CardTitle>Aperçu — {doc.heading}</CardTitle>
+            <CardTitle>{t("doc.preview")} — {doc.heading}</CardTitle>
           </CardHeader>
           <CardContent>
             <LegalDocPreview firm={firm} doc={doc} />
@@ -702,6 +703,7 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
 /* ================================================================= 3) Kit disciplinaire RH ================================================================= */
 
 function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[] }) {
+  const t = useT();
   const [empId, setEmpId] = useState<string>(employees[0]?.id ?? "");
   const [type, setType] = useState<DisciplineType>("avertissement");
   const [civility, setCivility] = useState<Civility>(null);
@@ -774,7 +776,7 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Gavel size={17} className="text-primary" /> Paramètres de la sanction
+            <Gavel size={17} className="text-primary" /> {t("doc.params.sanction")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -939,7 +941,7 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
         <MissingCard missing={missing} />
         <Card>
           <CardHeader>
-            <CardTitle>Aperçu — {doc.heading}</CardTitle>
+            <CardTitle>{t("doc.preview")} — {doc.heading}</CardTitle>
           </CardHeader>
           <CardContent>
             <LegalDocPreview firm={firm} doc={doc} />
@@ -953,6 +955,7 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
 /* ================================================================= 4) Kit rupture RH ================================================================= */
 
 function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }) {
+  const t = useT();
   const [empId, setEmpId] = useState<string>(employees[0]?.id ?? "");
   const [type, setType] = useState<RuptureType>("pv-fin-travaux");
   const [civility, setCivility] = useState<Civility>(null);
@@ -1067,7 +1070,7 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <DoorOpen size={17} className="text-primary" /> Paramètres du document
+            <DoorOpen size={17} className="text-primary" /> {t("doc.params")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1284,7 +1287,7 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
         <MissingCard missing={missing} />
         <Card>
           <CardHeader>
-            <CardTitle>Aperçu — {doc.heading}</CardTitle>
+            <CardTitle>{t("doc.preview")} — {doc.heading}</CardTitle>
           </CardHeader>
           <CardContent>
             <LegalDocPreview firm={firm} doc={doc} />
@@ -1384,6 +1387,7 @@ function Row({ label, value, strong, muted, accent }: { label: string; value: st
 /* ================================================================= 5) Kit mineurs RH (FR / AR) ================================================================= */
 
 function MineurPanel({ firm }: { firm: Firm }) {
+  const t = useT();
   const [type, setType] = useState<MineurType>("autorisation");
   const [lang, setLang] = useState<MineurLang>("fr");
   const [issueCity, setIssueCity] = useState<string>("");
@@ -1409,7 +1413,7 @@ function MineurPanel({ firm }: { firm: Firm }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Baby size={17} className="text-primary" /> Paramètres du document
+            <Baby size={17} className="text-primary" /> {t("doc.params")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1485,7 +1489,7 @@ function MineurPanel({ firm }: { firm: Firm }) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Languages size={15} className="text-primary" /> Aperçu — {lang === "ar" ? "العربية" : "Français"}
+              <Languages size={15} className="text-primary" /> {t("doc.preview")} — {lang === "ar" ? "العربية" : "Français"}
             </CardTitle>
           </CardHeader>
           <CardContent>
