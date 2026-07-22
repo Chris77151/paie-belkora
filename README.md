@@ -16,9 +16,9 @@ npm test         # tests unitaires du moteur de paie (Vitest)
 npm run build    # build de production (dist/)
 ```
 
-Aucun backend requis : les données vivent en local (`localStorage`) à partir d'un jeu
-de démonstration (2 sociétés, 7 salariés). L'architecture reste calquée sur le schéma
-Supabase de la spécification pour un branchement ultérieur.
+Deux modes de persistance : **local** par défaut (`localStorage`, aucun backend), ou
+**cloud permanent** en activant Supabase dans Paramètres (données sauvegardées et partagées
+entre appareils). Jeu de départ : 2 sociétés, **0 salarié** (à saisir ou importer depuis Odoo).
 
 ## Ce qui est couvert
 
@@ -97,4 +97,9 @@ Le moteur ne contient aucune valeur réglementaire en dur.
 - Dépôt DAMANCOM manuel : l'application **prépare** le fichier BDS, le téléversement reste
   sur le portail CNSS (API non publique).
 - Identifiants ICE/RC/CNSS du jeu de démonstration = fictifs.
-- Persistance locale ; l'adaptateur Supabase (RLS, Edge Functions, audit CNDP) reste à brancher.
+- **Persistance permanente (Supabase)** : `src/lib/supabase.ts` synchronise tout l'`AppState`
+  (une ligne JSONB `app_state`) vers Supabase — données **sauvegardées en permanence et
+  partagées entre appareils/utilisateurs**, avec fallback localStorage hors-ligne (offline-first,
+  écriture débouncée, hydratation au démarrage). Configuration dans **Paramètres → Persistance
+  cloud** (URL + clé anon, script SQL fourni) ou via env Vercel (`VITE_SUPABASE_URL`,
+  `VITE_SUPABASE_ANON_KEY`). Sans configuration, l'app reste 100 % locale.

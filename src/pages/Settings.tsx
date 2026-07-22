@@ -1,9 +1,17 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Save, ShieldX, Users, ScrollText, Building2, ImageUp, RotateCcw,
   Plus, Trash2, Check, Plug, Loader2, UserPlus, KeyRound, ShieldAlert,
+  Cloud, Database, Copy, CloudOff,
 } from "lucide-react";
-import { useStore, currentFirm, actions, uid } from "@/data/store";
+import {
+  useStore, currentFirm, actions, uid,
+  subscribeSync, getSyncStatus, getSyncError, hydrateFromRemote, type SyncStatus,
+} from "@/data/store";
+import {
+  getSupabaseConfig, setSupabaseConfig, testConnection, SUPABASE_SQL,
+  isSupabaseConfigured, type SupabaseConfig,
+} from "@/lib/supabase";
 import { useT } from "@/lib/i18n";
 import { odooTestConnection, odooListCompanies } from "@/lib/odoo";
 import { hashPassword, useSession, ROLE_LABELS } from "@/lib/auth";
@@ -102,6 +110,7 @@ export default function Settings() {
       <PageHeader title={t("page.settings.title")} subtitle={t("page.settings.sub")} />
 
       <FirmsCard />
+      <CloudSyncCard />
       <OdooCard />
 
       <Card className="mb-6">
@@ -822,6 +831,147 @@ function OdooCard() {
           matricule (registration_number), CNSS (l10n_ma_cnss_number), poste, situation, personnes à charge,
           département. Salariés sans <code className="font-mono">wage</code> renseigné (ouvriers cash) → repli SMIG.
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ================================================================= Persistance cloud (Supabase) ================================================================= */
+
+function useSyncStatus(): { status: SyncStatus; error: string } {
+  const [, force] = useState(0);
+  useEffect(() => subscribeSync(() => force((n) => n + 1)), []);
+  return { status: getSyncStatus(), error: getSyncError() };
+}
+
+const SYNC_LABEL: Record<SyncStatus, string> = {
+  off: "Non configuré (local uniquement)",
+  syncing: "Synchronisation…",
+  saved: "Synchronisé",
+  error: "Erreur de synchronisation",
+};
+
+function CloudSyncCard() {
+  const existing = getSupabaseConfig();
+  const [url, setUrl] = useState(existing?.url ?? "");
+  const [anonKey, setAnonKey] = useState(existing?.anonKey ?? "");
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const { status, error } = useSyncStatus();
+  const configured = isSupabaseConfigured();
+
+  async function handleTest() {
+    setTesting(true);
+    setResult(null);
+    const res = await testConnection({ url: url.trim(), anonKey: anonKey.trim() });
+    setResult(res);
+    setTesting(false);
+  }
+
+  async function handleSave() {
+    setSupabaseConfig({ url: url.trim(), anonKey: anonKey.trim() });
+    await hydrateFromRemote(); // adopte le cloud partagé (ou l'initialise avec l'état local)
+    setResult({ ok: true });
+  }
+
+  function handleDisable() {
+    if (!window.confirm("Désactiver la synchronisation cloud ? Les données restent en local sur cet appareil.")) return;
+    setSupabaseConfig(null);
+    setUrl("");
+    setAnonKey("");
+    setResult(null);
+  }
+
+  async function copySql() {
+    try {
+      await navigator.clipboard.writeText(SUPABASE_SQL);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const tone = status === "saved" ? "sage" : status === "error" ? "destructive" : status === "syncing" ? "warning" : "muted";
+
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>
+          <span className="inline-flex items-center gap-2">
+            <Cloud size={16} className="text-primary" />
+            Persistance cloud (Supabase)
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">État :</span>
+          <Badge tone={tone as "sage" | "destructive" | "warning" | "muted"}>
+            {configured ? (
+              <span className="inline-flex items-center gap-1.5">
+                {status === "syncing" ? <Loader2 size={12} className="animate-spin" /> : <Database size={12} />}
+                {SYNC_LABEL[status]}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5"><CloudOff size={12} /> {SYNC_LABEL.off}</span>
+            )}
+          </Badge>
+          {status === "error" && error && <span className="text-xs text-destructive">{error}</span>}
+        </div>
+
+        <p className="text-[13px] text-muted-foreground">
+          Sans cloud, les données vivent uniquement dans ce navigateur (perdues si le cache est vidé ou sur un
+          autre appareil). Avec Supabase, elles sont <b className="text-foreground">sauvegardées en permanence</b> et
+          partagées entre tous les postes. L'app reste fonctionnelle hors-ligne : le cloud se synchronise dès qu'il est joignable.
+        </p>
+
+        <div className="rounded-md border bg-muted/40 p-3 text-[13px] space-y-2">
+          <p className="font-medium text-foreground">Mise en place (une seule fois)</p>
+          <ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
+            <li>Créez un projet gratuit sur <span className="font-mono">supabase.com</span>.</li>
+            <li>Dans <b>SQL Editor</b>, exécutez le script ci-dessous (crée la table + la sécurité RLS).</li>
+            <li>Dans <b>Project Settings → API</b>, copiez l'<b>URL</b> du projet et la clé <b>anon public</b>, collez-les ci-dessous, puis « Tester » et « Activer ».</li>
+          </ol>
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <span className="text-muted-foreground">Script SQL à exécuter dans Supabase :</span>
+            <Button variant="outline" onClick={copySql} className="h-8 px-2.5 text-xs">
+              {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copié" : "Copier le SQL"}
+            </Button>
+          </div>
+          <pre className="max-h-40 overflow-auto rounded bg-background p-2 text-[11px] leading-snug font-mono">{SUPABASE_SQL}</pre>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="URL du projet Supabase">
+            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxxx.supabase.co" />
+          </Field>
+          <Field label="Clé anon (public)" hint="Clé publique — protégée par la RLS. Stockée dans ce navigateur.">
+            <Input value={anonKey} onChange={(e) => setAnonKey(e.target.value)} placeholder="eyJhbGciOi…" />
+          </Field>
+        </div>
+
+        {result && (
+          <div className={`flex items-start gap-2 rounded-md border p-2.5 text-[13px] ${result.ok ? "border-sage/40 text-foreground" : "border-destructive/40 text-destructive"}`}>
+            {result.ok ? <Check size={15} className="mt-0.5 shrink-0 text-sage" /> : <ShieldAlert size={15} className="mt-0.5 shrink-0" />}
+            <span>{result.ok ? "Connexion valide — synchronisation active." : result.error}</span>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handleTest} disabled={testing || !url.trim() || !anonKey.trim()}>
+            {testing ? <Loader2 size={16} className="animate-spin" /> : <Plug size={16} />} Tester la connexion
+          </Button>
+          <Button onClick={handleSave} disabled={!url.trim() || !anonKey.trim()}>
+            <Save size={16} /> Activer la synchronisation
+          </Button>
+          {configured && (
+            <Button variant="outline" onClick={handleDisable}>
+              <CloudOff size={16} /> Désactiver
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

@@ -18,6 +18,7 @@ import type {
   WorkAccident,
 } from "./types";
 import { seed, SUPER_ADMIN } from "./seed";
+import { isSupabaseConfigured, loadRemoteState, saveRemoteState } from "@/lib/supabase";
 
 const KEY = "gca-paie-rh-state-v1";
 
@@ -105,9 +106,73 @@ function load(): AppState {
 let state: AppState = load();
 const listeners = new Set<() => void>();
 
+function persistLocal() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch {
+    /* ignore (quota / mode privé) */
+  }
+}
+
 function persist() {
-  localStorage.setItem(KEY, JSON.stringify(state));
+  persistLocal();
   listeners.forEach((l) => l());
+  scheduleRemoteSave();
+}
+
+/* ---- Synchronisation cloud (Supabase) — permanente et partagée, offline-first ---- */
+export type SyncStatus = "off" | "syncing" | "saved" | "error";
+let syncStatus: SyncStatus = isSupabaseConfigured() ? "syncing" : "off";
+let syncError = "";
+const syncListeners = new Set<() => void>();
+
+function setSync(st: SyncStatus, err = "") {
+  syncStatus = st;
+  syncError = err;
+  syncListeners.forEach((l) => l());
+}
+export function subscribeSync(cb: () => void): () => void {
+  syncListeners.add(cb);
+  return () => {
+    syncListeners.delete(cb);
+  };
+}
+export const getSyncStatus = () => syncStatus;
+export const getSyncError = () => syncError;
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+/** Pousse l'état vers Supabase, débouncé (évite un appel par frappe). No-op si non configuré. */
+function scheduleRemoteSave() {
+  if (!isSupabaseConfigured()) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  setSync("syncing");
+  saveTimer = setTimeout(async () => {
+    const res = await saveRemoteState(state);
+    setSync(res.ok ? "saved" : "error", res.error);
+  }, 800);
+}
+
+/**
+ * Hydrate l'état depuis Supabase au démarrage (ou après configuration). Le cloud est la source
+ * de vérité partagée : si une ligne distante existe, elle est adoptée ; sinon l'état local
+ * courant est poussé comme graine initiale. Ne casse jamais l'app en cas d'échec.
+ */
+export async function hydrateFromRemote(): Promise<void> {
+  if (!isSupabaseConfigured()) {
+    setSync("off");
+    return;
+  }
+  setSync("syncing");
+  const remote = await loadRemoteState();
+  if (remote) {
+    state = migrate(remote.data);
+    persistLocal(); // cache local du snapshot distant
+    listeners.forEach((l) => l());
+    setSync("saved");
+  } else {
+    const res = await saveRemoteState(state); // première initialisation du cloud
+    setSync(res.ok ? "saved" : "error", res.error);
+  }
 }
 
 function set(mutator: (s: AppState) => void) {
