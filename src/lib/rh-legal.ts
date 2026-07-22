@@ -6,7 +6,8 @@
  *   - Kit disciplinaire   (rh-discipline.ts) — sanctions graduées (art. 37 → 39, audition art. 62)
  *
  * Un document est décrit par un objet PUR `LegalDoc` (blocs), rendu ensuite en PDF (jsPDF,
- * multi-pages, en-tête + pied légal aux couleurs Miya) OU en HTML imprimable. Le contenu est
+ * multi-pages, en-tête + pied légal aux couleurs de la société émettrice — spectre dérivé de
+ * firm.brand_color, vert Miya par défaut) OU en HTML imprimable. Le contenu est
  * calqué sur les modèles LaTeX MBD du skill (gabarit `mbd-style.sty`).
  *
  * RÈGLE D'OR (identique au skill) : ZÉRO INVENTION. Tout champ absent est rendu en placeholder
@@ -18,13 +19,25 @@ import { jsPDF } from "jspdf";
 import type { Firm } from "@/data/types";
 import { dateFr } from "./format";
 import { firmIdentityClause, firmLegalLine as firmLegalLineCanonical } from "./firm-legal";
+import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
 
-/* Couleurs de marque (logo Miya) — cohérentes avec payslip.ts / rh-documents.ts */
-export const LIME: [number, number, number] = [141, 185, 78]; // #8DB94E
-export const OLIVE: [number, number, number] = [139, 162, 95];
-export const INK: [number, number, number] = [40, 52, 44];
-export const VERT_FONCE: [number, number, number] = [58, 82, 42];
-export const MUTED: [number, number, number] = [120, 128, 116];
+/* Couleurs de marque — dérivées de la société (firm.brand_color) au début de chaque rendu,
+ * comme payslip.ts. Sans couleur de marque définie, on garde EXACTEMENT le vert Miya d'origine.
+ * `usePalette(firm)` réassigne LIME/OLIVE/INK/VERT_FONCE/MUTED : les usages `...LIME` restent inchangés. */
+export let LIME: RGB = paletteForFirm(undefined).lime; // #8DB94E par défaut
+export let OLIVE: RGB = paletteForFirm(undefined).olive;
+export let INK: RGB = paletteForFirm(undefined).ink;
+export let VERT_FONCE: RGB = paletteForFirm(undefined).deep;
+export let MUTED: RGB = paletteForFirm(undefined).muted;
+function usePalette(firm: Firm): PayslipPalette {
+  const pal = paletteForFirm(firm.brand_color);
+  LIME = pal.lime;
+  OLIVE = pal.olive;
+  INK = pal.ink;
+  VERT_FONCE = pal.deep;
+  MUTED = pal.muted;
+  return pal;
+}
 
 /** Placeholder pointillé visible (à compléter à la main) — jamais une donnée inventée. */
 export const PH = "……………………";
@@ -268,6 +281,7 @@ function drawSignatures(ctx: Ctx, cols: SignatureCol[]) {
 }
 
 export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
+  usePalette(firm); // couleurs dérivées de la société (défaut = vert Miya)
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   doc.setProperties({ title: d.fileTitle });
   const logo = await loadLogo(firm.logo_path || "/logo-miya.png");
@@ -383,6 +397,7 @@ function esc(s: string): string {
 }
 
 export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr"): string {
+  const pal = paletteForFirm(firm.brand_color); // couleurs dérivées de la société (défaut = vert Miya)
   const ar = lang === "ar" && d.ar ? d.ar : null;
   const c = ar ?? d;
   const rtl = !!ar;
@@ -448,7 +463,7 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
   return `<!doctype html><html lang="${rtl ? "ar" : "fr"}" dir="${rtl ? "rtl" : "ltr"}"><head><meta charset="utf-8">
 <title>${esc(d.fileTitle)}</title>
 <style>
- :root{--lime:#8DB94E;--olive:#8BA25F;--vf:#3a522a;--ink:#28342c;--muted:#788074}
+ :root{--lime:${pal.limeHex};--olive:${pal.oliveHex};--vf:${pal.deepHex};--ink:${pal.inkHex};--muted:${pal.mutedHex}}
  *{box-sizing:border-box;font-family:"IBM Plex Sans",Arial,sans-serif}
  body{margin:0;padding:24px;background:#f4f5f2;color:var(--ink)}
  .sheet{max-width:820px;margin:auto;background:#fff;padding:40px 48px 64px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,.08);position:relative}

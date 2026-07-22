@@ -7,18 +7,29 @@
  * placeholder pointillé visible et listé dans `missingFields()` — jamais fabriqué.
  *
  * Gabarit calqué sur payslip.ts : en-tête logo + bloc légal, titre encadré, corps justifié,
- * « Fait à … le … », bloc signature, pied de page légal (ICE/IF/RC/CNSS). Aux couleurs du logo Miya.
+ * « Fait à … le … », bloc signature, pied de page légal (ICE/IF/RC/CNSS). Aux couleurs de la
+ * société émettrice (spectre dérivé de firm.brand_color ; vert Miya par défaut).
  * Rendus : PDF (jsPDF) et HTML imprimable. Les fonctions de texte sont PURES (testables).
  */
 import { jsPDF } from "jspdf";
 import type { Employee, Firm } from "@/data/types";
 import { dateFr } from "./format";
 import { firmDescriptor, firmIdentityClause, firmLegalLine } from "./firm-legal";
+import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
 
-/* Couleurs de marque (logo Miya) — cohérentes avec payslip.ts */
-const LIME: [number, number, number] = [141, 185, 78]; // #8DB94E
-const OLIVE: [number, number, number] = [139, 162, 95];
-const INK: [number, number, number] = [40, 52, 44];
+/* Couleurs de marque — dérivées de la société (firm.brand_color) au début de chaque rendu,
+ * comme payslip.ts. Sans couleur de marque définie, on garde EXACTEMENT le vert Miya d'origine.
+ * `usePalette(firm)` réassigne LIME/OLIVE/INK : tous les usages `...LIME` restent inchangés. */
+let LIME: RGB = paletteForFirm(undefined).lime;
+let OLIVE: RGB = paletteForFirm(undefined).olive;
+let INK: RGB = paletteForFirm(undefined).ink;
+function usePalette(firm: Firm): PayslipPalette {
+  const pal = paletteForFirm(firm.brand_color);
+  LIME = pal.lime;
+  OLIVE = pal.olive;
+  INK = pal.ink;
+  return pal;
+}
 
 export type RhDocType =
   | "attestation-travail"
@@ -274,6 +285,7 @@ function legalFooterLine(firm: Firm): string {
 /* -------------------------------------------------- PDF -------------------------------------------------- */
 export async function buildRhDocPdf(v: RhDocView): Promise<jsPDF> {
   const { firm } = v;
+  usePalette(firm); // couleurs dérivées de la société (défaut = vert Miya)
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const W = 210;
   const H = 297;
@@ -346,6 +358,7 @@ export async function exportRhDocPdf(v: RhDocView) {
 /* -------------------------------------------------- HTML imprimable -------------------------------------------------- */
 export function buildRhDocHtml(v: RhDocView): string {
   const { firm } = v;
+  const pal = paletteForFirm(firm.brand_color); // couleurs dérivées de la société (défaut = vert Miya)
   const ville = (v.city ?? firm.city ?? PH).trim() || PH;
   const sigName = (v.signatoryName ?? firm.signatory_name ?? PH).trim() || PH;
   const sigRole = (v.signatoryRole ?? firm.signatory_role ?? PH).trim() || PH;
@@ -356,7 +369,7 @@ export function buildRhDocHtml(v: RhDocView): string {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <title>${DOC_TITLE[v.type]} — ${escapeHtml(v.employee.first_name)} ${escapeHtml(v.employee.last_name)}</title>
 <style>
- :root{--lime:#8DB94E;--olive:#8BA25F;--ink:#28342c}
+ :root{--lime:${pal.limeHex};--olive:${pal.oliveHex};--ink:${pal.inkHex}}
  *{box-sizing:border-box;font-family:"IBM Plex Sans",Arial,sans-serif}
  body{margin:0;padding:24px;background:#f4f5f2;color:var(--ink)}
  .sheet{max-width:800px;margin:auto;background:#fff;padding:40px 46px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,.08);min-height:1040px;position:relative}

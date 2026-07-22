@@ -424,6 +424,8 @@ export function buildPayslipLatex(v: PayslipView, template?: string): string {
     return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k) => map[k] ?? `??${k}??`);
   }
 
+  const pal = paletteForFirm(firm.brand_color); // couleurs dérivées de la société (défaut = vert Miya)
+  const rgb = ([r, g, b]: RGB) => `${Math.round(r)},${Math.round(g)},${Math.round(b)}`;
   const esc = (s: string) => s.replace(/&/g, "\\&").replace(/%/g, "\\%").replace(/—/g, "--");
   const rowsMain = mainRows(v)
     .map((row) => {
@@ -450,10 +452,10 @@ export function buildPayslipLatex(v: PayslipView, template?: string): string {
 \\usepackage[T1]{fontenc}
 \\usepackage[margin=1.5cm]{geometry}
 \\usepackage{xcolor,colortbl,booktabs,array}
-\\definecolor{lime}{RGB}{141,185,78}
-\\definecolor{olive}{RGB}{139,162,95}
-\\definecolor{sage}{RGB}{96,108,96}
-\\definecolor{tint}{RGB}{236,240,226}
+\\definecolor{lime}{RGB}{${rgb(pal.lime)}}
+\\definecolor{olive}{RGB}{${rgb(pal.olive)}}
+\\definecolor{sage}{RGB}{${rgb(pal.sageDark)}}
+\\definecolor{tint}{RGB}{${rgb(pal.tint)}}
 \\renewcommand{\\arraystretch}{1.25}
 \\begin{document}\\pagestyle{empty}
 \\noindent{\\Large\\bfseries ${esc(firm.name.toUpperCase())}}\\\\[-2pt]{\\small ICE/ID : ${esc(firm.ice ?? "--")}}
@@ -463,7 +465,7 @@ export function buildPayslipLatex(v: PayslipView, template?: string): string {
 \\noindent\\textbf{Matricule :} ${esc(e.matricule ?? "--")} \\quad \\textbf{Nom :} ${esc(e.first_name + " " + e.last_name)} \\quad \\textbf{Poste :} ${esc(e.position ?? "--")} \\quad \\textbf{Affaire :} ${esc(e.site ?? "--")}\\\\
 \\textbf{CIN :} ${esc(e.cin ?? "--")} \\quad \\textbf{CNSS :} ${esc(e.cnss_number ?? "EN COURS")} \\quad \\textbf{Déduction :} ${e.dependents} \\quad \\textbf{Jours travaillés :} ${defaults(v).days_worked}
 \\vspace{6pt}
-\\definecolor{hdr}{RGB}{139,162,95}
+\\definecolor{hdr}{RGB}{${rgb(pal.olive)}}
 \\arrayrulecolor{gray!40}
 \\noindent\\begin{tabular}{|p{8.3cm}|r|r|r|r|}\\hline
 \\rowcolor{olive}\\textcolor{white}{\\textbf{LIBELLE}} & \\textcolor{white}{\\textbf{Nbre/Base}} & \\textcolor{white}{\\textbf{TAUX}} & \\textcolor{white}{\\textbf{GAINS}} & \\textcolor{white}{\\textbf{RETENUES}} \\\\ \\hline

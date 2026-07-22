@@ -22,11 +22,17 @@ export interface PayslipPalette {
   tint: RGB;
   /** Encre (texte foncé) — quasi-noir teinté. */
   ink: RGB;
+  /** Vert profond — titres / en-têtes de section des documents juridiques. */
+  deep: RGB;
+  /** Gris teinté — texte secondaire, filets, légendes. */
+  muted: RGB;
   limeHex: string;
   oliveHex: string;
   sageHex: string;
   tintHex: string;
   inkHex: string;
+  deepHex: string;
+  mutedHex: string;
 }
 
 /** Palette Miya par défaut — valeurs historiques EXACTES du bulletin (aucune régression). */
@@ -36,11 +42,15 @@ export const DEFAULT_PALETTE: PayslipPalette = {
   sageDark: [96, 108, 96],
   tint: [236, 240, 226],
   ink: [40, 52, 44],
+  deep: [58, 82, 42],
+  muted: [120, 128, 116],
   limeHex: "#8DB94E",
   oliveHex: "#8BA25F",
   sageHex: "#606C60",
   tintHex: "#ecf0e2",
   inkHex: "#28342c",
+  deepHex: "#3a522a",
+  mutedHex: "#788074",
 };
 
 /* ------------------------------------------------------------------ conversions ------------------------------------------------------------------ */
@@ -107,17 +117,25 @@ export function derivePayslipPalette(baseHex: string): PayslipPalette {
   const sageDark = hslToRgb(h, 0.1, 0.4);
   const tint = hslToRgb(h, clamp(s, 0.2, 0.4), 0.91);
   const ink = hslToRgb(h, 0.16, 0.17);
+  // Vert profond des titres : même teinte, saturé et foncé (lisible sur blanc).
+  const deep = hslToRgb(h, clamp(s * 0.85, 0.3, 0.65), 0.24);
+  // Gris teinté : même teinte, quasi désaturé, valeur médiane (texte secondaire, filets).
+  const muted = hslToRgb(h, 0.1, 0.48);
   const pal: PayslipPalette = {
     lime: rgb,
     olive,
     sageDark,
     tint,
     ink,
+    deep,
+    muted,
     limeHex: rgbToHex(rgb),
     oliveHex: rgbToHex(olive),
     sageHex: rgbToHex(sageDark),
     tintHex: rgbToHex(tint),
     inkHex: rgbToHex(ink),
+    deepHex: rgbToHex(deep),
+    mutedHex: rgbToHex(muted),
   };
   return pal;
 }
