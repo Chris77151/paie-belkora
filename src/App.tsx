@@ -1,7 +1,8 @@
-import { createHashRouter, Navigate, RouterProvider } from "react-router-dom";
+import type { ReactElement } from "react";
+import { createHashRouter, Navigate, RouterProvider, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
-import { useSession } from "./lib/auth";
+import { canAccess, useSession } from "./lib/auth";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
 import Documents from "./pages/Documents";
@@ -16,25 +17,41 @@ import Audit from "./pages/Audit";
 import Assistant from "./pages/Assistant";
 import Settings from "./pages/Settings";
 
+/**
+ * Garde de route : n'affiche `element` que si le rôle du compte connecté y a droit.
+ * Sinon, redirige vers /dashboard (accessible à tous). Défense contre l'accès direct par URL —
+ * la navigation masquée ne suffit pas, l'utilisateur peut taper l'adresse à la main.
+ * La règle d'accès vit dans auth.ts (source unique, partagée avec la navigation).
+ */
+function Guard({ element }: { element: ReactElement }): ReactElement {
+  const user = useSession();
+  const { pathname } = useLocation();
+  if (!user) return <Navigate to="/" replace />;
+  if (!canAccess(user.role, pathname)) return <Navigate to="/dashboard" replace />;
+  return element;
+}
+
+const g = (element: ReactElement) => <Guard element={element} />;
+
 const router = createHashRouter([
   {
     path: "/",
     element: <Layout />,
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
-      { path: "dashboard", element: <Dashboard /> },
-      { path: "employees", element: <Employees /> },
-      { path: "documents", element: <Documents /> },
-      { path: "payroll", element: <Payroll /> },
-      { path: "accounting", element: <Accounting /> },
-      { path: "declarations", element: <Declarations /> },
-      { path: "compliance", element: <Compliance /> },
-      { path: "accidents", element: <Accidents /> },
-      { path: "leaves", element: <Leaves /> },
-      { path: "securite", element: <Security /> },
-      { path: "audit", element: <Audit /> },
-      { path: "assistant", element: <Assistant /> },
-      { path: "settings", element: <Settings /> },
+      { path: "dashboard", element: g(<Dashboard />) },
+      { path: "employees", element: g(<Employees />) },
+      { path: "documents", element: g(<Documents />) },
+      { path: "payroll", element: g(<Payroll />) },
+      { path: "accounting", element: g(<Accounting />) },
+      { path: "declarations", element: g(<Declarations />) },
+      { path: "compliance", element: g(<Compliance />) },
+      { path: "accidents", element: g(<Accidents />) },
+      { path: "leaves", element: g(<Leaves />) },
+      { path: "securite", element: g(<Security />) },
+      { path: "audit", element: g(<Audit />) },
+      { path: "assistant", element: g(<Assistant />) },
+      { path: "settings", element: g(<Settings />) },
     ],
   },
 ]);

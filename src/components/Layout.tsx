@@ -3,18 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutDashboard, Users, Calculator, FileText, ShieldAlert,
   CalendarDays, Settings, Moon, Sun, Sprout, BookText, FileSignature,
-  Search, UserRound, ShieldCheck, Bot, ScanSearch, LogOut, Menu, X, HardHat, Languages,
+  Search, UserRound, ShieldCheck, Bot, ScanSearch, LogOut, Menu, X, HardHat, Languages, Lock as LockIcon,
 } from "lucide-react";
 import { actions, currentFirm, deriveAlerts, useStore } from "@/data/store";
-import type { AppRole } from "@/data/types";
 import { Select } from "@/components/ui/kit";
-import { logout, ROLE_LABELS, useSession } from "@/lib/auth";
+import { canAccess, logout, ROLE_LABELS, useSession } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { useLang, useT, toggleLang, type TKey } from "@/lib/i18n";
 
-const ADMIN_ROLES: AppRole[] = ["super_admin", "firm_admin"];
-
-type NavItem = { to: string; labelKey: TKey; icon: typeof LayoutDashboard; adminOnly?: boolean };
+type NavItem = { to: string; labelKey: TKey; icon: typeof LayoutDashboard };
 const NAV_GROUPS: { labelKey: TKey; items: NavItem[] }[] = [
   { labelKey: "nav.group.pilotage", items: [
     { to: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
@@ -33,7 +30,7 @@ const NAV_GROUPS: { labelKey: TKey; items: NavItem[] }[] = [
     { to: "/declarations", labelKey: "nav.declarations", icon: FileText },
     { to: "/compliance", labelKey: "nav.compliance", icon: ShieldAlert },
     { to: "/accidents", labelKey: "nav.accidents", icon: HardHat },
-    { to: "/securite", labelKey: "nav.security", icon: ShieldCheck, adminOnly: true },
+    { to: "/securite", labelKey: "nav.security", icon: ShieldCheck },
   ] },
   { labelKey: "nav.group.systeme", items: [
     { to: "/assistant", labelKey: "nav.assistant", icon: Bot },
@@ -47,8 +44,9 @@ export default function Layout() {
   const t = useT();
   const lang = useLang();
   const firm = currentFirm(s);
-  const role = session?.role ?? s.currentRole ?? "firm_admin";
-  const canSee = (item: NavItem) => !item.adminOnly || ADMIN_ROLES.includes(role);
+  // Le rôle fait foi via le compte connecté (session.role) ; défaut sûr = le plus restreint.
+  const role = session?.role ?? "lecture_seule";
+  const canSee = (item: NavItem) => canAccess(role, item.to);
   const groups = NAV_GROUPS
     .map((g) => ({ ...g, items: g.items.filter(canSee) }))
     .filter((g) => g.items.length > 0);
@@ -225,6 +223,16 @@ export default function Layout() {
             >
               {dark ? <Sun size={17} /> : <Moon size={17} />}
             </button>
+
+            {role === "lecture_seule" && (
+              <span
+                className="hidden sm:inline-flex items-center gap-1 rounded-md border border-input bg-muted px-2 py-1 text-[11px] font-medium text-muted-foreground"
+                title={t("header.readonly.hint")}
+              >
+                <LockIcon size={12} />
+                {t("header.readonly")}
+              </span>
+            )}
 
             {session && (
               <div className="flex items-center gap-2 border-l pl-2 sm:pl-3">

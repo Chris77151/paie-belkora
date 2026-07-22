@@ -1,11 +1,7 @@
 import { useState } from "react";
-import { Sprout, LogIn, Loader2, AlertCircle, Lock, ShieldCheck } from "lucide-react";
+import { Sprout, LogIn, Loader2, AlertCircle, Lock } from "lucide-react";
 import { Button, Card, CardContent, Field, Input } from "@/components/ui/kit";
 import { login } from "@/lib/auth";
-
-/** Identifiants du compte administrateur racine (accès rapide « admin »). */
-const ADMIN_USERNAME = "christian.agnamon@pepinierebelkora.com";
-const ADMIN_PASSWORD = "Chris77141";
 
 /** Porte d'authentification : affichée tant qu'aucun utilisateur n'est connecté. */
 export default function Login() {
@@ -22,20 +18,6 @@ export default function Login() {
       const r = await login(username, password);
       if (!r.ok) setError(r.error ?? "Connexion impossible.");
       // En cas de succès, App bascule automatiquement (useSession).
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /** Connexion directe du compte administrateur (bouton discret). */
-  async function loginAdmin() {
-    setError(null);
-    setUsername(ADMIN_USERNAME);
-    setPassword(ADMIN_PASSWORD);
-    setBusy(true);
-    try {
-      const r = await login(ADMIN_USERNAME, ADMIN_PASSWORD);
-      if (!r.ok) setError(r.error ?? "Connexion administrateur impossible.");
     } finally {
       setBusy(false);
     }
@@ -94,19 +76,6 @@ export default function Login() {
           <Lock size={12} />
           Les comptes sont créés par le super administrateur dans Paramètres.
         </p>
-
-        <div className="mt-2 flex justify-center">
-          <button
-            type="button"
-            onClick={loginAdmin}
-            disabled={busy}
-            title="Connexion administrateur"
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground/60 transition-colors hover:text-primary hover:bg-accent/60 disabled:opacity-50"
-          >
-            <ShieldCheck size={12} />
-            Accès administrateur
-          </button>
-        </div>
       </div>
     </div>
   );

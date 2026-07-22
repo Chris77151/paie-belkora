@@ -8,11 +8,14 @@ import type { AppState, AppUser, Firm } from "./types";
 /**
  * Super utilisateur racine de l'application (authentification locale).
  *
- * Identifiant : christian.agnamon@pepinierebelkora.com   ·   Mot de passe : Chris77141
+ * Identifiant : christian.agnamon@pepinierebelkora.com
  *
- * `password_hash` = SHA-256("Chris77141") en hexadécimal. Le mot de passe en clair
- * n'apparaît NULLE PART dans le code ni dans le stockage. Ce compte est indestructible
- * et toujours ré-injecté au chargement (cf. migrate()) pour empêcher tout auto-verrouillage.
+ * Seul le `password_hash` (empreinte SHA-256, non réversible) est stocké : le mot de passe
+ * en clair n'apparaît NULLE PART dans le code ni dans le stockage. Le mot de passe initial a
+ * été communiqué hors code ; il doit être changé à la première connexion et peut être
+ * réinitialisé par le super administrateur dans Paramètres → Utilisateurs. Ce compte est
+ * indestructible et toujours ré-injecté au chargement (cf. migrate()) pour empêcher tout
+ * auto-verrouillage.
  */
 export const SUPER_ADMIN: AppUser = {
   id: "user_super",

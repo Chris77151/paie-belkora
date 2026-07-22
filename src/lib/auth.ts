@@ -12,7 +12,7 @@
  */
 import { useSyncExternalStore } from "react";
 import { actions, getState } from "@/data/store";
-import type { AppUser } from "@/data/types";
+import type { AppRole, AppUser } from "@/data/types";
 
 const SESSION_KEY = "gca-paie-session-user";
 
@@ -41,6 +41,16 @@ export function currentUser(): AppUser | null {
 /** Hook réactif : renvoie l'utilisateur connecté (re-render sur login/logout). */
 export function useSession(): AppUser | null {
   return useSyncExternalStore(subscribe, currentUser, currentUser);
+}
+
+/** Le rôle a-t-il le droit de MODIFIER des données ? « lecture_seule » = consultation seule. */
+export function canWrite(role: AppRole | undefined | null): boolean {
+  return !!role && role !== "lecture_seule";
+}
+
+/** Hook réactif : l'utilisateur connecté peut-il écrire (créer/modifier/supprimer) ? */
+export function useCanWrite(): boolean {
+  return canWrite(useSession()?.role);
 }
 
 /** Tente une connexion. Identifiant comparé sans casse ni espaces superflus. */
@@ -79,3 +89,40 @@ export const ROLE_LABELS: Record<AppUser["role"], string> = {
   gestionnaire_paie: "Gestionnaire de paie",
   lecture_seule: "Lecture seule",
 };
+
+/* ------------------------------------------------------------------ contrôle d'accès par rôle ------------------------------------------------------------------ */
+
+/** Administrateurs (accès total, y compris Paramètres et Sécurité). */
+export const ADMIN_ROLES: AppRole[] = ["super_admin", "firm_admin"];
+
+/**
+ * Politique d'accès aux routes — SOURCE UNIQUE partagée par la navigation (Layout) et le
+ * garde de routes (App). Une route ABSENTE de cette table est ouverte à tout compte connecté
+ * (volets de consultation / opérationnels). Une route PRÉSENTE n'est accessible qu'aux rôles listés.
+ *
+ * Règle : « deny-by-default » sur les routes sensibles. Le rôle fait foi via le compte
+ * authentifié (session.role), jamais via une valeur modifiable librement dans l'UI.
+ */
+export const ROUTE_ACCESS: Record<string, AppRole[]> = {
+  "/settings": ADMIN_ROLES, // paramétrage société + gestion des utilisateurs
+  "/securite": ADMIN_ROLES, // audit des données bancaires (RIB)
+  "/assistant": ["super_admin", "firm_admin", "gestionnaire_paie"], // l'IA peut modifier/supprimer des données
+};
+
+/** Normalise un chemin en son premier segment (« /employees?q=x » → « /employees »). */
+function routeKey(path: string): string {
+  const seg = path.replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").filter(Boolean)[0];
+  return seg ? `/${seg}` : "/";
+}
+
+/**
+ * Le rôle `role` a-t-il accès à la route `path` ?
+ * - Route non restreinte → oui (tout compte connecté).
+ * - Route restreinte → uniquement si le rôle figure dans la liste (sinon refus).
+ * - Rôle absent → refus (défaut sûr).
+ */
+export function canAccess(role: AppRole | undefined | null, path: string): boolean {
+  const allowed = ROUTE_ACCESS[routeKey(path)];
+  if (!allowed) return true;
+  return !!role && allowed.includes(role);
+}

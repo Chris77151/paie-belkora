@@ -5,6 +5,7 @@ import {
   ArrowRight, AlertTriangle, CheckCircle2,
 } from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, uid, useStore } from "@/data/store";
+import { useCanWrite } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import {
   odooImportEmployees, buildEmployeeSyncPlan, applyEmployeeSyncPlan,
@@ -34,6 +35,7 @@ function regimeMonthlyMin(regime: "SMIG" | "SMAG"): number {
 export default function Employees() {
   const s = useStore();
   const t = useT();
+  const canEdit = useCanWrite(); // false pour le rôle « lecture seule »
   const firm = currentFirm(s);
   const all = employeesOfFirm(s, firm.id);
   const [searchParams] = useSearchParams();
@@ -106,13 +108,13 @@ export default function Employees() {
   return (
     <div>
       <PageHeader title={t("page.employees.title")} subtitle={`${all.length} ${t("page.employees.count")} · ${firm.name}`}>
-        <Button variant="outline" onClick={importFromOdoo} disabled={importing}>
+        <Button variant="outline" onClick={importFromOdoo} disabled={importing || !canEdit}>
           {importing ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} {t("emp.importOdoo")}
         </Button>
-        <Button variant="sage" onClick={prepareSync} disabled={syncing} title={t("emp.syncOdoo.hint")}>
+        <Button variant="sage" onClick={prepareSync} disabled={syncing || !canEdit} title={t("emp.syncOdoo.hint")}>
           {syncing ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />} {t("emp.syncOdoo")}
         </Button>
-        <Button onClick={newEmployee}><Plus size={16} /> {t("emp.new")}</Button>
+        <Button onClick={newEmployee} disabled={!canEdit}><Plus size={16} /> {t("emp.new")}</Button>
       </PageHeader>
 
       <Card className="mb-4">
@@ -172,7 +174,7 @@ export default function Employees() {
                   </div>
                 </Td>
                 <Td className="text-right">
-                  <Button variant="ghost" size="icon" onClick={() => setEditing({ ...e })}><Pencil size={15} /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => setEditing({ ...e })} disabled={!canEdit} title={canEdit ? undefined : t("header.readonly.hint")}><Pencil size={15} /></Button>
                 </Td>
               </tr>
             ))}

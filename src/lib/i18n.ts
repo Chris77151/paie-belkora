@@ -122,6 +122,11 @@ export const DICT = {
   "header.lang.ar": { fr: "العربية", ar: "العربية" },
   "header.menuOpen": { fr: "Ouvrir le menu", ar: "فتح القائمة" },
   "header.menuClose": { fr: "Fermer le menu", ar: "إغلاق القائمة" },
+  "header.readonly": { fr: "Lecture seule", ar: "قراءة فقط" },
+  "header.readonly.hint": {
+    fr: "Votre rôle permet la consultation uniquement : les actions de modification sont désactivées.",
+    ar: "دوركم يسمح بالاطّلاع فقط: إجراءات التعديل معطّلة.",
+  },
 
   // Titres et sous-titres de page (toutes les pages)
   "page.dashboard.title": { fr: "Tableau de bord", ar: "لوحة القيادة" },

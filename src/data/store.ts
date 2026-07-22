@@ -175,7 +175,35 @@ export async function hydrateFromRemote(): Promise<void> {
   }
 }
 
-function set(mutator: (s: AppState) => void) {
+/**
+ * Rôle du compte connecté — lu directement depuis sessionStorage + l'état, SANS importer
+ * auth.ts (qui importe déjà ce module : on évite un cycle d'import). La clé de session est
+ * la même que celle définie dans auth.ts (`gca-paie-session-user`).
+ */
+function sessionRole(): AppRole | null {
+  try {
+    const id = sessionStorage.getItem("gca-paie-session-user");
+    if (!id) return null;
+    return state.users?.find((u) => u.id === id && u.is_active)?.role ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Un compte « lecture seule » ne peut effectuer AUCUNE écriture de données (garde app-wide). */
+export function canWriteData(): boolean {
+  return sessionRole() !== "lecture_seule";
+}
+
+/**
+ * Applique une mutation à l'état.
+ * @param opts.view  Mutation de simple ÉTAT DE VUE (ex. société active) : autorisée même en
+ *                   lecture seule. Par défaut une mutation est une écriture de DONNÉES et se
+ *                   trouve neutralisée pour le rôle « lecture_seule » (défense en profondeur,
+ *                   en complément de la désactivation des boutons côté UI).
+ */
+function set(mutator: (s: AppState) => void, opts?: { view?: boolean }) {
+  if (!opts?.view && !canWriteData()) return; // lecture seule : écriture de données ignorée
   const next: AppState = structuredClone(state);
   mutator(next);
   state = next;
@@ -214,7 +242,7 @@ export const actions = {
   setCurrentFirm(id: string) {
     set((s) => {
       s.currentFirmId = id;
-    });
+    }, { view: true }); // navigation entre sociétés : autorisée en lecture seule
   },
   upsertFirm(firm: Firm) {
     set((s) => {
@@ -347,7 +375,7 @@ export const actions = {
   setCurrentRole(role: AppRole) {
     set((s) => {
       s.currentRole = role;
-    });
+    }, { view: true }); // simple miroir du rôle de session (non sécuritaire) : toujours permis
   },
   /** Remplace le rapport d'audit d'une société (les autres sociétés sont conservées). */
   setBankAudit(firmId: string, events: BankAuditEvent[]) {
@@ -394,6 +422,7 @@ export const actions = {
     });
   },
   reset() {
+    if (!canWriteData()) return; // lecture seule : réinitialisation interdite
     state = seed();
     persist();
   },
