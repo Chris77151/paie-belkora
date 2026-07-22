@@ -105,6 +105,7 @@ function todayIso(): string {
 /* ================================================================= composants transverses ================================================================= */
 
 function MissingCard({ missing }: { missing: string[] }) {
+  const t = useT();
   if (missing.length === 0) return null;
   return (
     <Card className="border-warning/40">
@@ -113,10 +114,10 @@ function MissingCard({ missing }: { missing: string[] }) {
           <AlertTriangle size={17} className="text-warning shrink-0 mt-0.5" />
           <div>
             <p className="font-medium text-foreground">
-              {missing.length} champ{missing.length > 1 ? "s" : ""} rendu{missing.length > 1 ? "s" : ""} en pointillé (à compléter à la main)
+              {missing.length} {t(missing.length > 1 ? "doc.missing.title.many" : "doc.missing.title.one")}
             </p>
             <p className="text-muted-foreground mt-0.5">
-              Aucune donnée n'est inventée : les champs absents apparaissent en « …… » sur le document.
+              {t("doc.missing.note")}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {missing.map((m) => (
@@ -131,13 +132,14 @@ function MissingCard({ missing }: { missing: string[] }) {
 }
 
 function PrefilledCard({ rows }: { rows: { label: string; value: string }[] }) {
+  const t = useT();
   return (
     <Card className="border-sage/40">
       <CardContent className="pt-5">
         <div className="flex items-start gap-2.5 text-sm">
           <BadgeCheck size={17} className="text-sage shrink-0 mt-0.5" />
           <div className="min-w-0">
-            <p className="font-medium text-foreground">Données injectées depuis le dossier salarié (réelles)</p>
+            <p className="font-medium text-foreground">{t("doc.prefilled.title")}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {rows.map((r) => (
                 <Badge key={r.label} tone="sage">
@@ -153,16 +155,13 @@ function PrefilledCard({ rows }: { rows: { label: string; value: string }[] }) {
 }
 
 function LegalNotice() {
+  const t = useT();
   return (
     <Card className="border-primary/30 bg-accent/40">
       <CardContent className="pt-4">
         <div className="flex items-start gap-2.5 text-[13px]">
           <ShieldCheck size={16} className="text-primary shrink-0 mt-0.5" />
-          <p className="text-muted-foreground">
-            Acte structurant : faire <span className="font-medium text-foreground">valider par le conseil juridique</span> (agent
-            legal) avant signature. Base légale (art. 14/16/17/33/37/39/62) non modifiable sans validation. Signatures
-            <span className="font-medium text-foreground"> légalisées</span>, deux exemplaires (Art. 18).
-          </p>
+          <p className="text-muted-foreground">{t("doc.legalNote")}</p>
         </div>
       </CardContent>
     </Card>
@@ -262,6 +261,7 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
   const [stageMissions, setStageMissions] = useState<string>("");
   const [stageOngoing, setStageOngoing] = useState<boolean>(true);
 
+  const t = useT();
   const employee = employees.find((e) => e.id === empId) ?? employees[0];
   const isStage = type === "attestation-stage";
 
@@ -294,11 +294,11 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FileSignature size={17} className="text-primary" /> Paramètres du document
+            <FileSignature size={17} className="text-primary" /> {t("doc.params")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Field label="Type de document">
+          <Field label={t("doc.type")}>
             <Select value={type} onChange={(e) => setType(e.target.value as RhDocType)}>
               {RH_DOC_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -308,7 +308,7 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
             </Select>
           </Field>
 
-          <Field label="Salarié">
+          <Field label={t("doc.employee")}>
             <Select value={empId} onChange={(e) => setEmpId(e.target.value)}>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -320,75 +320,75 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
             </Select>
           </Field>
 
-          <Field label="Civilité" hint="Détermine les accords (employé·e, immatriculé·e). Non précisé → « (e) ».">
+          <Field label={t("doc.civility")} hint={t("doc.civility.hint")}>
             <Select value={civility ?? ""} onChange={(e) => setCivility((e.target.value || null) as Civility)}>
-              <option value="">Non précisé</option>
-              <option value="M.">Monsieur</option>
-              <option value="Mme">Madame</option>
+              <option value="">{t("doc.notSpecified")}</option>
+              <option value="M.">{t("doc.mr")}</option>
+              <option value="Mme">{t("doc.mrs")}</option>
             </Select>
           </Field>
 
           {!isStage && (
             <>
-              <Field label="Date d'embauche" hint={employee.hire_date ? `Dossier : ${employee.hire_date}` : "Absente du dossier — à saisir"}>
+              <Field label={t("doc.hireDate")} hint={employee.hire_date ? `${t("doc.hint.fileLabel")} : ${employee.hire_date}` : t("doc.hint.absentToFill")}>
                 <Input type="date" value={hireDate || employee.hire_date || ""} onChange={(e) => setHireDate(e.target.value)} />
               </Field>
 
-              <Field label="N° CNSS" hint={employee.cnss_number ? "Repris du dossier" : "Absent du dossier — placeholder si vide"}>
+              <Field label={t("doc.cnss")} hint={employee.cnss_number ? t("doc.hint.fromFile") : t("doc.hint.absentPlaceholder")}>
                 <Input value={cnss || employee.cnss_number || ""} onChange={(e) => setCnss(e.target.value)} placeholder="Ex. 123456789" />
               </Field>
             </>
           )}
 
           {type === "attestation-salaire" && (
-            <Field label="Rémunération mensuelle" hint="Préciser brut ou net (texte libre)">
+            <Field label={t("doc.salary")} hint={t("doc.salary.hint")}>
               <Input value={salary} onChange={(e) => setSalary(e.target.value)} placeholder="Ex. 4 500,00 DH net" />
             </Field>
           )}
 
           {type === "certificat-travail" && (
-            <Field label="Date de fin de contrat">
+            <Field label={t("doc.contractEnd")}>
               <Input type="date" value={endDate || employee.contract_end || ""} onChange={(e) => setEndDate(e.target.value)} />
             </Field>
           )}
 
           {isStage && (
             <>
-              <Field label="Type de stage" hint="Ex. Stage de fin d'études (PFE), stage d'application, stage d'observation">
+              <Field label={t("doc.stage.type")} hint={t("doc.stage.type.hint")}>
                 <Input value={stageType} onChange={(e) => setStageType(e.target.value)} placeholder="Stage de fin d'études (PFE)" />
               </Field>
 
-              <Field label="Formation / diplôme préparé">
+              <Field label={t("doc.stage.formation")}>
                 <Input value={formation} onChange={(e) => setFormation(e.target.value)} placeholder="Ex. Master en Business Administration" />
               </Field>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label="Date de début du stage">
+                <Field label={t("doc.stage.start")}>
                   <Input type="date" value={stageStart} onChange={(e) => setStageStart(e.target.value)} />
                 </Field>
-                <Field label="Durée prévue">
+                <Field label={t("doc.stage.duration")}>
                   <Input value={stageDuration} onChange={(e) => setStageDuration(e.target.value)} placeholder="Ex. six (6) mois" />
                 </Field>
               </div>
 
-              <Field label="Statut du stage">
+              <Field label={t("doc.stage.status")}>
                 <Select
                   value={stageOngoing ? "ongoing" : "done"}
                   onChange={(e) => setStageOngoing(e.target.value === "ongoing")}
                 >
-                  <option value="ongoing">Toujours en cours</option>
-                  <option value="done">Achevé (préciser la date de fin)</option>
+                  <option value="ongoing">{t("doc.stage.ongoing")}</option>
+                  <option value="done">{t("doc.stage.done")}</option>
                 </Select>
               </Field>
 
               {!stageOngoing && (
-                <Field label="Date de fin du stage">
+                <Field label={t("doc.stage.end")}>
                   <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                 </Field>
               )}
 
               <Field
-                label="Missions confiées (optionnel)"
+                label={t("doc.stage.missions")}
                 hint="Texte inséré après « … s'est vu confier ». Ex. « le périmètre People & Performance et contribue activement… »"
               >
                 <Textarea
@@ -401,29 +401,29 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
           )}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Lieu (Fait à…)">
+            <Field label={t("doc.issueCity")}>
               <Input value={city || firm.city || ""} onChange={(e) => setCity(e.target.value)} />
             </Field>
-            <Field label="Date de délivrance">
+            <Field label={t("doc.issueDate")}>
               <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
             </Field>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Signataire">
-              <Input value={signatoryName || firm.signatory_name || ""} onChange={(e) => setSignatoryName(e.target.value)} placeholder="Nom du signataire" />
+            <Field label={t("doc.signatory")}>
+              <Input value={signatoryName || firm.signatory_name || ""} onChange={(e) => setSignatoryName(e.target.value)} placeholder={t("doc.signatory.ph")} />
             </Field>
-            <Field label="Qualité">
-              <Input value={signatoryRole || firm.signatory_role || ""} onChange={(e) => setSignatoryRole(e.target.value)} placeholder="Ex. Gérant(e)" />
+            <Field label={t("doc.role")}>
+              <Input value={signatoryRole || firm.signatory_role || ""} onChange={(e) => setSignatoryRole(e.target.value)} placeholder={t("doc.role.ph")} />
             </Field>
           </div>
 
           <div className="flex gap-2 pt-1">
             <Button variant="outline" className="flex-1" onClick={() => openRhDocHtml(view)}>
-              <Printer size={16} /> HTML
+              <Printer size={16} /> {t("btn.html")}
             </Button>
             <Button className="flex-1" onClick={() => exportRhDocPdf(view)}>
-              <FileDown size={16} /> PDF
+              <FileDown size={16} /> {t("btn.pdf")}
             </Button>
           </div>
         </CardContent>
@@ -433,7 +433,7 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
         <MissingCard missing={missing} />
         <Card>
           <CardHeader>
-            <CardTitle>Aperçu — {DOC_TITLE[type]}</CardTitle>
+            <CardTitle>{t("doc.preview")} — {DOC_TITLE[type]}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="mx-auto max-w-[640px] rounded-md border bg-white text-[#28342c] shadow-sm px-9 py-8">
