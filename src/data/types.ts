@@ -37,6 +37,8 @@ export interface Firm {
   email?: string;
   regime: Regime;
   logo_path?: string;
+  /** Couleur de marque (hex, ex. « #8DB94E ») — spectre des bulletins. Vide = vert Miya par défaut. */
+  brand_color?: string;
   payslip_template_latex?: string;
   address?: string;
   city?: string;

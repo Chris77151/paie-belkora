@@ -32,6 +32,7 @@ import {
   PageHeader,
 } from "@/components/ui/kit";
 import { mad, pct } from "@/lib/format";
+import { paletteForFirm, dominantColorFromImage, DEFAULT_PALETTE } from "@/lib/brand-color";
 import { getParams, AVAILABLE_YEARS } from "@/lib/params";
 import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
 import type { AppRole, Firm, Regime } from "@/data/types";
@@ -153,6 +154,8 @@ export default function Settings() {
               </Button>
             </div>
           </div>
+
+          <BrandColorField draft={draft} patch={patch} />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label={t("set.firm.raison")}>
@@ -977,5 +980,84 @@ function CloudSyncCard() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/* ================================================================= Couleur de marque (bulletins) ================================================================= */
+
+function BrandColorField({
+  draft,
+  patch,
+}: {
+  draft: Firm;
+  patch: <K extends keyof Firm>(k: K, v: Firm[K]) => void;
+}) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const current = draft.brand_color || DEFAULT_PALETTE.limeHex;
+  const pal = paletteForFirm(draft.brand_color);
+
+  async function extractFromLogo() {
+    setBusy(true);
+    setMsg(null);
+    const hex = await dominantColorFromImage(draft.logo_path || "/logo-miya.png");
+    setBusy(false);
+    if (hex) patch("brand_color", hex);
+    else setMsg(t("set.brand.noColor"));
+  }
+
+  const swatches: [string, string][] = [
+    ["lime", pal.limeHex],
+    ["olive", pal.oliveHex],
+    ["sage", pal.sageHex],
+    ["tint", pal.tintHex],
+    ["ink", pal.inkHex],
+  ];
+
+  return (
+    <div className="mb-5 rounded-lg border border-border/60 bg-muted/20 p-3">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className="text-sm font-medium">{t("set.brand.title")}</span>
+        <input
+          type="color"
+          value={current}
+          onChange={(e) => patch("brand_color", e.target.value)}
+          className="h-8 w-12 cursor-pointer rounded border border-input bg-background p-0.5"
+          aria-label={t("set.brand.title")}
+        />
+        <Input
+          value={draft.brand_color ?? ""}
+          onChange={(e) => patch("brand_color", e.target.value ? e.target.value : undefined)}
+          placeholder={DEFAULT_PALETTE.limeHex}
+          className="w-32 font-mono"
+        />
+        <Button variant="outline" onClick={extractFromLogo} disabled={busy}>
+          {busy ? <Loader2 size={15} className="animate-spin" /> : <ImageUp size={15} />} {t("set.brand.extract")}
+        </Button>
+        <Button variant="ghost" onClick={() => patch("brand_color", undefined)}>
+          <RotateCcw size={15} /> {t("set.brand.reset")}
+        </Button>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">{t("set.brand.hint")}</p>
+      {msg && <p className="mt-1 text-xs text-warning">{msg}</p>}
+      <div className="mt-2.5 flex flex-wrap items-center gap-3">
+        <span className="text-xs text-muted-foreground">{t("set.brand.preview")}</span>
+        <div className="flex gap-1.5">
+          {swatches.map(([k, hex]) => (
+            <span key={k} title={hex} className="h-6 w-6 rounded border border-border/60" style={{ background: hex }} />
+          ))}
+        </div>
+        <span className="rounded px-2.5 py-1 text-xs font-semibold text-white shadow-sm" style={{ background: pal.limeHex }}>
+          NET
+        </span>
+        <span
+          className="rounded px-2.5 py-1 text-xs font-semibold text-white"
+          style={{ background: pal.oliveHex }}
+        >
+          En-tête
+        </span>
+      </div>
+    </div>
   );
 }

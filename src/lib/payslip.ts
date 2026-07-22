@@ -10,6 +10,7 @@ import type { PayrollResult } from "./payroll-engine";
 import { getParams } from "./params";
 import { amountToWordsFr, dateFr, periodLabel } from "./format";
 import { firmDescriptor, firmLegalLine } from "./firm-legal";
+import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
 
 export interface PayslipView {
   firm: Firm;
@@ -19,12 +20,23 @@ export interface PayslipView {
   input?: PayslipInput;
 }
 
-/* Couleurs de marque (logo Miya) */
-const LIME: [number, number, number] = [141, 185, 78]; // #8DB94E — NET / accents
-const OLIVE: [number, number, number] = [139, 162, 95]; // en-têtes de tableau
-const SAGE_DARK: [number, number, number] = [96, 108, 96]; // #6C786C
-const TINT: [number, number, number] = [236, 240, 226]; // fond des sous-totaux
-const INK: [number, number, number] = [40, 52, 44];
+/* Couleurs de marque — dérivées de la société (firm.brand_color) au début de chaque rendu.
+ * Sans couleur de marque définie, on garde EXACTEMENT le vert Miya d'origine.
+ * `usePalette(firm)` réassigne LIME/OLIVE/… : tous les usages `...LIME` restent inchangés. */
+let PAL: PayslipPalette = paletteForFirm(undefined);
+let LIME: RGB = PAL.lime;
+let OLIVE: RGB = PAL.olive;
+let SAGE_DARK: RGB = PAL.sageDark;
+let TINT: RGB = PAL.tint;
+let INK: RGB = PAL.ink;
+function usePalette(firm: Firm) {
+  PAL = paletteForFirm(firm.brand_color);
+  LIME = PAL.lime;
+  OLIVE = PAL.olive;
+  SAGE_DARK = PAL.sageDark;
+  TINT = PAL.tint;
+  INK = PAL.ink;
+}
 
 /* Format numérique du modèle : espace pour les milliers, point décimal. */
 function f(n: number | null | undefined): string {
@@ -152,6 +164,7 @@ export async function exportPayslipPdf(v: PayslipView) {
 /** Construit le document PDF (sans le sauvegarder) — utilisable en test/rendu hors navigateur. */
 export async function buildPayslipDoc(v: PayslipView): Promise<jsPDF> {
   const { firm, employee: e, period } = v;
+  usePalette(firm); // couleurs dérivées de la société (défaut = vert Miya)
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const W = 210;
   const M = 12;
@@ -312,6 +325,7 @@ export async function buildPayslipDoc(v: PayslipView): Promise<jsPDF> {
 /* -------------------------------------------------- HTML -------------------------------------------------- */
 export function buildPayslipHtml(v: PayslipView): string {
   const { firm, employee: e, period } = v;
+  const pal = paletteForFirm(firm.brand_color); // couleurs dérivées de la société (défaut = vert Miya)
   const inp = defaults(v);
   const start = new Date(period.year, period.month - 1, 1);
   const end = new Date(period.year, period.month, 0);
@@ -333,7 +347,7 @@ export function buildPayslipHtml(v: PayslipView): string {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <title>Bulletin ${e.last_name} ${periodLabel(period.year, period.month)}</title>
 <style>
- :root{--lime:#8DB94E;--olive:#8BA25F;--sage:#606C60;--tint:#ecf0e2;--ink:#28342c}
+ :root{--lime:${pal.limeHex};--olive:${pal.oliveHex};--sage:${pal.sageHex};--tint:${pal.tintHex};--ink:${pal.inkHex}}
  *{box-sizing:border-box;font-family:"IBM Plex Sans",Arial,sans-serif}
  body{margin:0;padding:24px;background:#f4f5f2;color:var(--ink);font-size:13px}
  .sheet{max-width:820px;margin:auto;background:#fff;padding:26px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,.08)}

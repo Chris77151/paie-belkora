@@ -52,7 +52,7 @@ function migrate(s: AppState): AppState {
 
   // Champs légaux ajoutés après coup : on ne comble QUE les valeurs absentes (jamais d'écrasement d'une saisie).
   const LEGAL_BACKFILL: (keyof Firm)[] = [
-    "legal_form", "share_capital", "rc_city", "patente", "phone", "email",
+    "legal_form", "share_capital", "rc_city", "patente", "phone", "email", "brand_color",
   ];
   for (const f of s.firms) {
     const seeded = byId.get(f.id);

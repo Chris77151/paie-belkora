@@ -65,6 +65,7 @@ export function seed(): AppState {
     address: "Douar Tnine, Ourika",
     signatory_name: "Ahmed BELKORA",
     signatory_role: "Gérant",
+    brand_color: "#2E7D5B", // vert émeraude profond — spectre propre des bulletins Pépinière
     odoo_company_id: 1, // Odoo res.company : Pépinière Belkora
   };
 

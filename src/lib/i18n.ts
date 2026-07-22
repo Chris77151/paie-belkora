@@ -384,6 +384,12 @@ export const DICT = {
   "set.firm.odooId": { fr: "ID société Odoo (company_id)", ar: "معرِّف الشركة في أودو (company_id)" },
   "set.firm.odooId.hint": { fr: "Pour l'import des salariés depuis Odoo", ar: "لاستيراد الأجراء من أودو" },
   "set.firm.changeLogo": { fr: "Changer le logo", ar: "تغيير الشعار" },
+  "set.brand.title": { fr: "Couleur de marque (bulletins)", ar: "لون العلامة (كشوف الأجور)" },
+  "set.brand.hint": { fr: "Spectre unique dérivé du logo — variantes harmonieuses appliquées aux bulletins de paie de cette société.", ar: "طيف لوني فريد مشتق من الشعار — تدرّجات متناسقة تُطبَّق على كشوف أجور هذه الشركة." },
+  "set.brand.extract": { fr: "Extraire du logo", ar: "استخراج من الشعار" },
+  "set.brand.reset": { fr: "Vert Miya par défaut", ar: "الأخضر الافتراضي (ميّا)" },
+  "set.brand.preview": { fr: "Aperçu du spectre", ar: "معاينة الطيف" },
+  "set.brand.noColor": { fr: "Aucune couleur dominante détectée dans le logo.", ar: "لم يُكتشف أي لون سائد في الشعار." },
   "set.firm.resetLogo": { fr: "Rétablir le logo Miya par défaut", ar: "استعادة شعار ميّا الافتراضي" },
   "set.firm.logoNote": { fr: "Le logo apparaît en en-tête des bulletins de paie. PNG/JPG/SVG, max 1,5 Mo.", ar: "يظهر الشعار في ترويسة كشوف الأجور. PNG/JPG/SVG، بحد أقصى 1,5 م." },
   // Rôles & Utilisateurs
