@@ -131,9 +131,9 @@ export default function Settings() {
             />
             <div className="flex-1 min-w-[180px]">
               <p className="text-sm font-medium">{draft.name}</p>
-              <p className="text-xs text-muted-foreground">Régime {draft.regime}</p>
+              <p className="text-xs text-muted-foreground">{t("set.firm.regime")} {draft.regime}</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Le logo apparaît en en-tête des bulletins de paie. PNG/JPG/SVG, max 1,5 Mo.
+                {t("set.firm.logoNote")}
               </p>
             </div>
             <div className="flex gap-2">
@@ -146,7 +146,7 @@ export default function Settings() {
               />
               <Button variant="outline" onClick={() => logoInput.current?.click()}>
                 <ImageUp size={16} />
-                Changer le logo
+                {t("set.firm.changeLogo")}
               </Button>
               <Button variant="ghost" onClick={resetLogo} title="Rétablir le logo Miya par défaut">
                 <RotateCcw size={16} />
@@ -155,13 +155,13 @@ export default function Settings() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Raison sociale">
+            <Field label={t("set.firm.raison")}>
               <Input value={draft.name} onChange={(e) => patch("name", e.target.value)} />
             </Field>
-            <Field label="Forme juridique" hint="SARL, SARL AU, SA, personne physique…">
+            <Field label={t("set.firm.legalForm")} hint={t("set.firm.legalForm.hint")}>
               <Input value={draft.legal_form ?? ""} onChange={(e) => patch("legal_form", e.target.value)} placeholder="Ex. SARL AU" />
             </Field>
-            <Field label="Capital social (DH)" hint="Sociétés de capitaux — laisser vide pour une personne physique">
+            <Field label={t("set.firm.capital")} hint={t("set.firm.capital.hint")}>
               <Input
                 type="number"
                 value={draft.share_capital ?? ""}
@@ -169,7 +169,7 @@ export default function Settings() {
                 placeholder="Ex. 100000"
               />
             </Field>
-            <Field label="Régime">
+            <Field label={t("set.firm.regime")}>
               <Select
                 value={draft.regime}
                 onChange={(e) => patch("regime", e.target.value as Regime)}
@@ -178,52 +178,52 @@ export default function Settings() {
                 <option value="SMAG">SMAG (agricole)</option>
               </Select>
             </Field>
-            <Field label="ICE" hint="Identifiant Commun de l'Entreprise (15 chiffres)">
+            <Field label="ICE" hint={t("set.firm.ice.hint")}>
               <Input value={draft.ice ?? ""} onChange={(e) => patch("ice", e.target.value)} />
             </Field>
-            <Field label="Identifiant fiscal (IF)">
+            <Field label={t("set.firm.if")}>
               <Input
                 value={draft.if_fiscal ?? ""}
                 onChange={(e) => patch("if_fiscal", e.target.value)}
               />
             </Field>
-            <Field label="N° Patente (Taxe professionnelle)">
+            <Field label={t("set.firm.patente")}>
               <Input value={draft.patente ?? ""} onChange={(e) => patch("patente", e.target.value)} />
             </Field>
-            <Field label="RC (numéro)">
+            <Field label={t("set.firm.rc")}>
               <Input value={draft.rc ?? ""} onChange={(e) => patch("rc", e.target.value)} placeholder="Ex. 45231" />
             </Field>
-            <Field label="Ville du RC (tribunal de commerce)">
+            <Field label={t("set.firm.rcCity")}>
               <Input value={draft.rc_city ?? ""} onChange={(e) => patch("rc_city", e.target.value)} placeholder="Ex. Marrakech" />
             </Field>
-            <Field label="Affiliation CNSS">
+            <Field label={t("set.firm.cnss")}>
               <Input
                 value={draft.cnss_affiliation ?? ""}
                 onChange={(e) => patch("cnss_affiliation", e.target.value)}
               />
             </Field>
-            <Field label="Téléphone">
+            <Field label={t("emp.phone")}>
               <Input value={draft.phone ?? ""} onChange={(e) => patch("phone", e.target.value)} placeholder="+212 5 …" />
             </Field>
-            <Field label="E-mail">
+            <Field label={t("set.firm.email")}>
               <Input type="email" value={draft.email ?? ""} onChange={(e) => patch("email", e.target.value)} placeholder="contact@…" />
             </Field>
-            <Field label="Ville">
+            <Field label={t("set.firm.city")}>
               <Input value={draft.city ?? ""} onChange={(e) => patch("city", e.target.value)} />
             </Field>
-            <Field label="Adresse du siège social">
+            <Field label={t("set.firm.address")}>
               <Input
                 value={draft.address ?? ""}
                 onChange={(e) => patch("address", e.target.value)}
               />
             </Field>
-            <Field label="Signataire par défaut" hint="Représentant légal — repris sur les documents RH">
+            <Field label={t("set.firm.signatory")} hint={t("set.firm.signatory.hint")}>
               <Input value={draft.signatory_name ?? ""} onChange={(e) => patch("signatory_name", e.target.value)} placeholder="Ex. Miya BELKORA" />
             </Field>
-            <Field label="Qualité du signataire" hint="Ex. Gérant(e), Directeur">
+            <Field label={t("set.firm.signatoryRole")} hint={t("set.firm.signatoryRole.hint")}>
               <Input value={draft.signatory_role ?? ""} onChange={(e) => patch("signatory_role", e.target.value)} placeholder="Ex. Gérante" />
             </Field>
-            <Field label="ID société Odoo (company_id)" hint="Pour l'import des salariés depuis Odoo">
+            <Field label={t("set.firm.odooId")} hint={t("set.firm.odooId.hint")}>
               <Input
                 type="number"
                 value={draft.odoo_company_id ?? ""}
@@ -371,9 +371,9 @@ export default function Settings() {
           <Table>
             <thead>
               <tr>
-                <Th>Rôle</Th>
-                <Th>Libellé</Th>
-                <Th>Description</Th>
+                <Th>{t("set.roles.col.role")}</Th>
+                <Th>{t("set.roles.col.label")}</Th>
+                <Th>{t("set.roles.col.desc")}</Th>
               </tr>
             </thead>
             <tbody>
@@ -512,7 +512,7 @@ function UsersCard() {
         <Table>
           <thead>
             <tr>
-              <Th>Identifiant</Th><Th>Nom</Th><Th>Rôle</Th><Th>Société</Th><Th>État</Th><Th></Th>
+              <Th>{t("set.users.col.login")}</Th><Th>{t("set.users.col.name")}</Th><Th>{t("set.roles.col.role")}</Th><Th>{t("set.users.col.firm")}</Th><Th>{t("set.users.col.state")}</Th><Th></Th>
             </tr>
           </thead>
           <tbody>
@@ -533,7 +533,7 @@ function UsersCard() {
                 </Td>
                 <Td className="text-right">
                   <div className="flex justify-end gap-1">
-                    <Button size="icon" variant="ghost" title="Réinitialiser le mot de passe" onClick={() => resetPassword(u)}>
+                    <Button size="icon" variant="ghost" title={t("set.users.resetPw")} onClick={() => resetPassword(u)}>
                       <KeyRound size={15} />
                     </Button>
                     {!u.is_super && (
@@ -556,24 +556,24 @@ function UsersCard() {
         {open ? (
           <div className="mt-4 rounded-md border bg-muted/40 p-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Identifiant (login / e-mail)">
+              <Field label={t("set.users.login")}>
                 <Input value={form.username} onChange={(e) => setF({ username: e.target.value })} placeholder="prenom.nom@pepinierebelkora.com" spellCheck={false} />
               </Field>
-              <Field label="Nom complet">
+              <Field label={t("set.users.fullName")}>
                 <Input value={form.full_name} onChange={(e) => setF({ full_name: e.target.value })} placeholder="Prénom NOM" />
               </Field>
-              <Field label="Rôle">
+              <Field label={t("set.roles.col.role")}>
                 <Select value={form.role} onChange={(e) => setF({ role: e.target.value as AppRole })}>
                   {ROLES.map((r) => <option key={r.role} value={r.role}>{r.label}</option>)}
                 </Select>
               </Field>
-              <Field label="Société de rattachement" hint="« Toutes » pour un accès multi-sociétés.">
+              <Field label={t("set.users.firm")} hint={t("set.users.firm.hint")}>
                 <Select value={form.firm_id} onChange={(e) => setF({ firm_id: e.target.value })}>
-                  <option value="">Toutes les sociétés</option>
+                  <option value="">{t("set.users.allFirms")}</option>
                   {s.firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </Select>
               </Field>
-              <Field label="Mot de passe" hint="6 caractères minimum — stocké en empreinte SHA-256 uniquement.">
+              <Field label={t("set.users.password")} hint={t("set.users.password.hint")}>
                 <Input type="password" value={form.password} onChange={(e) => setF({ password: e.target.value })} placeholder="••••••••" autoComplete="new-password" />
               </Field>
             </div>
@@ -632,7 +632,7 @@ function FirmsCard() {
         <Table>
           <thead>
             <tr>
-              <Th>Société</Th><Th>Régime</Th><Th>ICE</Th><Th>Odoo</Th><Th></Th>
+              <Th>{t("set.users.col.firm")}</Th><Th>Régime</Th><Th>ICE</Th><Th>Odoo</Th><Th></Th>
             </tr>
           </thead>
           <tbody>
@@ -652,7 +652,7 @@ function FirmsCard() {
                         size="icon"
                         variant="ghost"
                         className="text-destructive"
-                        title="Supprimer la société et ses salariés"
+                        title={t("set.firms.deleteTitle")}
                         onClick={() => {
                           if (window.confirm(`Supprimer « ${f.name} » et tous ses salariés ? Irréversible.`)) actions.removeFirm(f.id);
                         }}
@@ -669,21 +669,21 @@ function FirmsCard() {
 
         {creating ? (
           <div className="mt-4 flex flex-wrap items-end gap-3 rounded-md border bg-muted/40 p-4">
-            <Field label="Raison sociale">
+            <Field label={t("set.firm.raison")}>
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nouvelle société SARL" className="w-64" />
             </Field>
-            <Field label="Régime">
+            <Field label={t("set.firm.regime")}>
               <Select value={regime} onChange={(e) => setRegime(e.target.value as "SMIG" | "SMAG")} className="w-40">
                 <option value="SMIG">SMIG (général)</option>
                 <option value="SMAG">SMAG (agricole)</option>
               </Select>
             </Field>
-            <Button onClick={create}><Check size={16} /> Créer</Button>
+            <Button onClick={create}><Check size={16} /> {t("set.firms.createBtn")}</Button>
             <Button variant="ghost" onClick={() => setCreating(false)}>Annuler</Button>
           </div>
         ) : (
           <div className="mt-4">
-            <Button variant="outline" onClick={() => setCreating(true)}><Plus size={16} /> Nouvelle société</Button>
+            <Button variant="outline" onClick={() => setCreating(true)}><Plus size={16} /> {t("set.firms.create")}</Button>
           </div>
         )}
       </CardContent>
@@ -748,13 +748,13 @@ function OdooCard() {
           <Field label="URL Odoo" hint='En dev, garder "/odoo" (proxy CORS). Une URL directe https:// ne marche que si Odoo renvoie les en-têtes CORS.'>
             <Input value={cfg.url} onChange={(e) => set("url", e.target.value)} placeholder="/odoo" />
           </Field>
-          <Field label="Base de données (db)">
+          <Field label={t("set.odoo.db")}>
             <Input value={cfg.db} onChange={(e) => set("db", e.target.value)} placeholder="pepiniere-belkora" />
           </Field>
-          <Field label="Identifiant (login)" hint="Votre e-mail de connexion Odoo.">
+          <Field label={t("set.odoo.login")} hint={t("set.odoo.login.hint")}>
             <Input value={cfg.username} onChange={(e) => set("username", e.target.value)} placeholder="prenom.nom@pepinierebelkora.com" />
           </Field>
-          <Field label="Clé API / mot de passe" hint="À générer dans Odoo : avatar → Préférences → « Sécurité du compte » → « Nouvelle clé API ». Collez-la ici.">
+          <Field label={t("set.odoo.apiKey")} hint="À générer dans Odoo : avatar → Préférences → « Sécurité du compte » → « Nouvelle clé API ». Collez-la ici.">
             <Input type="password" value={cfg.apiKey} onChange={(e) => set("apiKey", e.target.value)} placeholder="clé API Odoo" />
           </Field>
         </div>
@@ -947,10 +947,10 @@ function CloudSyncCard() {
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="URL du projet Supabase">
+          <Field label={t("set.cloud.url")}>
             <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxxx.supabase.co" />
           </Field>
-          <Field label="Clé anon (public)" hint="Clé publique — protégée par la RLS. Stockée dans ce navigateur.">
+          <Field label={t("set.cloud.anon")} hint={t("set.cloud.anon.hint")}>
             <Input value={anonKey} onChange={(e) => setAnonKey(e.target.value)} placeholder="eyJhbGciOi…" />
           </Field>
         </div>
@@ -967,11 +967,11 @@ function CloudSyncCard() {
             {testing ? <Loader2 size={16} className="animate-spin" /> : <Plug size={16} />} Tester la connexion
           </Button>
           <Button onClick={handleSave} disabled={!url.trim() || !anonKey.trim()}>
-            <Save size={16} /> Activer la synchronisation
+            <Save size={16} /> {t("set.cloud.activate")}
           </Button>
           {configured && (
             <Button variant="outline" onClick={handleDisable}>
-              <CloudOff size={16} /> Désactiver
+              <CloudOff size={16} /> {t("set.cloud.disable")}
             </Button>
           )}
         </div>
