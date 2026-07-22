@@ -7,6 +7,7 @@ import {
   Badge, Button, Card, CardContent, Field, PageHeader, Select,
 } from "@/components/ui/kit";
 import { currentFirm, useStore } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import { MONTHS_FR, mad } from "@/lib/format";
 import {
   buildAuditSnapshot, runFullAudit, type AuditReport, type AuditFinding, type Gravite,
@@ -33,6 +34,7 @@ const GRAVITE_LABEL: Record<Gravite, string> = {
 
 export default function Audit() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(6);
@@ -65,8 +67,8 @@ export default function Audit() {
   return (
     <div>
       <PageHeader
-        title="Audit comptable & financier"
-        subtitle={`${firm.name} · analyse par assertions d'audit (CGNC/PCGE · CGI · CNSS · Odoo)`}
+        title={t("page.audit.title")}
+        subtitle={`${firm.name} · ${t("page.audit.sub")}`}
       >
         {report && (
           <Badge tone={report.score_fiabilite >= 75 ? "success" : report.score_fiabilite >= 50 ? "warning" : "destructive"}>

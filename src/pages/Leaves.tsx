@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { CalendarDays, Stethoscope, Hourglass, Baby } from "lucide-react";
 import { useStore, currentFirm, employeesOfFirm } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import {
   Card,
   CardHeader,
@@ -56,6 +57,7 @@ function acquiredLeave(emp: Employee, at: Date): number {
 
 export default function Leaves() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
 
   const employees = useMemo(() => employeesOfFirm(s, firm.id), [s, firm.id]);
@@ -95,7 +97,7 @@ export default function Leaves() {
 
   return (
     <div>
-      <PageHeader title="Congés & absences" subtitle="Journal des absences et soldes de congés payés" />
+      <PageHeader title={t("page.leaves.title")} subtitle={t("page.leaves.sub")} />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Kpi

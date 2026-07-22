@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { HardHat, Plus, Pencil, Trash2, X, AlertTriangle, CalendarClock, ShieldAlert } from "lucide-react";
 import { currentFirm, employeesOfFirm, uid, useStore, actions } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import {
   Badge, Button, Card, CardContent, Field, Input, Textarea, Select,
   Table, Th, Td, PageHeader, Kpi,
@@ -23,6 +24,7 @@ const SEVERITY_TONE: Record<WorkAccidentSeverity, "muted" | "warning" | "destruc
 
 export default function Accidents() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
   const employees = useMemo(() => employeesOfFirm(s, firm.id), [s, firm.id]);
   const empById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
@@ -65,8 +67,8 @@ export default function Accidents() {
   return (
     <div>
       <PageHeader
-        title="Registre des accidents du travail"
-        subtitle={`${firm.name} · obligation légale (Loi 18-12, Code du travail)`}
+        title={t("page.accidents.title")}
+        subtitle={`${firm.name} · ${t("page.accidents.sub")}`}
       >
         <Button onClick={newAccident} disabled={employees.length === 0}>
           <Plus size={16} /> Enregistrer un accident

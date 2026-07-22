@@ -4,6 +4,7 @@ import {
   Lock, Info, AlertTriangle,
 } from "lucide-react";
 import { actions, currentFirm, useStore } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import { odooFetchBankSnapshot, odooReadiness, odooErrorHint } from "@/lib/odoo";
 import { buildAuditEvents, buildBaseline, severityRank } from "@/lib/bank-audit";
 import type { AppRole, BankAuditEvent, BankEventClass, BankSeverity } from "@/data/types";
@@ -47,6 +48,7 @@ function AdminOnly({ role, children }: { role: AppRole; children: React.ReactNod
 
 export default function Security() {
   const s = useStore();
+  const t = useT();
   const role = s.currentRole ?? "firm_admin";
   const firm = currentFirm(s);
   const [busy, setBusy] = useState<"scan" | "baseline" | null>(null);
@@ -103,8 +105,8 @@ export default function Security() {
   return (
     <AdminOnly role={role}>
       <PageHeader
-        title="Sécurité / Audit RIB"
-        subtitle={`Modifications des coordonnées bancaires — accès administrateur · ${firm.name}`}
+        title={t("page.security.title")}
+        subtitle={`${t("page.security.sub")} · ${firm.name}`}
       >
         <Button variant="outline" onClick={establishBaseline} disabled={busy !== null}>
           {busy === "baseline" ? <Loader2 size={16} className="animate-spin" /> : <DatabaseBackup size={16} />} Établir la base de référence

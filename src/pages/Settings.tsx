@@ -4,6 +4,7 @@ import {
   Plus, Trash2, Check, Plug, Loader2, UserPlus, KeyRound, ShieldAlert,
 } from "lucide-react";
 import { useStore, currentFirm, actions, uid } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import { odooTestConnection, odooListCompanies } from "@/lib/odoo";
 import { hashPassword, useSession, ROLE_LABELS } from "@/lib/auth";
 import type { AppUser, OdooConfig } from "@/data/types";
@@ -42,6 +43,7 @@ const TEMPLATE_PLACEHOLDER = `Tokens disponibles :
 
 export default function Settings() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
 
   const [draft, setDraft] = useState<Firm>(firm);
@@ -97,7 +99,7 @@ export default function Settings() {
 
   return (
     <div>
-      <PageHeader title="Paramètres" subtitle="Sociétés, Odoo, référentiel réglementaire, bulletin et rôles" />
+      <PageHeader title={t("page.settings.title")} subtitle={t("page.settings.sub")} />
 
       <FirmsCard />
       <OdooCard />

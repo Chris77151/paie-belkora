@@ -5,6 +5,7 @@ import {
 import {
   actions, currentFirm, employeesOfFirm, payslipsOfPeriod, uid, useStore,
 } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import type { Employee, PayslipInput } from "@/data/types";
 import { computeFor, defaultInput } from "@/lib/payroll-helpers";
 import type { PayrollResult } from "@/lib/payroll-engine";
@@ -18,6 +19,7 @@ const YEARS = [2026, 2025];
 
 export default function Payroll() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
   const emps = useMemo(() => employeesOfFirm(s, firm.id).filter((e) => e.is_active), [s, firm]);
   const [year, setYear] = useState(2026);
@@ -81,7 +83,7 @@ export default function Payroll() {
 
   return (
     <div>
-      <PageHeader title="Paie" subtitle={`Calcul de la paie · ${firm.name}`}>
+      <PageHeader title={t("page.payroll.title")} subtitle={`${t("page.payroll.sub")} · ${firm.name}`}>
         {period && <StatusBadge status={period.status} />}
       </PageHeader>
 

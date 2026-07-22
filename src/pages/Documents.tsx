@@ -84,6 +84,7 @@ import {
   type StcResult,
 } from "@/lib/stc-engine";
 import { mad, num } from "@/lib/format";
+import { useT, type TKey } from "@/lib/i18n";
 import { Calculator, Wallet } from "lucide-react";
 import {
   MINEUR_TYPES,
@@ -172,35 +173,36 @@ function LegalNotice() {
 
 type Tab = "attestations" | "contrat" | "discipline" | "rupture" | "mineurs";
 
-const TABS: { id: Tab; label: string; icon: typeof FileSignature }[] = [
-  { id: "attestations", label: "Attestations & certificats", icon: FileSignature },
-  { id: "contrat", label: "Contrat RH", icon: FileText },
-  { id: "discipline", label: "Kit disciplinaire RH", icon: Gavel },
-  { id: "rupture", label: "Kit rupture", icon: DoorOpen },
-  { id: "mineurs", label: "Kit mineurs (FR/AR)", icon: Baby },
+const TABS: { id: Tab; labelKey: TKey; icon: typeof FileSignature }[] = [
+  { id: "attestations", labelKey: "docs.tab.attestations", icon: FileSignature },
+  { id: "contrat", labelKey: "docs.tab.contrat", icon: FileText },
+  { id: "discipline", labelKey: "docs.tab.discipline", icon: Gavel },
+  { id: "rupture", labelKey: "docs.tab.rupture", icon: DoorOpen },
+  { id: "mineurs", labelKey: "docs.tab.mineurs", icon: Baby },
 ];
+
+const SUBTITLE_KEY: Record<Tab, TKey> = {
+  attestations: "docs.sub.attestations",
+  contrat: "docs.sub.contrat",
+  discipline: "docs.sub.discipline",
+  rupture: "docs.sub.rupture",
+  mineurs: "docs.sub.mineurs",
+};
 
 export default function Documents() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
   const employees = useMemo(() => employeesOfFirm(s, firm.id), [s, firm.id]);
   const [tab, setTab] = useState<Tab>("attestations");
 
-  const SUBTITLE: Record<Tab, string> = {
-    attestations: "Attestation de travail · Attestation de salaire · Certificat de travail — données réelles, zéro invention",
-    contrat: "Contrats de travail au gabarit Miya Belkora Design (chantier) — CDD & travail déterminé",
-    discipline: "Sanctions graduées du Code du travail (art. 37 → 39) — avertissement à licenciement pour faute grave",
-    rupture: "Fin du contrat « travail déterminé » (art. 33) — PV de fin de travaux, accord amiable, reçu pour solde de tout compte",
-    mineurs: "Emploi d'un mineur (15-18 ans, art. 143 & s.) — autorisation du représentant légal & contrat, en français et en arabe",
-  };
-
   return (
     <div>
-      <PageHeader title="Documents RH" subtitle={SUBTITLE[tab]} />
+      <PageHeader title={t("page.documents.title")} subtitle={t(SUBTITLE_KEY[tab])} />
 
       {/* Barre d'onglets */}
       <div className="mb-6 flex flex-wrap gap-1 rounded-lg border bg-card p-1">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {TABS.map(({ id, labelKey, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -212,7 +214,7 @@ export default function Documents() {
             )}
           >
             <Icon size={16} />
-            {label}
+            {t(labelKey)}
           </button>
         ))}
       </div>

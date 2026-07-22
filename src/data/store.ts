@@ -28,8 +28,27 @@ const KEY = "gca-paie-rh-state-v1";
  * Odoo échoue alors même que le seed fournit l'ID. Idempotent, ne touche pas aux
  * données saisies, ignore les firmes créées à la main (id absent du seed).
  */
+/**
+ * Identifiants des salariés de DÉMONSTRATION des versions antérieures. Le seed courant ne
+ * charge plus aucun salarié fictif (cf. seed.ts), mais un localStorage écrit par une ancienne
+ * version les conserve. On les purge ici, ainsi que leurs données rattachées (bulletins,
+ * congés, accidents) devenues orphelines. Les salariés réels (id généré par `uid()`, ex.
+ * `id_xxx`) ne matchent jamais ces clés et sont donc préservés.
+ */
+const DEMO_EMPLOYEE_IDS = new Set(["emp_1", "emp_2", "emp_3", "emp_4", "emp_5", "emp_6", "emp_7"]);
+
 function migrate(s: AppState): AppState {
   const byId = new Map(seed().firms.map((f) => [f.id, f]));
+
+  // Purge des salariés de démonstration persistés (versions antérieures).
+  if (Array.isArray(s.employees) && s.employees.some((e) => DEMO_EMPLOYEE_IDS.has(e.id))) {
+    s.employees = s.employees.filter((e) => !DEMO_EMPLOYEE_IDS.has(e.id));
+    const liveIds = new Set(s.employees.map((e) => e.id));
+    s.payslips = (s.payslips ?? []).filter((p) => liveIds.has(p.employee_id));
+    s.leaves = (s.leaves ?? []).filter((l) => liveIds.has(l.employee_id));
+    s.workAccidents = (s.workAccidents ?? []).filter((a) => liveIds.has(a.employee_id));
+  }
+
   // Champs légaux ajoutés après coup : on ne comble QUE les valeurs absentes (jamais d'écrasement d'une saisie).
   const LEGAL_BACKFILL: (keyof Firm)[] = [
     "legal_form", "share_capital", "rc_city", "patente", "phone", "email",

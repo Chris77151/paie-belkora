@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Calculator, FileCode2, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, Sparkles, Lock, Unlock } from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, payslipsOfPeriod, useStore } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import { useSession } from "@/lib/auth";
 import { computeFor, defaultInput } from "@/lib/payroll-helpers";
 import type { PayrollResult } from "@/lib/payroll-engine";
@@ -14,6 +15,7 @@ const YEARS = [2026, 2025];
 
 export default function Accounting() {
   const s = useStore();
+  const t = useT();
   const session = useSession();
   const firm = currentFirm(s);
   const [year, setYear] = useState(2026);
@@ -77,7 +79,7 @@ export default function Accounting() {
 
   return (
     <div>
-      <PageHeader title="Écritures comptables de paie" subtitle={`${firm.name} · PCGE / CGNC marocain`}>
+      <PageHeader title={t("page.accounting.title")} subtitle={`${firm.name} · ${t("page.accounting.sub")}`}>
         {isValidated ? (
           <Badge tone="success"><Lock size={13} /> Validée · verrouillée</Badge>
         ) : showEntries ? (

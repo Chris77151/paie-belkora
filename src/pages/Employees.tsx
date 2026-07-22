@@ -5,6 +5,7 @@ import {
   ArrowRight, AlertTriangle, CheckCircle2,
 } from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, uid, useStore } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import {
   odooImportEmployees, buildEmployeeSyncPlan, applyEmployeeSyncPlan,
   odooReadiness, odooErrorHint,
@@ -32,6 +33,7 @@ function regimeMonthlyMin(regime: "SMIG" | "SMAG"): number {
 
 export default function Employees() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
   const all = employeesOfFirm(s, firm.id);
   const [searchParams] = useSearchParams();
@@ -103,7 +105,7 @@ export default function Employees() {
 
   return (
     <div>
-      <PageHeader title="Salariés" subtitle={`${all.length} salarié(s) · ${firm.name}`}>
+      <PageHeader title={t("page.employees.title")} subtitle={`${all.length} ${t("page.employees.count")} · ${firm.name}`}>
         <Button variant="outline" onClick={importFromOdoo} disabled={importing}>
           {importing ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} Importer depuis Odoo
         </Button>

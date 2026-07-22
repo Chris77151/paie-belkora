@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { FileDown, FileText, CalendarClock, Landmark } from "lucide-react";
 import { useStore, currentFirm, employeesOfFirm, periodsOfFirm } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import {
   Card,
   CardHeader,
@@ -23,6 +24,7 @@ const YEAR_OPTIONS = [2025, 2026];
 
 export default function Declarations() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
   const periods = periodsOfFirm(s, firm.id);
 
@@ -94,8 +96,8 @@ export default function Declarations() {
   return (
     <div>
       <PageHeader
-        title="Déclarations sociales"
-        subtitle="Bordereau CNSS, préparation DAMANCOM, état IR annuel"
+        title={t("page.declarations.title")}
+        subtitle={t("page.declarations.sub")}
       >
         <Field label="Année">
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))}>

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { ShieldAlert, ShieldCheck, Info, HardHat, FileWarning } from "lucide-react";
 import { useStore, currentFirm, employeesOfFirm, deriveAlerts } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import {
   Card,
   CardHeader,
@@ -33,6 +34,7 @@ const TYPE_LABEL: Record<string, string> = {
 
 export default function Compliance() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
   const alerts = useMemo(() => deriveAlerts(s, firm.id), [s, firm.id]);
 
@@ -57,7 +59,7 @@ export default function Compliance() {
 
   return (
     <div>
-      <PageHeader title="Conformité RH" subtitle="Alertes réglementaires, AT et échéances de contrat" />
+      <PageHeader title={t("page.compliance.title")} subtitle={t("page.compliance.sub")} />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Kpi

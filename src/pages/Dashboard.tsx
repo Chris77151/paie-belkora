@@ -9,6 +9,7 @@ import { currentFirm, deriveAlerts, employeesOfFirm, useStore } from "@/data/sto
 import { computeFor, defaultInput } from "@/lib/payroll-helpers";
 import { Card, CardContent, CardHeader, CardTitle, Kpi, PageHeader, Badge } from "@/components/ui/kit";
 import { mad, num, periodLabel } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 
 // Palette data-viz tokenisée — famille de marque, adaptative light/dark (cf. index.css).
 const PALETTE = [
@@ -20,6 +21,7 @@ const MONTH = 6;
 
 export default function Dashboard() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
   const emps = employeesOfFirm(s, firm.id).filter((e) => e.is_active);
   const alerts = deriveAlerts(s, firm.id);
@@ -50,10 +52,10 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader
-        title="Tableau de bord"
-        subtitle={`${firm.name} · masse salariale simulée pour ${periodLabel(YEAR, MONTH)}`}
+        title={t("page.dashboard.title")}
+        subtitle={`${firm.name} · ${t("page.dashboard.sub")} ${periodLabel(YEAR, MONTH)}`}
       >
-        <Badge tone="sage">Régime {firm.regime}</Badge>
+        <Badge tone="sage">{firm.regime}</Badge>
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

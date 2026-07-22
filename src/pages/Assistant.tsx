@@ -7,6 +7,7 @@ import {
   Button, Card, CardContent, Field, Input, PageHeader, Select, Textarea, Badge,
 } from "@/components/ui/kit";
 import { currentFirm, useStore } from "@/data/store";
+import { useT } from "@/lib/i18n";
 import {
   DEFAULT_MODEL, getAiConfig, humanizeError, runTurn, setAiConfig, testConnection,
   type ApiMessage,
@@ -39,6 +40,7 @@ const SUGGESTIONS = [
 
 export default function Assistant() {
   const s = useStore();
+  const t = useT();
   const firm = currentFirm(s);
 
   const [cfg, setCfg] = useState(() => getAiConfig());
@@ -136,8 +138,8 @@ export default function Assistant() {
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
       <PageHeader
-        title="Assistant IA"
-        subtitle={`Claude pilote l'application par prompt · société active : ${firm.name}`}
+        title={t("page.assistant.title")}
+        subtitle={`${t("page.assistant.sub")} : ${firm.name}`}
       >
         <Button variant="outline" size="sm" onClick={() => setShowConfig((v) => !v)}>
           <KeyRound size={15} /> Configuration
