@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { CalendarDays, Stethoscope, Hourglass, Baby } from "lucide-react";
 import { useStore, currentFirm, employeesOfFirm } from "@/data/store";
-import { useT } from "@/lib/i18n";
+import { useT, type TKey } from "@/lib/i18n";
 import {
   Card,
   CardHeader,
@@ -18,12 +18,12 @@ import { dateFr, num } from "@/lib/format";
 import { getParams } from "@/lib/params";
 import type { Employee, LeaveType } from "@/data/types";
 
-const LEAVE_LABEL: Record<LeaveType, string> = {
-  conge_paye: "Congé payé",
-  maladie: "Maladie",
-  AT: "Accident du travail",
-  absence_injustifiee: "Absence injustifiée",
-  maternite: "Maternité",
+const LEAVE_LABEL_KEY: Record<LeaveType, TKey> = {
+  conge_paye: "leave.conge_paye",
+  maladie: "leave.maladie",
+  AT: "leave.AT",
+  absence_injustifiee: "leave.absence_injustifiee",
+  maternite: "leave.maternite",
 };
 
 /** Âge en années à une date donnée (null si date de naissance absente). */
@@ -101,23 +101,23 @@ export default function Leaves() {
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Kpi
-          label="Congés payés pris"
+          label={t("lv.kpi.paidTaken")}
           value={`${num(totalPaid)} j`}
-          sub="Cumul de l'exercice"
+          sub={t("lv.kpi.paidTaken.sub")}
           accent="sage"
           icon={<CalendarDays size={20} />}
         />
         <Kpi
-          label="Absences maladie"
+          label={t("lv.kpi.sick")}
           value={String(nbMaladie)}
-          sub="Nombre d'épisodes"
+          sub={t("lv.kpi.sick.sub")}
           accent="gold"
           icon={<Stethoscope size={20} />}
         />
         <Kpi
-          label="Absences en cours"
+          label={t("lv.kpi.inProgress")}
           value={String(inProgress)}
-          sub="À la date du jour"
+          sub={t("lv.kpi.inProgress.sub")}
           accent="primary"
           icon={<Hourglass size={20} />}
         />
@@ -125,20 +125,20 @@ export default function Leaves() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Journal des absences</CardTitle>
+          <CardTitle>{t("lv.journal")}</CardTitle>
         </CardHeader>
         <CardContent>
           {leaves.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucune absence enregistrée.</p>
+            <p className="text-sm text-muted-foreground">{t("lv.noLeave")}</p>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <Th>Salarié</Th>
-                  <Th>Type</Th>
-                  <Th>Du</Th>
-                  <Th>Au</Th>
-                  <Th className="text-right">Jours</Th>
+                  <Th>{t("doc.employee")}</Th>
+                  <Th>{t("lv.col.type")}</Th>
+                  <Th>{t("lv.col.from")}</Th>
+                  <Th>{t("lv.col.to")}</Th>
+                  <Th className="text-right">{t("lv.col.days")}</Th>
                   <Th>IPE CNSS</Th>
                 </tr>
               </thead>
@@ -148,7 +148,7 @@ export default function Leaves() {
                   return (
                     <tr key={l.id}>
                       <Td>{emp ? `${emp.first_name} ${emp.last_name}` : "—"}</Td>
-                      <Td>{LEAVE_LABEL[l.type]}</Td>
+                      <Td>{t(LEAVE_LABEL_KEY[l.type])}</Td>
                       <Td>{dateFr(l.start_date)}</Td>
                       <Td>{dateFr(l.end_date)}</Td>
                       <Td className="text-right num">{l.days}</Td>
@@ -170,17 +170,17 @@ export default function Leaves() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Soldes de congés payés</CardTitle>
+          <CardTitle>{t("lv.balances")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <thead>
               <tr>
-                <Th>Salarié</Th>
-                <Th>Poste</Th>
-                <Th className="text-right">Acquis (j)</Th>
-                <Th className="text-right">Pris (j)</Th>
-                <Th className="text-right">Solde (j)</Th>
+                <Th>{t("doc.employee")}</Th>
+                <Th>{t("emp.position")}</Th>
+                <Th className="text-right">{t("lv.col.acquired")}</Th>
+                <Th className="text-right">{t("lv.col.taken")}</Th>
+                <Th className="text-right">{t("lv.col.balance")}</Th>
               </tr>
             </thead>
             <tbody>
@@ -202,9 +202,7 @@ export default function Leaves() {
             </tbody>
           </Table>
           <p className="mt-3 text-xs text-muted-foreground">
-            Acquisition de 1,5 jour ouvrable par mois de service — 2 jours/mois pour les
-            salariés de moins de 18 ans (art. 231), majoration d'ancienneté incluse : +1,5 jour
-            par tranche entière de 5 ans de service, plafonnée à 30 jours au total (art. 232).
+            {t("lv.acquisitionNote")}
           </p>
         </CardContent>
       </Card>
@@ -216,9 +214,7 @@ export default function Leaves() {
               <Baby size={20} />
             </div>
             <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Congé de maternité :</span> 14 semaines
-              indemnisées par la CNSS (dont 7 après l'accouchement), sous réserve des conditions
-              d'ouverture des droits.
+              <span className="font-medium text-foreground">{t("lv.maternity.title")}</span> {t("lv.maternity.body")}
             </p>
           </div>
         </CardContent>
