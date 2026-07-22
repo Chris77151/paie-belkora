@@ -4,7 +4,7 @@ import {
   Lock, Info, AlertTriangle,
 } from "lucide-react";
 import { actions, currentFirm, useStore } from "@/data/store";
-import { useT } from "@/lib/i18n";
+import { useT, type TKey } from "@/lib/i18n";
 import { odooFetchBankSnapshot, odooReadiness, odooErrorHint } from "@/lib/odoo";
 import { buildAuditEvents, buildBaseline, severityRank } from "@/lib/bank-audit";
 import type { AppRole, BankAuditEvent, BankEventClass, BankSeverity } from "@/data/types";
@@ -15,12 +15,12 @@ import { dateFr } from "@/lib/format";
 
 const ADMIN_ROLES: AppRole[] = ["super_admin", "firm_admin"];
 
-const CLASS_META: Record<BankEventClass, { label: string; tone: Parameters<typeof Badge>[0]["tone"] }> = {
-  NON_AUTORISE: { label: "Non autorisé", tone: "destructive" },
-  A_VERIFIER: { label: "À vérifier", tone: "warning" },
-  NOUVEAU: { label: "Nouveau", tone: "primary" },
-  SUPPRIME: { label: "Supprimé", tone: "muted" },
-  AUTORISE: { label: "Autorisé", tone: "success" },
+const CLASS_META: Record<BankEventClass, { labelKey: TKey; tone: Parameters<typeof Badge>[0]["tone"] }> = {
+  NON_AUTORISE: { labelKey: "sec.class.NON_AUTORISE", tone: "destructive" },
+  A_VERIFIER: { labelKey: "sec.class.A_VERIFIER", tone: "warning" },
+  NOUVEAU: { labelKey: "sec.class.NOUVEAU", tone: "primary" },
+  SUPPRIME: { labelKey: "sec.class.SUPPRIME", tone: "muted" },
+  AUTORISE: { labelKey: "sec.class.AUTORISE", tone: "success" },
 };
 const SEV_TONE: Record<BankSeverity, Parameters<typeof Badge>[0]["tone"]> = {
   critique: "destructive", eleve: "warning", moyen: "muted", info: "success",
@@ -28,16 +28,16 @@ const SEV_TONE: Record<BankSeverity, Parameters<typeof Badge>[0]["tone"]> = {
 
 /** Garde-fou : refuse le RENDU (pas seulement le menu) si le rôle n'est pas admin. */
 function AdminOnly({ role, children }: { role: AppRole; children: React.ReactNode }) {
+  const t = useT();
   if (!ADMIN_ROLES.includes(role)) {
     return (
       <Card>
         <CardContent className="pt-6">
           <p className="flex items-center gap-2 text-sm font-medium">
-            <Lock size={16} className="text-destructive" /> Accès réservé à l'administrateur.
+            <Lock size={16} className="text-destructive" /> {t("sec.admin.title")}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Votre rôle actuel (<b>{role}</b>) n'autorise pas la consultation du rapport de
-            sécurité. Demandez un accès administrateur (Paramètres → Équipe &amp; rôles).
+            {t("sec.admin.body1")} (<b>{role}</b>) {t("sec.admin.body2")}
           </p>
         </CardContent>
       </Card>
@@ -109,10 +109,10 @@ export default function Security() {
         subtitle={`${t("page.security.sub")} · ${firm.name}`}
       >
         <Button variant="outline" onClick={establishBaseline} disabled={busy !== null}>
-          {busy === "baseline" ? <Loader2 size={16} className="animate-spin" /> : <DatabaseBackup size={16} />} Établir la base de référence
+          {busy === "baseline" ? <Loader2 size={16} className="animate-spin" /> : <DatabaseBackup size={16} />} {t("sec.establishBaseline")}
         </Button>
         <Button onClick={scan} disabled={busy !== null}>
-          {busy === "scan" ? <Loader2 size={16} className="animate-spin" /> : <ScanSearch size={16} />} Analyser les modifications
+          {busy === "scan" ? <Loader2 size={16} className="animate-spin" /> : <ScanSearch size={16} />} {t("sec.scan")}
         </Button>
       </PageHeader>
 
@@ -120,12 +120,7 @@ export default function Security() {
       <Card className="mb-4">
         <CardContent className="pt-4 text-xs text-muted-foreground flex items-start gap-2">
           <Info size={14} className="mt-0.5 shrink-0 text-primary" />
-          <span>
-            Finalité : <b>prévention de la fraude au virement</b> et contrôle interne. Traçage des
-            <b> données</b> (RIB), attribution par le <b>compte Odoo authentifié</b> — aucune surveillance
-            de personne. RIB masqués, accès restreint. Traitement à inscrire au registre CNDP (DPO :
-            Ahmed Belkora). Conservation recommandée : 3 ans.
-          </span>
+          <span>{t("sec.banner")}</span>
         </CardContent>
       </Card>
 
@@ -143,7 +138,7 @@ export default function Security() {
         <Card className="mb-4 border-destructive/50">
           <CardContent className="pt-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-destructive">
-              <ShieldAlert size={16} /> {critical.length} alerte(s) critique(s) — RIB modifié par un acteur non habilité.
+              <ShieldAlert size={16} /> {critical.length} {t("sec.critical1")}
             </p>
             <ul className="mt-2 space-y-1 text-sm">
               {critical.map((e) => (
@@ -157,7 +152,7 @@ export default function Security() {
       ) : events.length > 0 ? (
         <Card className="mb-4 border-success/40">
           <CardContent className="pt-4 text-sm flex items-center gap-2">
-            <ShieldCheck size={16} className="text-success" /> Aucune modification critique détectée sur ce périmètre.
+            <ShieldCheck size={16} className="text-success" /> {t("sec.noCritical")}
           </CardContent>
         </Card>
       ) : null}
@@ -166,15 +161,15 @@ export default function Security() {
       <Card className="mb-4">
         <CardContent className="pt-5 flex flex-wrap items-center gap-3">
           <span className="text-xs text-muted-foreground">
-            {events.length} événement(s) · base de référence : {baselineCount} RIB
+            {events.length} {t("sec.eventsCount1")} {baselineCount} {t("sec.eventsCount2")}
           </span>
           <Select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="ml-auto w-48">
-            <option value="all">Tous les classements</option>
-            <option value="NON_AUTORISE">Non autorisé</option>
-            <option value="A_VERIFIER">À vérifier</option>
-            <option value="NOUVEAU">Nouveau</option>
-            <option value="SUPPRIME">Supprimé</option>
-            <option value="AUTORISE">Autorisé</option>
+            <option value="all">{t("sec.filter.all")}</option>
+            <option value="NON_AUTORISE">{t("sec.class.NON_AUTORISE")}</option>
+            <option value="A_VERIFIER">{t("sec.class.A_VERIFIER")}</option>
+            <option value="NOUVEAU">{t("sec.class.NOUVEAU")}</option>
+            <option value="SUPPRIME">{t("sec.class.SUPPRIME")}</option>
+            <option value="AUTORISE">{t("sec.class.AUTORISE")}</option>
           </Select>
         </CardContent>
       </Card>
@@ -183,8 +178,8 @@ export default function Security() {
         <Table>
           <thead>
             <tr>
-              <Th>Partenaire</Th><Th>Type</Th><Th>RIB (masqué)</Th><Th>Acteur</Th>
-              <Th>Classement</Th><Th>Sévérité</Th><Th>Date</Th>
+              <Th>{t("sec.col.partner")}</Th><Th>{t("lv.col.type")}</Th><Th>{t("sec.col.rib")}</Th><Th>{t("sec.col.actor")}</Th>
+              <Th>{t("sec.col.class")}</Th><Th>{t("cmp.col.severity")}</Th><Th>{t("acc.col.date")}</Th>
             </tr>
           </thead>
           <tbody>
@@ -199,7 +194,7 @@ export default function Security() {
                   <div className="font-medium">{e.actor_name}</div>
                   <div className="text-muted-foreground">{e.actor_login}</div>
                 </Td>
-                <Td><Badge tone={CLASS_META[e.classification].tone}>{CLASS_META[e.classification].label}</Badge></Td>
+                <Td><Badge tone={CLASS_META[e.classification].tone}>{t(CLASS_META[e.classification].labelKey)}</Badge></Td>
                 <Td><Badge tone={SEV_TONE[e.severity]}>{e.severity}</Badge></Td>
                 <Td className="text-muted-foreground text-xs">{e.when ? dateFr(e.when.slice(0, 10)) : "—"}</Td>
               </tr>
@@ -207,7 +202,7 @@ export default function Security() {
             {rows.length === 0 && (
               <tr>
                 <Td colSpan={7} className="py-8 text-center text-muted-foreground">
-                  Aucun événement. Cliquez sur « Établir la base de référence » puis « Analyser les modifications ».
+                  {t("sec.empty")}
                 </Td>
               </tr>
             )}
