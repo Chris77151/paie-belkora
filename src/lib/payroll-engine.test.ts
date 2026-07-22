@@ -60,7 +60,16 @@ describe("SMIG standard, 3 ans d'ancienneté, sans IR", () => {
 describe("Cadre : frais pro 25 % plafonné + IR tranche haute", () => {
   const r = computePayslip(base({ hourlyRate: 200, hireDate: "2026-01-01" }));
   it("brut 38 200", () => expect(r.salaireBrut).toBe(38200));
-  it("CNSS plafonnée à 6 000", () => expect(r.cnssSalarie).toBe(268.8));
+  it("CNSS salariale plafonnée à 6 000 (4,48 %)", () => expect(r.cnssSalarie).toBe(268.8));
+  it("CNSS patronale plafonnée à 6 000 (8,98 %)", () => {
+    // Assiette CNSS = min(SBI ; 6 000), identique pour la part salariale ET patronale.
+    expect(r.employerDetail.cnssBase).toBe(6000);
+    expect(r.cnssPatronal).toBe(538.8); // 6 000 x 8,98 %
+    // Détail : 0,67 % + 0,38 % + 7,93 % = 8,98 %, tous sur l'assiette plafonnée.
+    expect(r.employerDetail.cnssCourtTerme).toBe(40.2); // 6 000 x 0,67 %
+    expect(r.employerDetail.cnssIpe).toBe(22.8); // 6 000 x 0,38 %
+    expect(r.employerDetail.cnssLongTerme).toBe(475.8); // 6 000 x 7,93 %
+  });
   it("frais pro à 25 % écrêtés au plafond 35 000/an", () => {
     expect(r.fraisProRate).toBe(0.25);
     expect(r.fraisPro).toBe(2916.67); // 35 000 / 12, et non 9 550
