@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { HardHat, Plus, Pencil, Trash2, X, AlertTriangle, CalendarClock, ShieldAlert } from "lucide-react";
 import { currentFirm, employeesOfFirm, uid, useStore, actions } from "@/data/store";
-import { useT } from "@/lib/i18n";
+import { useT, type TKey } from "@/lib/i18n";
 import {
   Badge, Button, Card, CardContent, Field, Input, Textarea, Select,
   Table, Th, Td, PageHeader, Kpi,
@@ -9,11 +9,11 @@ import {
 import { dateFr } from "@/lib/format";
 import type { WorkAccident, WorkAccidentSeverity, WorkAccidentStatus } from "@/data/types";
 
-const SEVERITY_LABEL: Record<WorkAccidentSeverity, string> = {
-  benin: "Bénin",
-  avec_arret: "Avec arrêt",
-  grave: "Grave",
-  mortel: "Mortel",
+const SEVERITY_KEY: Record<WorkAccidentSeverity, TKey> = {
+  benin: "acc.sev.benin",
+  avec_arret: "acc.sev.avec_arret",
+  grave: "acc.sev.grave",
+  mortel: "acc.sev.mortel",
 };
 const SEVERITY_TONE: Record<WorkAccidentSeverity, "muted" | "warning" | "destructive"> = {
   benin: "muted",
@@ -61,7 +61,7 @@ export default function Accidents() {
   }
 
   function remove(id: string) {
-    if (window.confirm("Supprimer cette fiche d'accident du registre ?")) actions.removeWorkAccident(id);
+    if (window.confirm(t("acc.deleteConfirm"))) actions.removeWorkAccident(id);
   }
 
   return (
@@ -71,40 +71,40 @@ export default function Accidents() {
         subtitle={`${firm.name} · ${t("page.accidents.sub")}`}
       >
         <Button onClick={newAccident} disabled={employees.length === 0}>
-          <Plus size={16} /> Enregistrer un accident
+          <Plus size={16} /> {t("acc.new")}
         </Button>
       </PageHeader>
 
       {employees.length === 0 && (
         <Card className="mb-4">
           <CardContent className="py-4 text-sm text-muted-foreground">
-            Aucun salarié dans cette société : ajoutez d'abord un salarié pour enregistrer un accident.
+            {t("acc.noEmp")}
           </CardContent>
         </Card>
       )}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Accidents enregistrés" value={String(total)} sub="Société courante" accent="primary" icon={<HardHat size={20} />} />
-        <Kpi label="Avec arrêt de travail" value={String(withStop)} sub="Dossiers CNSS / assureur" accent="gold" icon={<CalendarClock size={20} />} />
-        <Kpi label="Jours d'arrêt cumulés" value={`${lostDays} j`} sub="Somme des arrêts" accent="sage" icon={<AlertTriangle size={20} />} />
-        <Kpi label="Non déclarés" value={String(notDeclared)} sub="À déclarer (5 jours)" accent={notDeclared > 0 ? "destructive" : "primary"} icon={<ShieldAlert size={20} />} />
+        <Kpi label={t("acc.kpi.total")} value={String(total)} sub={t("acc.kpi.total.sub")} accent="primary" icon={<HardHat size={20} />} />
+        <Kpi label={t("acc.kpi.stop")} value={String(withStop)} sub={t("acc.kpi.stop.sub")} accent="gold" icon={<CalendarClock size={20} />} />
+        <Kpi label={t("acc.kpi.days")} value={`${lostDays} j`} sub={t("acc.kpi.days.sub")} accent="sage" icon={<AlertTriangle size={20} />} />
+        <Kpi label={t("acc.kpi.notDeclared")} value={String(notDeclared)} sub={t("acc.kpi.notDeclared.sub")} accent={notDeclared > 0 ? "destructive" : "primary"} icon={<ShieldAlert size={20} />} />
       </div>
 
       <Card>
         <CardContent className="pt-5">
           {accidents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucun accident enregistré pour cette société.</p>
+            <p className="text-sm text-muted-foreground">{t("acc.empty")}</p>
           ) : (
             <Table>
               <thead>
                 <tr>
-                  <Th>Date</Th>
-                  <Th>Victime</Th>
-                  <Th>Gravité</Th>
-                  <Th>Arrêt</Th>
-                  <Th>Déclaré</Th>
-                  <Th>Statut</Th>
-                  <Th className="text-right">Actions</Th>
+                  <Th>{t("acc.col.date")}</Th>
+                  <Th>{t("acc.col.victim")}</Th>
+                  <Th>{t("acc.col.severity")}</Th>
+                  <Th>{t("acc.col.stop")}</Th>
+                  <Th>{t("acc.col.declared")}</Th>
+                  <Th>{t("cmp.col.status")}</Th>
+                  <Th className="text-right">{t("acc.col.actions")}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -117,26 +117,26 @@ export default function Accidents() {
                         {a.time && <span className="text-muted-foreground"> · {a.time}</span>}
                       </Td>
                       <Td>{emp ? `${emp.first_name} ${emp.last_name}` : "—"}</Td>
-                      <Td><Badge tone={SEVERITY_TONE[a.severity]}>{SEVERITY_LABEL[a.severity]}</Badge></Td>
+                      <Td><Badge tone={SEVERITY_TONE[a.severity]}>{t(SEVERITY_KEY[a.severity])}</Badge></Td>
                       <Td className="num">{a.work_stoppage ? `${a.stoppage_days ?? 0} j` : "—"}</Td>
                       <Td>
                         {a.declared ? (
-                          <Badge tone="success">Déclaré</Badge>
+                          <Badge tone="success">{t("acc.col.declared")}</Badge>
                         ) : (
-                          <Badge tone="destructive">Non déclaré</Badge>
+                          <Badge tone="destructive">{t("acc.notDeclared")}</Badge>
                         )}
                       </Td>
                       <Td>
                         <Badge tone={a.status === "clos" ? "muted" : "warning"}>
-                          {a.status === "clos" ? "Clos" : "Ouvert"}
+                          {a.status === "clos" ? t("acc.f.closed") : t("acc.f.open")}
                         </Badge>
                       </Td>
                       <Td className="text-right">
                         <div className="inline-flex gap-1">
-                          <Button size="icon" variant="ghost" title="Modifier" onClick={() => setEditing(a)}>
+                          <Button size="icon" variant="ghost" title={t("btn.edit")} onClick={() => setEditing(a)}>
                             <Pencil size={15} />
                           </Button>
-                          <Button size="icon" variant="ghost" title="Supprimer" onClick={() => remove(a.id)}>
+                          <Button size="icon" variant="ghost" title={t("btn.delete")} onClick={() => remove(a.id)}>
                             <Trash2 size={15} />
                           </Button>
                         </div>
@@ -151,8 +151,7 @@ export default function Accidents() {
       </Card>
 
       <p className="mt-4 text-xs text-muted-foreground">
-        Rappel : l'employeur doit déclarer tout accident du travail à l'assureur / la CNSS dans les
-        5 jours ouvrables (Loi 18-12). Ce registre consigne les faits ; il ne calcule pas les indemnités.
+        {t("acc.note")}
       </p>
 
       {editing && (
@@ -179,6 +178,7 @@ function AccidentForm({
   onClose: () => void;
   onSave: (a: WorkAccident) => void;
 }) {
+  const t = useT();
   const [f, setF] = useState<WorkAccident>(initial);
   const set = (patch: Partial<WorkAccident>) => setF((prev) => ({ ...prev, ...patch }));
 
@@ -203,12 +203,12 @@ function AccidentForm({
         className="h-full w-full max-w-lg overflow-y-auto bg-card p-6 shadow-2xl scrollbar-thin"
       >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-display">Accident du travail</h2>
+          <h2 className="text-lg font-display">{t("acc.form.title")}</h2>
           <Button type="button" variant="ghost" size="icon" onClick={onClose}><X size={18} /></Button>
         </div>
 
         <div className="space-y-4">
-          <Field label="Victime (salarié)">
+          <Field label={t("acc.f.victim")}>
             <Select value={f.employee_id} onChange={(e) => set({ employee_id: e.target.value })}>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>
@@ -217,85 +217,85 @@ function AccidentForm({
           </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Date de l'accident">
+            <Field label={t("acc.f.date")}>
               <Input type="date" value={f.date} onChange={(e) => set({ date: e.target.value })} />
             </Field>
-            <Field label="Heure">
+            <Field label={t("acc.f.time")}>
               <Input type="time" value={f.time ?? ""} onChange={(e) => set({ time: e.target.value })} />
             </Field>
           </div>
 
-          <Field label="Lieu / poste de travail">
+          <Field label={t("acc.f.place")}>
             <Input value={f.location ?? ""} onChange={(e) => set({ location: e.target.value })} placeholder="Chantier, atelier, poste…" />
           </Field>
 
-          <Field label="Circonstances détaillées">
+          <Field label={t("acc.f.circumstances")}>
             <Textarea value={f.circumstances} onChange={(e) => set({ circumstances: e.target.value })} placeholder="Comment l'accident est survenu…" />
           </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Nature des lésions">
+            <Field label={t("acc.f.injuryNature")}>
               <Input value={f.injury_nature ?? ""} onChange={(e) => set({ injury_nature: e.target.value })} placeholder="Fracture, brûlure, coupure…" />
             </Field>
-            <Field label="Siège des lésions">
+            <Field label={t("acc.f.injurySite")}>
               <Input value={f.injury_site ?? ""} onChange={(e) => set({ injury_site: e.target.value })} placeholder="Main droite, dos…" />
             </Field>
           </div>
 
-          <Field label="Témoins">
+          <Field label={t("acc.f.witnesses")}>
             <Input value={f.witnesses ?? ""} onChange={(e) => set({ witnesses: e.target.value })} placeholder="Nom(s) des témoins éventuels" />
           </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Gravité">
+            <Field label={t("acc.col.severity")}>
               <Select value={f.severity} onChange={(e) => set({ severity: e.target.value as WorkAccidentSeverity })}>
-                <option value="benin">Bénin</option>
-                <option value="avec_arret">Avec arrêt</option>
-                <option value="grave">Grave</option>
-                <option value="mortel">Mortel</option>
+                <option value="benin">{t("acc.sev.benin")}</option>
+                <option value="avec_arret">{t("acc.sev.avec_arret")}</option>
+                <option value="grave">{t("acc.sev.grave")}</option>
+                <option value="mortel">{t("acc.sev.mortel")}</option>
               </Select>
             </Field>
-            <Field label="Statut du dossier">
+            <Field label={t("acc.f.status")}>
               <Select value={f.status} onChange={(e) => set({ status: e.target.value as WorkAccidentStatus })}>
-                <option value="ouvert">Ouvert</option>
-                <option value="clos">Clos</option>
+                <option value="ouvert">{t("acc.f.open")}</option>
+                <option value="clos">{t("acc.f.closed")}</option>
               </Select>
             </Field>
           </div>
 
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={f.work_stoppage} onChange={(e) => set({ work_stoppage: e.target.checked })} />
-            Arrêt de travail
+            {t("acc.f.stopCheck")}
           </label>
           {f.work_stoppage && (
-            <Field label="Nombre de jours d'arrêt">
+            <Field label={t("acc.f.stopDays")}>
               <Input type="number" min={0} value={f.stoppage_days ?? 0} onChange={(e) => set({ stoppage_days: +e.target.value })} />
             </Field>
           )}
 
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={f.declared} onChange={(e) => set({ declared: e.target.checked })} />
-            Déclaré à l'assureur / CNSS
+            {t("acc.f.declCheck")}
           </label>
           {f.declared && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Date de déclaration">
+              <Field label={t("acc.f.declDate")}>
                 <Input type="date" value={f.declaration_date ?? ""} onChange={(e) => set({ declaration_date: e.target.value })} />
               </Field>
-              <Field label="Référence déclaration">
+              <Field label={t("acc.f.declRef")}>
                 <Input value={f.declaration_ref ?? ""} onChange={(e) => set({ declaration_ref: e.target.value })} placeholder="N° de dossier" />
               </Field>
             </div>
           )}
 
-          <Field label="Notes">
+          <Field label={t("acc.f.notes")}>
             <Textarea value={f.notes ?? ""} onChange={(e) => set({ notes: e.target.value })} placeholder="Suites, mesures de prévention…" />
           </Field>
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-          <Button type="submit" disabled={!canSave}>Enregistrer</Button>
+          <Button type="button" variant="outline" onClick={onClose}>{t("btn.cancel")}</Button>
+          <Button type="submit" disabled={!canSave}>{t("btn.save")}</Button>
         </div>
       </form>
     </div>
