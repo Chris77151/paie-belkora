@@ -118,7 +118,7 @@ export default function Settings() {
           <CardTitle>
             <span className="inline-flex items-center gap-2">
               <Building2 size={16} className="text-primary" />
-              Société active
+              {t("set.firm.title")}
             </span>
           </CardTitle>
         </CardHeader>
@@ -257,11 +257,11 @@ export default function Settings() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Paramètres réglementaires (année en cours)</CardTitle>
+          <CardTitle>{t("set.regul.title")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="mb-4 max-w-[160px]">
-            <Field label="Année de référence">
+            <Field label={t("set.regul.year")}>
               <Select value={paramYear} onChange={(e) => setParamYear(Number(e.target.value))}>
                 {AVAILABLE_YEARS.map((y) => (
                   <option key={y} value={y}>
@@ -275,58 +275,58 @@ export default function Settings() {
           <Table>
             <thead>
               <tr>
-                <Th>Paramètre</Th>
-                <Th className="text-right">Valeur</Th>
+                <Th>{t("set.regul.col.param")}</Th>
+                <Th className="text-right">{t("set.regul.col.value")}</Th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <Td>SMIG horaire</Td>
+                <Td>{t("set.regul.smig")}</Td>
                 <Td className="text-right num">{mad(p.smigHourly)}</Td>
               </tr>
               <tr>
-                <Td>Base mensuelle légale</Td>
+                <Td>{t("set.regul.base")}</Td>
                 <Td className="text-right num">{p.legalMonthlyHours} h</Td>
               </tr>
               <tr>
-                <Td>CNSS salariale (plafond {mad(p.cnssCeiling)})</Td>
+                <Td>{t("set.regul.cnssEmp")} {mad(p.cnssCeiling)})</Td>
                 <Td className="text-right num">{pct(p.cnssEmployeeRate)}</Td>
               </tr>
               <tr>
-                <Td>AMO salariale (déplafonnée)</Td>
+                <Td>{t("set.regul.amoEmp")}</Td>
                 <Td className="text-right num">{pct(p.amoEmployeeRate)}</Td>
               </tr>
               <tr>
-                <Td>CNSS patronale</Td>
+                <Td>{t("set.regul.cnssPat")}</Td>
                 <Td className="text-right num">{pct(p.cnssEmployerRate)}</Td>
               </tr>
               <tr>
-                <Td>Allocations familiales (patronal)</Td>
+                <Td>{t("set.regul.af")}</Td>
                 <Td className="text-right num">{pct(p.familyAllocRate)}</Td>
               </tr>
               <tr>
-                <Td>AMO patronale</Td>
+                <Td>{t("set.regul.amoPat")}</Td>
                 <Td className="text-right num">{pct(p.amoEmployerRate)}</Td>
               </tr>
               <tr>
-                <Td>TFP (taxe formation professionnelle)</Td>
+                <Td>{t("set.regul.tfp")}</Td>
                 <Td className="text-right num">{pct(p.tfpRate)}</Td>
               </tr>
               <tr>
-                <Td>Frais professionnels (plafond annuel {mad(p.fraisProHighCapAnnual)})</Td>
+                <Td>{t("set.regul.fraisPro")} {mad(p.fraisProHighCapAnnual)})</Td>
                 <Td className="text-right num">
                   {pct(p.fraisProLowRate)} / {pct(p.fraisProHighRate)}
                 </Td>
               </tr>
               <tr>
-                <Td>Charges de famille (max {p.familyDeductionMaxPersons} personnes)</Td>
-                <Td className="text-right num">{mad(p.familyDeductionMonthly)} / pers.</Td>
+                <Td>{t("set.regul.family")} {p.familyDeductionMaxPersons} {t("set.regul.persons")}</Td>
+                <Td className="text-right num">{mad(p.familyDeductionMonthly)} {t("set.regul.perPerson")}</Td>
               </tr>
             </tbody>
           </Table>
           <p className="mt-3 text-xs text-muted-foreground">
-            Toute loi de finances future se traduit par une nouvelle entrée{" "}
-            <code className="font-mono">payroll_params</code>, jamais par un taux codé en dur.
+            {t("set.regul.note1")}{" "}
+            <code className="font-mono">payroll_params</code>{t("set.regul.note2")}
           </p>
         </CardContent>
       </Card>
@@ -336,7 +336,7 @@ export default function Settings() {
           <CardTitle>
             <span className="inline-flex items-center gap-2">
               <ScrollText size={16} className="text-sage" />
-              Template LaTeX du bulletin
+              {t("set.latex.title")}
             </span>
           </CardTitle>
         </CardHeader>
@@ -363,7 +363,7 @@ export default function Settings() {
           <CardTitle>
             <span className="inline-flex items-center gap-2">
               <Users size={16} className="text-primary" />
-              Rôles &amp; permissions (référentiel)
+              {t("set.roles.title")}
             </span>
           </CardTitle>
         </CardHeader>
@@ -396,18 +396,17 @@ export default function Settings() {
           <CardTitle>
             <span className="inline-flex items-center gap-2 text-destructive">
               <ShieldX size={16} />
-              Zone sensible
+              {t("set.danger.title")}
             </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">
-            Restaure le jeu de démonstration d'origine. Toutes les modifications locales (sociétés,
-            salariés, bulletins, absences) seront perdues.
+            {t("set.reset.note")}
           </p>
           <Button variant="destructive" onClick={resetDemo}>
             <ShieldX size={16} />
-            Réinitialiser les données de démonstration
+            {t("set.reset.btn")}
           </Button>
         </CardContent>
       </Card>
@@ -417,6 +416,7 @@ export default function Settings() {
 
 /* ---------------- Gestion des utilisateurs (auth) ---------------- */
 function UsersCard() {
+  const t = useT();
   const s = useStore();
   const session = useSession();
   const isSuperAdmin = session?.role === "super_admin";
@@ -435,7 +435,7 @@ function UsersCard() {
           <CardTitle>
             <span className="inline-flex items-center gap-2">
               <Users size={16} className="text-primary" />
-              Utilisateurs &amp; accès
+              {t("set.users.title")}
             </span>
           </CardTitle>
         </CardHeader>
@@ -504,7 +504,7 @@ function UsersCard() {
         <CardTitle>
           <span className="inline-flex items-center gap-2">
             <Users size={16} className="text-primary" />
-            Utilisateurs &amp; accès ({users.length})
+            {t("set.users.title")} ({users.length})
           </span>
         </CardTitle>
       </CardHeader>
@@ -603,6 +603,7 @@ function UsersCard() {
 
 /* ---------------- Gestion des sociétés ---------------- */
 function FirmsCard() {
+  const t = useT();
   const s = useStore();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -623,7 +624,7 @@ function FirmsCard() {
         <CardTitle>
           <span className="inline-flex items-center gap-2">
             <Building2 size={16} className="text-primary" />
-            Sociétés ({s.firms.length})
+            {t("set.firms.title")} ({s.firms.length})
           </span>
         </CardTitle>
       </CardHeader>
@@ -692,6 +693,7 @@ function FirmsCard() {
 
 /* ---------------- Connexion Odoo ---------------- */
 function OdooCard() {
+  const t = useT();
   const s = useStore();
   const [cfg, setCfg] = useState<OdooConfig>(s.odoo ?? { url: "/odoo", db: "pepiniere-belkora", username: "", apiKey: "" });
   const [status, setStatus] = useState<{ ok?: boolean; msg: string } | null>(null);
@@ -737,7 +739,7 @@ function OdooCard() {
         <CardTitle>
           <span className="inline-flex items-center gap-2">
             <Plug size={16} className="text-sage" />
-            Connexion Odoo (import des salariés)
+            {t("set.odoo.title")}
           </span>
         </CardTitle>
       </CardHeader>
@@ -852,6 +854,7 @@ const SYNC_LABEL: Record<SyncStatus, string> = {
 };
 
 function CloudSyncCard() {
+  const t = useT();
   const existing = getSupabaseConfig();
   const [url, setUrl] = useState(existing?.url ?? "");
   const [anonKey, setAnonKey] = useState(existing?.anonKey ?? "");
@@ -901,7 +904,7 @@ function CloudSyncCard() {
         <CardTitle>
           <span className="inline-flex items-center gap-2">
             <Cloud size={16} className="text-primary" />
-            Persistance cloud (Supabase)
+            {t("set.cloud.title")}
           </span>
         </CardTitle>
       </CardHeader>

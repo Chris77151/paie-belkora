@@ -329,6 +329,38 @@ export const DICT = {
   "leave.absence_injustifiee": { fr: "Absence injustifiée", ar: "غياب غير مبرر" },
   "leave.maternite": { fr: "Maternité", ar: "أمومة" },
 
+  // Page Paramètres — titres de section
+  "set.firm.title": { fr: "Société active", ar: "الشركة النشطة" },
+  "set.regul.title": { fr: "Paramètres réglementaires (année en cours)", ar: "المعايير التنظيمية (السنة الجارية)" },
+  "set.latex.title": { fr: "Template LaTeX du bulletin", ar: "قالب LaTeX لكشف الأجر" },
+  "set.roles.title": { fr: "Rôles & permissions (référentiel)", ar: "الأدوار والصلاحيات (مرجع)" },
+  "set.danger.title": { fr: "Zone sensible", ar: "منطقة حساسة" },
+  "set.users.title": { fr: "Utilisateurs & accès", ar: "المستخدمون والولوج" },
+  "set.firms.title": { fr: "Sociétés", ar: "الشركات" },
+  "set.odoo.title": { fr: "Connexion Odoo (import des salariés)", ar: "الاتصال بأودو (استيراد الأجراء)" },
+  "set.cloud.title": { fr: "Persistance cloud (Supabase)", ar: "الحفظ السحابي (Supabase)" },
+  // Tableau réglementaire
+  "set.regul.year": { fr: "Année de référence", ar: "السنة المرجعية" },
+  "set.regul.col.param": { fr: "Paramètre", ar: "المعيار" },
+  "set.regul.col.value": { fr: "Valeur", ar: "القيمة" },
+  "set.regul.smig": { fr: "SMIG horaire", ar: "الحد الأدنى للأجر في الساعة" },
+  "set.regul.base": { fr: "Base mensuelle légale", ar: "الأساس الشهري القانوني" },
+  "set.regul.cnssEmp": { fr: "CNSS salariale (plafond", ar: "CNSS الأجير (سقف" },
+  "set.regul.amoEmp": { fr: "AMO salariale (déplafonnée)", ar: "AMO الأجير (بدون سقف)" },
+  "set.regul.cnssPat": { fr: "CNSS patronale", ar: "CNSS المشغِّل" },
+  "set.regul.af": { fr: "Allocations familiales (patronal)", ar: "التعويضات العائلية (المشغِّل)" },
+  "set.regul.amoPat": { fr: "AMO patronale", ar: "AMO المشغِّل" },
+  "set.regul.tfp": { fr: "TFP (taxe formation professionnelle)", ar: "TFP (رسم التكوين المهني)" },
+  "set.regul.fraisPro": { fr: "Frais professionnels (plafond annuel", ar: "المصاريف المهنية (سقف سنوي" },
+  "set.regul.family": { fr: "Charges de famille (max", ar: "التكاليف العائلية (بحد أقصى" },
+  "set.regul.persons": { fr: "personnes)", ar: "أشخاص)" },
+  "set.regul.perPerson": { fr: "/ pers.", ar: "/ شخص" },
+  "set.regul.note1": { fr: "Toute loi de finances future se traduit par une nouvelle entrée", ar: "كل قانون مالية مقبل يُترجَم بإدخال جديد في" },
+  "set.regul.note2": { fr: ", jamais par un taux codé en dur.", ar: "، وليس بتعديل نسبة مضمَّنة في الشيفرة." },
+  // Zone sensible
+  "set.reset.note": { fr: "Restaure le jeu de démonstration d'origine. Toutes les modifications locales (sociétés, salariés, bulletins, absences) seront perdues.", ar: "يُعيد مجموعة العرض الأصلية. ستُفقد كل التعديلات المحلية (الشركات، الأجراء، كشوف الأجور، الغيابات)." },
+  "set.reset.btn": { fr: "Réinitialiser les données de démonstration", ar: "إعادة تعيين بيانات العرض" },
+
   // Boutons communs
   "btn.add": { fr: "Ajouter", ar: "إضافة" },
   "btn.edit": { fr: "Modifier", ar: "تعديل" },
