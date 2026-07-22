@@ -107,32 +107,32 @@ export default function Employees() {
     <div>
       <PageHeader title={t("page.employees.title")} subtitle={`${all.length} ${t("page.employees.count")} · ${firm.name}`}>
         <Button variant="outline" onClick={importFromOdoo} disabled={importing}>
-          {importing ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} Importer depuis Odoo
+          {importing ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} {t("emp.importOdoo")}
         </Button>
-        <Button variant="sage" onClick={prepareSync} disabled={syncing} title="Pousser vers Odoo les données manquantes (lecture d'abord, sans écraser)">
-          {syncing ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />} Synchroniser vers Odoo
+        <Button variant="sage" onClick={prepareSync} disabled={syncing} title={t("emp.syncOdoo.hint")}>
+          {syncing ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />} {t("emp.syncOdoo")}
         </Button>
-        <Button onClick={newEmployee}><Plus size={16} /> Nouveau salarié</Button>
+        <Button onClick={newEmployee}><Plus size={16} /> {t("emp.new")}</Button>
       </PageHeader>
 
       <Card className="mb-4">
         <CardContent className="pt-5 flex flex-wrap gap-3 items-end">
           <div className="relative flex-1 min-w-[200px]">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un nom, un matricule…" className="pl-9" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("emp.search")} className="pl-9" />
           </div>
           <Select value={site} onChange={(e) => setSite(e.target.value)} className="w-44">
-            <option value="all">Tous les sites</option>
+            <option value="all">{t("emp.allSites")}</option>
             {sites.map((si) => <option key={si} value={si}>{si}</option>)}
           </Select>
           <Select value={contract} onChange={(e) => setContract(e.target.value)} className="w-40">
-            <option value="all">Tous contrats</option>
+            <option value="all">{t("emp.allContracts")}</option>
             {CONTRACTS.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
           <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-36">
-            <option value="active">Actifs</option>
-            <option value="inactive">Inactifs</option>
-            <option value="all">Tous</option>
+            <option value="active">{t("emp.active")}</option>
+            <option value="inactive">{t("emp.inactive")}</option>
+            <option value="all">{t("emp.all")}</option>
           </Select>
         </CardContent>
       </Card>
@@ -141,8 +141,8 @@ export default function Employees() {
         <Table>
           <thead>
             <tr>
-              <Th>Salarié</Th><Th>Matricule</Th><Th>Contrat</Th><Th>Site</Th>
-              <Th className="text-right">Taux horaire</Th><Th>Embauche</Th><Th>Conformité</Th><Th></Th>
+              <Th>{t("doc.employee")}</Th><Th>{t("emp.matricule")}</Th><Th>{t("emp.contract")}</Th><Th>{t("emp.site")}</Th>
+              <Th className="text-right">{t("emp.hourlyRate")}</Th><Th>{t("emp.hire")}</Th><Th>{t("emp.compliance")}</Th><Th></Th>
             </tr>
           </thead>
           <tbody>
@@ -177,7 +177,7 @@ export default function Employees() {
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><Td className="text-center text-muted-foreground py-8" >Aucun salarié ne correspond aux filtres.</Td></tr>
+              <tr><Td className="text-center text-muted-foreground py-8" >{t("emp.empty")}</Td></tr>
             )}
           </tbody>
         </Table>
@@ -212,6 +212,7 @@ function OdooSyncDialog({
   firmName: string;
   onClose: () => void;
 }) {
+  const t = useT();
   const [applying, setApplying] = useState(false);
   const [done, setDone] = useState<{ created: number; updated: number; errors: { name: string; message: string }[] } | null>(null);
 
@@ -240,7 +241,7 @@ function OdooSyncDialog({
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h2 className="text-lg font-display flex items-center gap-2">
-              <UploadCloud size={18} className="text-sage" /> Synchronisation vers Odoo
+              <UploadCloud size={18} className="text-sage" /> {t("emp.syncOdoo")}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Société « {firmName} » · {plan.odooCount} salarié(s) lus dans Odoo (company_id {plan.companyId}).
@@ -252,10 +253,10 @@ function OdooSyncDialog({
 
         {/* Récapitulatif */}
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <SummaryCell label="À créer" value={plan.summary.create} tone="sage" />
-          <SummaryCell label="À compléter" value={plan.summary.update} tone="warning" />
-          <SummaryCell label="Déjà à jour" value={plan.summary.unchanged} tone="muted" />
-          <SummaryCell label="Conflits" value={plan.summary.conflict} tone="destructive" />
+          <SummaryCell label={t("emp.sync.create")} value={plan.summary.create} tone="sage" />
+          <SummaryCell label={t("emp.sync.update")} value={plan.summary.update} tone="warning" />
+          <SummaryCell label={t("emp.sync.unchanged")} value={plan.summary.unchanged} tone="muted" />
+          <SummaryCell label={t("emp.sync.conflict")} value={plan.summary.conflict} tone="destructive" />
         </div>
 
         {done ? (
@@ -274,7 +275,7 @@ function OdooSyncDialog({
               </div>
             )}
             <div className="mt-4 flex justify-end">
-              <Button onClick={onClose}>Fermer</Button>
+              <Button onClick={onClose}>{t("emp.close")}</Button>
             </div>
           </div>
         ) : (
@@ -283,7 +284,7 @@ function OdooSyncDialog({
               <Table>
                 <thead className="sticky top-0 bg-card">
                   <tr>
-                    <Th>Salarié</Th><Th>Action</Th><Th>Appariement</Th><Th>Champs poussés</Th>
+                    <Th>{t("doc.employee")}</Th><Th>{t("emp.sync.colAction")}</Th><Th>{t("emp.sync.colMatch")}</Th><Th>{t("emp.sync.colPushed")}</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -318,7 +319,7 @@ function OdooSyncDialog({
                     </tr>
                   ))}
                   {shown.length === 0 && (
-                    <tr><Td className="py-6 text-center text-muted-foreground">Tout est déjà à jour dans Odoo — rien à synchroniser.</Td></tr>
+                    <tr><Td className="py-6 text-center text-muted-foreground">{t("emp.sync.allUpToDate")}</Td></tr>
                   )}
                 </tbody>
               </Table>
@@ -337,7 +338,7 @@ function OdooSyncDialog({
                 {writable.length} écriture(s) seront envoyées à Odoo après confirmation. Rien n'a encore été écrit.
               </p>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={onClose}>Annuler</Button>
+                <Button variant="outline" onClick={onClose}>{t("btn.cancel")}</Button>
                 <Button variant="sage" onClick={confirm} disabled={applying || writable.length === 0}>
                   {applying ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
                   Confirmer &amp; écrire dans Odoo
@@ -361,6 +362,7 @@ function SummaryCell({ label, value, tone }: { label: string; value: number; ton
 }
 
 function EmployeeDrawer({ emp, onClose }: { emp: Employee; onClose: () => void }) {
+  const t = useT();
   const [f, setF] = useState<Employee>(emp);
   const set = (patch: Partial<Employee>) => setF((prev) => ({ ...prev, ...patch }));
   const isNew = !emp.first_name && !emp.last_name;
@@ -387,7 +389,7 @@ function EmployeeDrawer({ emp, onClose }: { emp: Employee; onClose: () => void }
     onClose();
   }
   function remove() {
-    if (confirm(`Supprimer ${f.first_name} ${f.last_name} ? Action irréversible.`)) {
+    if (confirm(`${t("emp.delete.confirm1")} ${f.first_name} ${f.last_name}${t("emp.delete.confirm2")}`)) {
       actions.removeEmployee(f.id);
       onClose();
     }
@@ -401,35 +403,35 @@ function EmployeeDrawer({ emp, onClose }: { emp: Employee; onClose: () => void }
       >
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-display flex items-center gap-2">
-            <UserRound size={18} className="text-primary" /> {isNew ? "Nouveau salarié" : "Fiche salarié"}
+            <UserRound size={18} className="text-primary" /> {isNew ? t("emp.new") : t("emp.edit")}
           </h2>
           <Button variant="ghost" size="icon" onClick={onClose}><X size={18} /></Button>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Prénom"><Input value={f.first_name} onChange={(e) => set({ first_name: e.target.value })} /></Field>
-          <Field label="Nom"><Input value={f.last_name} onChange={(e) => set({ last_name: e.target.value })} /></Field>
-          <Field label="Matricule"><Input value={f.matricule ?? ""} onChange={(e) => set({ matricule: e.target.value })} /></Field>
-          <Field label="Poste"><Input value={f.position ?? ""} onChange={(e) => set({ position: e.target.value })} /></Field>
-          <Field label="CIN" hint={!f.cin ? "Manquante = alerte conformité" : undefined}>
+          <Field label={t("emp.firstName")}><Input value={f.first_name} onChange={(e) => set({ first_name: e.target.value })} /></Field>
+          <Field label={t("emp.lastName")}><Input value={f.last_name} onChange={(e) => set({ last_name: e.target.value })} /></Field>
+          <Field label={t("emp.matricule")}><Input value={f.matricule ?? ""} onChange={(e) => set({ matricule: e.target.value })} /></Field>
+          <Field label={t("emp.position")}><Input value={f.position ?? ""} onChange={(e) => set({ position: e.target.value })} /></Field>
+          <Field label={t("emp.cin")} hint={!f.cin ? t("emp.cin.hint") : undefined}>
             <Input value={f.cin ?? ""} onChange={(e) => set({ cin: e.target.value })} />
           </Field>
-          <Field label="N° CNSS" hint={!f.cnss_number ? "Manquant = alerte critique" : undefined}>
+          <Field label={t("doc.cnss")} hint={!f.cnss_number ? t("emp.cnss.hint") : undefined}>
             <Input value={f.cnss_number ?? ""} onChange={(e) => set({ cnss_number: e.target.value })} />
           </Field>
-          <Field label="Type de contrat">
+          <Field label={t("emp.contractType")}>
             <Select value={f.contract_type} onChange={(e) => set({ contract_type: e.target.value as ContractType })}>
               {CONTRACTS.map((c) => <option key={c} value={c}>{c}</option>)}
             </Select>
           </Field>
-          <Field label="Site"><Input value={f.site ?? ""} onChange={(e) => set({ site: e.target.value })} /></Field>
-          <Field label="Date d'embauche"><Input type="date" value={f.hire_date} onChange={(e) => set({ hire_date: e.target.value })} /></Field>
+          <Field label={t("emp.site")}><Input value={f.site ?? ""} onChange={(e) => set({ site: e.target.value })} /></Field>
+          <Field label={t("doc.hireDate")}><Input type="date" value={f.hire_date} onChange={(e) => set({ hire_date: e.target.value })} /></Field>
           {f.contract_type === "CDD" && (
-            <Field label="Fin de contrat"><Input type="date" value={f.contract_end ?? ""} onChange={(e) => set({ contract_end: e.target.value })} /></Field>
+            <Field label={t("emp.contractEnd")}><Input type="date" value={f.contract_end ?? ""} onChange={(e) => set({ contract_end: e.target.value })} /></Field>
           )}
-          <Field label="Naissance"><Input type="date" value={f.birth_date ?? ""} onChange={(e) => set({ birth_date: e.target.value })} /></Field>
+          <Field label={t("emp.birth")}><Input type="date" value={f.birth_date ?? ""} onChange={(e) => set({ birth_date: e.target.value })} /></Field>
           <div className="col-span-2 rounded-lg border border-border/60 bg-muted/30 p-3">
-            <Field label="Salaire mensuel de base (DH)" hint="Saisie manuelle — ou choisir un minimum légal ci-dessous">
+            <Field label={t("emp.baseSalary")} hint={t("emp.baseSalary.hint")}>
               <Input type="number" step="0.01" min={0} value={salaireMensuel} onChange={(e) => applyMonthly(+e.target.value)} />
             </Field>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -439,29 +441,29 @@ function EmployeeDrawer({ emp, onClose }: { emp: Employee; onClose: () => void }
               <Button type="button" size="sm" variant={regime === "SMAG" ? "primary" : "outline"} onClick={() => applyMonthly(smagMonthly)}>
                 SMAG · {mad(smagMonthly)}{regime === "SMAG" ? " · société" : ""}
               </Button>
-              <span className="ml-auto text-xs text-muted-foreground">Taux horaire calculé : {mad(f.base_hourly_rate)}/h</span>
+              <span className="ml-auto text-xs text-muted-foreground">{t("emp.hourlyComputed")} : {mad(f.base_hourly_rate)}/h</span>
             </div>
           </div>
-          <Field label="Heures / mois" hint="Avancé — le salaire mensuel reste constant"><Input type="number" value={f.monthly_hours} onChange={(e) => applyHours(+e.target.value)} /></Field>
-          <Field label="Personnes à charge"><Input type="number" min={0} max={6} value={f.dependents} onChange={(e) => set({ dependents: +e.target.value })} /></Field>
-          <Field label="RIB"><Input value={f.bank_rib ?? ""} onChange={(e) => set({ bank_rib: e.target.value })} /></Field>
-          <Field label="Téléphone"><Input value={f.phone ?? ""} onChange={(e) => set({ phone: e.target.value })} /></Field>
+          <Field label={t("emp.hoursMonth")} hint={t("emp.hoursMonth.hint")}><Input type="number" value={f.monthly_hours} onChange={(e) => applyHours(+e.target.value)} /></Field>
+          <Field label={t("emp.dependents")}><Input type="number" min={0} max={6} value={f.dependents} onChange={(e) => set({ dependents: +e.target.value })} /></Field>
+          <Field label={t("emp.rib")}><Input value={f.bank_rib ?? ""} onChange={(e) => set({ bank_rib: e.target.value })} /></Field>
+          <Field label={t("emp.phone")}><Input value={f.phone ?? ""} onChange={(e) => set({ phone: e.target.value })} /></Field>
         </div>
 
         <label className="mt-4 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={f.is_active} onChange={(e) => set({ is_active: e.target.checked })} /> Salarié actif
+          <input type="checkbox" checked={f.is_active} onChange={(e) => set({ is_active: e.target.checked })} /> {t("emp.activeCheck")}
         </label>
         <label className="mt-2 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={!!f.hazardous_site} onChange={(e) => set({ hazardous_site: e.target.checked })} /> Site dangereux / BTP (contrôle mineur)
+          <input type="checkbox" checked={!!f.hazardous_site} onChange={(e) => set({ hazardous_site: e.target.checked })} /> {t("emp.hazardCheck")}
         </label>
 
         <div className="mt-6 flex items-center justify-between">
           {!isNew ? (
-            <Button variant="ghost" onClick={remove} className="text-destructive"><Trash2 size={15} /> Supprimer</Button>
+            <Button variant="ghost" onClick={remove} className="text-destructive"><Trash2 size={15} /> {t("btn.delete")}</Button>
           ) : <span />}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>Annuler</Button>
-            <Button onClick={save}>Enregistrer</Button>
+            <Button variant="outline" onClick={onClose}>{t("btn.cancel")}</Button>
+            <Button onClick={save}>{t("btn.save")}</Button>
           </div>
         </div>
       </div>
