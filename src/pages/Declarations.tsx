@@ -99,7 +99,7 @@ export default function Declarations() {
         title={t("page.declarations.title")}
         subtitle={t("page.declarations.sub")}
       >
-        <Field label="Année">
+        <Field label={t("pay.year")}>
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))}>
             {YEAR_OPTIONS.map((y) => (
               <option key={y} value={y}>
@@ -108,7 +108,7 @@ export default function Declarations() {
             ))}
           </Select>
         </Field>
-        <Field label="Mois">
+        <Field label={t("pay.month")}>
           <Select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
             {MONTHS_FR.map((m, i) => (
               <option key={m} value={i + 1}>
@@ -121,19 +121,19 @@ export default function Declarations() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Bordereau CNSS mensuel — {periodLabel(year, month)}</CardTitle>
+          <CardTitle>{t("decl.cnss.title")} {periodLabel(year, month)}</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <thead>
               <tr>
-                <Th>Salarié</Th>
-                <Th>N° CNSS</Th>
+                <Th>{t("doc.employee")}</Th>
+                <Th>{t("doc.cnss")}</Th>
                 <Th className="text-right">SBI</Th>
-                <Th className="text-right">Plafonné (6 000)</Th>
-                <Th className="text-right">CNSS sal. 4,48 %</Th>
-                <Th className="text-right">CNSS patr. 8,98 %</Th>
-                <Th className="text-right">AMO sal.</Th>
+                <Th className="text-right">{t("decl.col.plafonne")}</Th>
+                <Th className="text-right">{t("decl.col.cnssSal")}</Th>
+                <Th className="text-right">{t("decl.col.cnssPat")}</Th>
+                <Th className="text-right">{t("decl.col.amoSal")}</Th>
                 <Th className="text-right">AF</Th>
               </tr>
             </thead>
@@ -147,7 +147,7 @@ export default function Declarations() {
                     {emp.cnss_number ? (
                       emp.cnss_number
                     ) : (
-                      <Badge tone="destructive">Non immatriculé</Badge>
+                      <Badge tone="destructive">{t("decl.notReg")}</Badge>
                     )}
                   </Td>
                   <Td className="text-right num">{mad(r.sbi)}</Td>
@@ -161,7 +161,7 @@ export default function Declarations() {
             </tbody>
             <tfoot>
               <tr className="font-semibold">
-                <Td>Total ({rows.length})</Td>
+                <Td>{t("decl.total")} ({rows.length})</Td>
                 <Td />
                 <Td className="text-right num">{mad(totals.masse)}</Td>
                 <Td className="text-right num">{mad(totals.massePlaf)}</Td>
@@ -175,19 +175,19 @@ export default function Declarations() {
 
           <div className="mt-5 grid gap-3 sm:grid-cols-4">
             <div className="rounded-md border bg-card p-3">
-              <p className="text-xs text-muted-foreground">Masse salariale</p>
+              <p className="text-xs text-muted-foreground">{t("decl.kpi.masse")}</p>
               <p className="mt-1 num text-lg font-semibold">{mad(totals.masse)}</p>
             </div>
             <div className="rounded-md border bg-card p-3">
-              <p className="text-xs text-muted-foreground">Masse plafonnée</p>
+              <p className="text-xs text-muted-foreground">{t("decl.kpi.massePlaf")}</p>
               <p className="mt-1 num text-lg font-semibold">{mad(totals.massePlaf)}</p>
             </div>
             <div className="rounded-md border bg-card p-3">
-              <p className="text-xs text-muted-foreground">Cotisations CNSS (sal.+patr.)</p>
+              <p className="text-xs text-muted-foreground">{t("decl.kpi.cnss")}</p>
               <p className="mt-1 num text-lg font-semibold">{mad(cnssTotal)}</p>
             </div>
             <div className="rounded-md border bg-card p-3">
-              <p className="text-xs text-muted-foreground">Effectif déclaré</p>
+              <p className="text-xs text-muted-foreground">{t("decl.kpi.headcount")}</p>
               <p className="mt-1 num text-lg font-semibold">{rows.length}</p>
             </div>
           </div>
@@ -195,16 +195,15 @@ export default function Declarations() {
           <div className="mt-5 flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => window.print()}>
               <FileDown size={16} />
-              Exporter bordereau (PDF)
+              {t("decl.export")}
             </Button>
             <Button variant="sage" onClick={downloadBds}>
               <FileText size={16} />
-              Générer fichier DAMANCOM (BDS)
+              {t("decl.bds")}
             </Button>
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            Le dépôt DAMANCOM reste manuel (API non publique) : le fichier BDS généré doit être
-            téléversé sur le portail CNSS.
+            {t("decl.damancomNote")}
           </p>
         </CardContent>
       </Card>
@@ -214,7 +213,7 @@ export default function Declarations() {
           <CardTitle>
             <span className="inline-flex items-center gap-2">
               <Landmark size={16} className="text-sage" />
-              État 9421 / IR annuel
+              {t("decl.9421.title")}
             </span>
           </CardTitle>
         </CardHeader>
@@ -222,11 +221,11 @@ export default function Declarations() {
           <Table>
             <thead>
               <tr>
-                <Th>Salarié</Th>
-                <Th>N° CNSS</Th>
-                <Th className="text-right">IR mensuel</Th>
-                <Th className="text-right">IR annuel estimé (× 12)</Th>
-                <Th className="text-right">Net mensuel</Th>
+                <Th>{t("doc.employee")}</Th>
+                <Th>{t("doc.cnss")}</Th>
+                <Th className="text-right">{t("decl.col.irMonth")}</Th>
+                <Th className="text-right">{t("decl.col.irYear")}</Th>
+                <Th className="text-right">{t("decl.col.netMonth")}</Th>
               </tr>
             </thead>
             <tbody>
@@ -244,7 +243,7 @@ export default function Declarations() {
             </tbody>
             <tfoot>
               <tr className="font-semibold">
-                <Td>Total</Td>
+                <Td>{t("decl.total")}</Td>
                 <Td />
                 <Td className="text-right num">{mad(totals.ir)}</Td>
                 <Td className="text-right num">{mad(totals.ir * 12)}</Td>
@@ -253,7 +252,7 @@ export default function Declarations() {
             </tfoot>
           </Table>
           <p className="mt-3 text-xs text-muted-foreground">
-            Récapitulatif annuel des rémunérations (estimation par extrapolation du mois courant).
+            {t("decl.9421.note")}
           </p>
         </CardContent>
       </Card>
@@ -263,15 +262,15 @@ export default function Declarations() {
           <CardTitle>
             <span className="inline-flex items-center gap-2">
               <CalendarClock size={16} className="text-warning" />
-              Échéances
+              {t("decl.deadlines.title")}
             </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3">
-            <Badge tone="warning">À déposer avant le 10</Badge>
+            <Badge tone="warning">{t("decl.deadline.badge")}</Badge>
             <p className="text-sm text-muted-foreground">
-              Bordereau CNSS de {periodLabel(year, month)} à déposer avant le 10 du mois suivant.
+              {t("decl.deadline.body1")} {periodLabel(year, month)} {t("decl.deadline.body2")}
             </p>
           </div>
         </CardContent>
