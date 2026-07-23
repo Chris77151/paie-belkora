@@ -105,6 +105,107 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/* ================================================================= salarié hors liste (ad-hoc) ================================================================= */
+
+interface ManualEmp {
+  first_name: string; last_name: string; cin: string; cnss_number: string;
+  position: string; hire_date: string; birth_date: string; address: string; site: string;
+}
+const EMPTY_MANUAL: ManualEmp = {
+  first_name: "", last_name: "", cin: "", cnss_number: "", position: "",
+  hire_date: "", birth_date: "", address: "", site: "",
+};
+
+/** Construit un Employee VALIDE en mémoire à partir d'une saisie manuelle (jamais persisté au store).
+ *  Champs vides → undefined ⇒ le document affiche un pointillé (zéro invention). */
+function adHocEmployee(firmId: string, m: ManualEmp): Employee {
+  const clean = (v: string) => (v.trim() ? v.trim() : undefined);
+  return {
+    id: "__manual__",
+    firm_id: firmId,
+    first_name: m.first_name.trim(),
+    last_name: m.last_name.trim(),
+    cin: clean(m.cin),
+    cnss_number: clean(m.cnss_number),
+    position: clean(m.position),
+    hire_date: m.hire_date || "",
+    birth_date: m.birth_date || undefined,
+    address: clean(m.address),
+    site: clean(m.site),
+    contract_type: "CDI",
+    base_hourly_rate: 0,
+    monthly_hours: 191,
+    dependents: 0,
+    is_active: true,
+  };
+}
+
+/**
+ * Source du salarié pour un document : soit un salarié de la liste (store), soit un salarié
+ * NON ENREGISTRÉ saisi à la main. Renvoie l'objet `employee` (réel ou ad-hoc) + le `node` à
+ * afficher en tête du formulaire. Le salarié ad-hoc n'est jamais ajouté au store.
+ */
+function useEmployeeSource(firm: Firm, employees: Employee[]): { employee: Employee; node: React.ReactNode } {
+  const t = useT();
+  const [manual, setManual] = useState(false);
+  const [empId, setEmpId] = useState<string>(employees[0]?.id ?? "");
+  const [m, setM] = useState<ManualEmp>(EMPTY_MANUAL);
+  const setMf = (patch: Partial<ManualEmp>) => setM((x) => ({ ...x, ...patch }));
+
+  const useManual = manual || employees.length === 0; // sans salarié en base : saisie manuelle forcée
+  const employee: Employee = useManual
+    ? adHocEmployee(firm.id, m)
+    : (employees.find((e) => e.id === empId) ?? employees[0]);
+
+  const node = (
+    <>
+      <Field label={t("doc.employee")}>
+        <Select
+          value={useManual ? "__manual__" : empId}
+          onChange={(e) => {
+            if (e.target.value === "__manual__") setManual(true);
+            else { setManual(false); setEmpId(e.target.value); }
+          }}
+        >
+          {employees.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.first_name} {e.last_name}{e.position ? ` · ${e.position}` : ""}{e.is_active ? "" : " (sorti)"}
+            </option>
+          ))}
+          <option value="__manual__">{t("doc.manual.option")}</option>
+        </Select>
+      </Field>
+
+      {useManual && (
+        <div className="rounded-md border border-primary/30 bg-accent/30 p-3 space-y-3">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <BadgeCheck size={13} className="text-primary" /> {t("doc.manual.title")}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t("emp.firstName")}><Input value={m.first_name} onChange={(e) => setMf({ first_name: e.target.value })} /></Field>
+            <Field label={t("emp.lastName")}><Input value={m.last_name} onChange={(e) => setMf({ last_name: e.target.value })} /></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t("emp.cin")}><Input value={m.cin} onChange={(e) => setMf({ cin: e.target.value })} /></Field>
+            <Field label={t("doc.cnss")} hint={t("doc.manual.cnss.hint")}><Input value={m.cnss_number} onChange={(e) => setMf({ cnss_number: e.target.value })} /></Field>
+          </div>
+          <Field label={t("emp.position")}><Input value={m.position} onChange={(e) => setMf({ position: e.target.value })} /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t("doc.hireDate")}><Input type="date" value={m.hire_date} onChange={(e) => setMf({ hire_date: e.target.value })} /></Field>
+            <Field label={t("emp.birth")}><Input type="date" value={m.birth_date} onChange={(e) => setMf({ birth_date: e.target.value })} /></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t("emp.site")}><Input value={m.site} onChange={(e) => setMf({ site: e.target.value })} /></Field>
+            <Field label={t("doc.manual.address")}><Input value={m.address} onChange={(e) => setMf({ address: e.target.value })} /></Field>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  return { employee, node };
+}
+
 /* ================================================================= composants transverses ================================================================= */
 
 function MissingCard({ missing }: { missing: string[] }) {
@@ -221,13 +322,7 @@ export default function Documents() {
         ))}
       </div>
 
-      {employees.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            Aucun salarié dans la société active. Ajoutez un salarié depuis la page « Salariés ».
-          </CardContent>
-        </Card>
-      ) : tab === "attestations" ? (
+      {tab === "attestations" ? (
         <AttestationsPanel firm={firm} employees={employees} />
       ) : tab === "contrat" ? (
         <ContractPanel firm={firm} employees={employees} />
@@ -245,7 +340,7 @@ export default function Documents() {
 /* ================================================================= 1) Attestations (famille A existante) ================================================================= */
 
 function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employee[] }) {
-  const [empId, setEmpId] = useState<string>(employees[0]?.id ?? "");
+  const { employee, node: employeeNode } = useEmployeeSource(firm, employees);
   const [type, setType] = useState<RhDocType>("attestation-travail");
   const [civility, setCivility] = useState<Civility>(null);
   const [hireDate, setHireDate] = useState<string>("");
@@ -265,7 +360,6 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
   const [stageOngoing, setStageOngoing] = useState<boolean>(true);
 
   const t = useT();
-  const employee = employees.find((e) => e.id === empId) ?? employees[0];
   const isStage = type === "attestation-stage";
 
   const view: RhDocView = {
@@ -315,17 +409,7 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
             </Select>
           </Field>
 
-          <Field label={t("doc.employee")}>
-            <Select value={empId} onChange={(e) => setEmpId(e.target.value)}>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.first_name} {e.last_name}
-                  {e.position ? ` · ${e.position}` : ""}
-                  {e.is_active ? "" : " (sorti)"}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {employeeNode}
 
           <Field label={t("doc.civility")} hint={t("doc.civility.hint")}>
             <Select value={civility ?? ""} onChange={(e) => setCivility((e.target.value || null) as Civility)}>
@@ -498,7 +582,7 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
 
 function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] }) {
   const t = useT();
-  const [empId, setEmpId] = useState<string>(employees[0]?.id ?? "");
+  const { employee, node: employeeNode } = useEmployeeSource(firm, employees);
   const [model, setModel] = useState<ContractModel>("cdd-chef");
   const [civility, setCivility] = useState<Civility>(null);
   const [projectKey, setProjectKey] = useState<string>("gotion");
@@ -520,7 +604,6 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
   const [signatoryName, setSignatoryName] = useState<string>("");
   const [signatoryRole, setSignatoryRole] = useState<string>("");
 
-  const employee = employees.find((e) => e.id === empId) ?? employees[0];
   const customProject = projectKey === "custom";
 
   const view: RhContractView = {
@@ -574,16 +657,7 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
             </Select>
           </Field>
 
-          <Field label="Salarié">
-            <Select value={empId} onChange={(e) => setEmpId(e.target.value)}>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.first_name} {e.last_name}
-                  {e.position ? ` · ${e.position}` : ""}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {employeeNode}
 
           <Field label="Projet / chantier">
             <Select value={projectKey} onChange={(e) => setProjectKey(e.target.value)}>
@@ -722,7 +796,7 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
 
 function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[] }) {
   const t = useT();
-  const [empId, setEmpId] = useState<string>(employees[0]?.id ?? "");
+  const { employee, node: employeeNode } = useEmployeeSource(firm, employees);
   const [type, setType] = useState<DisciplineType>("avertissement");
   const [civility, setCivility] = useState<Civility>(null);
   const [jobTitle, setJobTitle] = useState<string>("");
@@ -749,7 +823,6 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
   const [signatoryName, setSignatoryName] = useState<string>("");
   const [signatoryRole, setSignatoryRole] = useState<string>("");
 
-  const employee = employees.find((e) => e.id === empId) ?? employees[0];
   const isMED = type === "mise-en-demeure";
   const showFacts = type !== "convocation" && type !== "mise-en-demeure";
   const showIdentity = type === "mise-en-demeure" || type === "decision-licenciement";
@@ -811,16 +884,7 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
             </Select>
           </Field>
 
-          <Field label="Salarié">
-            <Select value={empId} onChange={(e) => setEmpId(e.target.value)}>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.first_name} {e.last_name}
-                  {e.position ? ` · ${e.position}` : ""}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {employeeNode}
 
           <Field label="Civilité">
             <Select value={civility ?? ""} onChange={(e) => setCivility((e.target.value || null) as Civility)}>
@@ -982,7 +1046,7 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
 
 function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }) {
   const t = useT();
-  const [empId, setEmpId] = useState<string>(employees[0]?.id ?? "");
+  const { employee, node: employeeNode } = useEmployeeSource(firm, employees);
   const [type, setType] = useState<RuptureType>("pv-fin-travaux");
   const [civility, setCivility] = useState<Civility>(null);
   const [jobTitle, setJobTitle] = useState<string>("");
@@ -1017,7 +1081,6 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
   const [signatoryName, setSignatoryName] = useState<string>("");
   const [signatoryRole, setSignatoryRole] = useState<string>("");
 
-  const employee = employees.find((e) => e.id === empId) ?? employees[0];
   const isPV = type === "pv-fin-travaux";
   const isAccord = type === "accord-amiable";
   const isRecu = type === "recu-solde";
@@ -1111,15 +1174,7 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
             </Select>
           </Field>
 
-          <Field label={isPV ? "Salarié (pour pré-remplissage — la liste des salariés se complète sur le PV)" : "Salarié"}>
-            <Select value={empId} onChange={(e) => setEmpId(e.target.value)}>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.first_name} {e.last_name}{e.position ? ` · ${e.position}` : ""}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {employeeNode}
 
           {isAccord && (
             <Field label="Civilité">
