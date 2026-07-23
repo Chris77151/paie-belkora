@@ -171,6 +171,12 @@ export const DICT = {
   "stab.fixConfirm": { fr: "Appliquer les corrections de données réparables (purge des orphelins, société active) ? Action idempotente et sûre.", ar: "تطبيق إصلاحات البيانات القابلة للإصلاح؟ إجراء آمن وقابل للتكرار." },
   "stab.fixNone": { fr: "Aucune anomalie de données réparable in-app. Les constats restants relèvent d'une correction de code (skill audit-stabilisation-app).", ar: "لا يوجد خلل قابل للإصلاح داخل التطبيق. الباقي يتطلب تصحيح الشيفرة." },
   "stab.about": { fr: "Corrections de DONNÉES (orphelins, société active) appliquées ici via « Corriger ». Les corrections de CODE (moteur de paie, params, types) relèvent du skill Claude Code « audit-stabilisation-app », qui lit les fichiers md de l'app comme référence.", ar: "إصلاحات البيانات تُطبَّق هنا عبر «إصلاح». أما إصلاحات الشيفرة فتتم عبر مهارة «audit-stabilisation-app»." },
+  "stab.formulas.title": { fr: "Formules de calcul réelles", ar: "صيغ الحساب الفعلية" },
+  "stab.formulas.sub": { fr: "Restituées en exécutant le VRAI moteur de paie sur un exemple chiffré (jamais inventées) — toute évolution des taux (params.ts) s'y reflète automatiquement.", ar: "مستخرجة بتشغيل محرّك الأجور الحقيقي على مثال رقمي (غير مخترعة) — أي تغيير في المعدلات ينعكس هنا تلقائياً." },
+  "stab.formulas.hypotheses": { fr: "Hypothèses de l'exemple (entrée du moteur)", ar: "فرضيات المثال (مدخل المحرّك)" },
+  "stab.formulas.col.step": { fr: "Étape", ar: "الخطوة" },
+  "stab.formulas.col.formula": { fr: "Formule réelle", ar: "الصيغة الفعلية" },
+  "stab.formulas.col.result": { fr: "Résultat", ar: "النتيجة" },
 
   // Onglets Documents RH
   "docs.tab.attestations": { fr: "Attestations & certificats", ar: "الشهادات والإشهادات" },

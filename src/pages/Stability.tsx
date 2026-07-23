@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  Activity, ShieldAlert, Wrench, RefreshCw, CheckCircle2, Lock, Calculator, Database,
+  Activity, ShieldAlert, Wrench, RefreshCw, CheckCircle2, Lock, Calculator, Database, ChevronDown,
 } from "lucide-react";
 import { actions, useStore } from "@/data/store";
 import { useSession } from "@/lib/auth";
@@ -8,6 +8,8 @@ import { useT } from "@/lib/i18n";
 import {
   runStabilityChecks, buildReport, type StabilityFinding, type StabilitySeverity, type StabilityAxis,
 } from "@/lib/stability-engine";
+import { buildFormulaReport } from "@/lib/formula-report";
+import { AVAILABLE_YEARS } from "@/lib/params";
 import {
   Badge, Button, Card, CardContent, CardHeader, CardTitle, PageHeader, Table, Td, Th,
 } from "@/components/ui/kit";
@@ -31,6 +33,8 @@ export default function Stability() {
   // Re-analyse : on incrémente un jeton pour recalculer explicitement (l'état est déjà réactif).
   const [nonce, setNonce] = useState(0);
   const report = useMemo(() => buildReport(runStabilityChecks(s)), [s, nonce]);
+  // Rapport des formules RÉELLES : exécute le vrai moteur sur l'année en vigueur.
+  const formulas = useMemo(() => buildFormulaReport(AVAILABLE_YEARS[0]), [nonce]);
 
   // Défense en profondeur : refuse le RENDU si le rôle n'est pas super administrateur.
   if (!isSuperAdmin) {
@@ -112,6 +116,63 @@ export default function Stability() {
             <ShieldAlert size={16} className="mt-0.5 shrink-0 text-warning" />
             {t("stab.about")}
           </p>
+        </CardContent>
+      </Card>
+
+      {/* Formules de calcul réelles (trace du vrai moteur) */}
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>
+            <span className="inline-flex items-center gap-2">
+              <Calculator size={16} className="text-primary" /> {t("stab.formulas.title")}
+              <Badge tone="muted">{formulas.year}</Badge>
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 text-[13px] text-muted-foreground">{t("stab.formulas.sub")}</p>
+          <div className="mb-4 rounded-md border border-border/70 bg-muted/40 p-3">
+            <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">{t("stab.formulas.hypotheses")}</div>
+            <div className="grid gap-x-6 gap-y-1 text-[12.5px] sm:grid-cols-2">
+              {formulas.hypotheses.map((h) => (
+                <div key={h.label} className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{h.label}</span>
+                  <span className="font-medium">{h.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            {formulas.groups.map((g) => (
+              <details key={g.id} className="rounded-md border border-border/70 bg-card open:pb-2">
+                <summary className="flex cursor-pointer items-center gap-2 px-3 py-2.5 text-sm font-medium select-none">
+                  <ChevronDown size={15} className="shrink-0 text-muted-foreground transition-transform" />
+                  {g.title}
+                  <span className="ml-auto text-xs font-normal text-muted-foreground">{g.lines.length} formule(s)</span>
+                </summary>
+                <div className="overflow-x-auto px-3">
+                  <table className="w-full text-[12.5px]">
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <th className="py-1 pr-3 font-medium">{t("stab.formulas.col.step")}</th>
+                        <th className="py-1 pr-3 font-medium">{t("stab.formulas.col.formula")}</th>
+                        <th className="py-1 text-right font-medium">{t("stab.formulas.col.result")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.lines.map((l, idx) => (
+                        <tr key={idx} className="border-t border-border/50 align-top">
+                          <td className="py-1.5 pr-3 font-medium">{l.label}</td>
+                          <td className="py-1.5 pr-3 font-mono text-[11.5px] text-muted-foreground">{l.formula}</td>
+                          <td className="whitespace-nowrap py-1.5 text-right font-semibold">{l.result}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            ))}
+          </div>
         </CardContent>
       </Card>
 

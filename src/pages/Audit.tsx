@@ -124,9 +124,12 @@ export default function Audit() {
             <p className="mt-4 text-sm text-muted-foreground max-w-lg mx-auto">
               Sélectionnez une période et cliquez sur <b>Lancer l'audit</b>. L'analyse est <b>déterministe</b>
               (sans IA) et passe les données au crible des <b>assertions d'audit</b>. Si <b>Odoo</b> est
-              connecté, elle couvre <b>toute la comptabilité</b> de l'exercice (achats, ventes, trésorerie,
-              TVA, dettes) ; sinon, la <b>paie locale</b> ({period}). Constats classés, avec détail et
-              recommandation (normes marocaines + action Odoo).
+              connecté, elle couvre <b>toute la comptabilité</b> de l'exercice — pas seulement la paie :
+              balance générale, écritures en brouillon, classification (charges/produits), <b>lettrage
+              clients/fournisseurs</b>, <b>factures échues impayées</b> (balance âgée), comptes d'attente,
+              TVA collectée/déductible et <b>ventilation réelle des écritures par type</b> (ventes, achats,
+              trésorerie, divers). Sans Odoo, périmètre = <b>paie locale</b> ({period}). Constats classés,
+              avec détail et recommandation (normes marocaines + action Odoo).
             </p>
           </CardContent>
         </Card>

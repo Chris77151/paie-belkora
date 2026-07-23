@@ -358,8 +358,64 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
         "Vérifier l'imputation de la TVA collectée.", "CGI (TVA) ; PCGE.", "Grand livre 4455 ; corriger l'imputation."));
   }
 
+  // Lettrage : créances clients postées non rapprochées.
+  if (d.unreconciledReceivable && d.unreconciledReceivable.count > 0)
+    out.push(F("soldes", "Existence", "ventes/clients", "moyen",
+      `${d.unreconciledReceivable.count} écriture(s) client non lettrée(s)`,
+      `Créances clients postées non rapprochées : résidu ≈ ${dh(d.unreconciledReceivable.amount)}. Un solde non lettré fragilise l'existence/l'évaluation des créances et le suivi des impayés.`,
+      "Lettrer les règlements avec les factures ; analyser les résidus anciens.",
+      "CGNC (existence, évaluation) ; assertions clients.", "Comptabilité → Lettrage des comptes clients (account.move.line non rapprochées)."));
+
+  // Lettrage : dettes fournisseurs postées non rapprochées.
+  if (d.unreconciledPayable && d.unreconciledPayable.count > 0)
+    out.push(F("soldes", "Exhaustivité", "achats/fournisseurs", "moyen",
+      `${d.unreconciledPayable.count} écriture(s) fournisseur non lettrée(s)`,
+      `Dettes fournisseurs postées non rapprochées : résidu ≈ ${dh(d.unreconciledPayable.amount)}. Le passif fournisseur peut être sur/sous-évalué tant que le lettrage n'est pas fait.`,
+      "Lettrer les paiements avec les factures ; solder les résidus justifiés.",
+      "CGNC (exhaustivité, évaluation) ; assertions fournisseurs.", "Comptabilité → Lettrage des comptes fournisseurs."));
+
+  // Cut-off / évaluation : factures clients échues impayées.
+  if (d.overdueReceivable && d.overdueReceivable.count > 0)
+    out.push(F("soldes", "Évaluation et imputation", "ventes/clients", "eleve",
+      `${d.overdueReceivable.count} facture(s) client échue(s) impayée(s)`,
+      `Créances clients échues et non soldées : résidu ≈ ${dh(d.overdueReceivable.amount)}. Risque de non-recouvrement → dépréciation possible à la clôture.`,
+      "Relancer le recouvrement ; évaluer une provision pour dépréciation des créances douteuses.",
+      "CGNC (prudence, évaluation) ; CGI (créances irrécouvrables).", "Analyse balance âgée clients (aged receivable) ; provisionner via OD."));
+
+  // Cut-off : factures fournisseurs échues impayées.
+  if (d.overduePayable && d.overduePayable.count > 0)
+    out.push(F("soldes", "Exhaustivité", "achats/fournisseurs", "moyen",
+      `${d.overduePayable.count} facture(s) fournisseur échue(s) impayée(s)`,
+      `Dettes fournisseurs échues non réglées : résidu ≈ ${dh(d.overduePayable.amount)}. À rapprocher de la trésorerie disponible et des échéanciers.`,
+      "Planifier les règlements ; vérifier qu'aucune facture n'a été omise (rattachement à l'exercice).",
+      "CGNC (exhaustivité, rattachement).", "Analyse balance âgée fournisseurs (aged payable)."));
+
+  // Exhaustivité : ventilation réelle des écritures postées par type (globalité de la compta).
+  if (d.postedByType && d.postedByType.length) {
+    const total = d.postedByType.reduce((s, x) => s + x.count, 0);
+    const ventil = d.postedByType
+      .map((x) => `${MOVE_TYPE_FR[x.move_type] ?? x.move_type} : ${x.count}`)
+      .join(" · ");
+    out.push(F("presentation", "Exhaustivité", "comptabilité générale", "info",
+      "Ventilation des écritures postées par type de pièce",
+      `${total} pièce(s) postée(s) sur ${d.year} — ${ventil}. Vue d'ensemble de l'activité comptable réellement enregistrée (ventes, achats, banque, divers).`,
+      "Contrôler que tous les cycles attendus sont présents (aucune activité omise).",
+      "CGNC (exhaustivité).", "Comptabilité → Écritures : recouper par type/journal."));
+  }
+
   return out;
 }
+
+/** Libellés FR des types de pièce Odoo (account.move.move_type). */
+const MOVE_TYPE_FR: Record<string, string> = {
+  entry: "OD / divers",
+  out_invoice: "Factures clients",
+  out_refund: "Avoirs clients",
+  in_invoice: "Factures fournisseurs",
+  in_refund: "Avoirs fournisseurs",
+  out_receipt: "Reçus de vente",
+  in_receipt: "Reçus d'achat",
+};
 
 /* ------------------------------------------------------------------ */
 /* Assemblage du rapport                                              */

@@ -40,6 +40,11 @@ export interface AccountBalance {
   credit: number;
   balance: number; // debit - credit
 }
+/** Agrégat count + montant (lecture seule). */
+export interface OdooAggregate {
+  count: number;
+  amount: number;
+}
 export interface OdooAccountingData {
   companyId: number;
   year: number;
@@ -51,6 +56,17 @@ export interface OdooAccountingData {
   journalsWithPosted: Set<number>;
   totalDebit: number;
   totalCredit: number;
+  /* --- Couverture étendue (optionnelle : présente si Odoo l'a fournie) --- */
+  /** Créances clients postées non lettrées (résidu). */
+  unreconciledReceivable?: OdooAggregate;
+  /** Dettes fournisseurs postées non lettrées (résidu). */
+  unreconciledPayable?: OdooAggregate;
+  /** Factures clients échues impayées (résidu, date d'échéance dépassée). */
+  overdueReceivable?: OdooAggregate;
+  /** Factures fournisseurs échues impayées (résidu). */
+  overduePayable?: OdooAggregate;
+  /** Ventilation des écritures POSTÉES par type de pièce (ventes, achats, banque, divers…). */
+  postedByType?: { move_type: string; count: number }[];
 }
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -128,6 +144,62 @@ export async function fetchOdooAccounting(
     journalGrp.filter((g) => Array.isArray(g.journal_id)).map((g) => g.journal_id[0] as number),
   );
 
+  /* ---- Couverture étendue (fetch DÉFENSIFS : toute erreur laisse le champ absent, sans casser l'audit) ---- */
+
+  /** Agrégat total (count + somme d'un champ) via read_group sans regroupement. */
+  const aggregate = async (model: string, domain: unknown[], field: string): Promise<OdooAggregate | undefined> => {
+    try {
+      const grp: any[] = await call(model, "read_group", [domain, [field], []], { lazy: false });
+      const row = grp[0] ?? {};
+      return { count: Number(row.__count) || 0, amount: round2(Math.abs(Number(row[field]) || 0)) };
+    } catch {
+      return undefined;
+    }
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const postedCompany = [["parent_state", "=", "posted"], companyDomain];
+
+  // Lettrage : créances/dettes postées non rapprochées (résidu non nul).
+  const unreconciledReceivable = await aggregate(
+    "account.move.line",
+    [...postedCompany, ["account_id.account_type", "=", "asset_receivable"], ["full_reconcile_id", "=", false], ["amount_residual", "!=", 0]],
+    "amount_residual",
+  );
+  const unreconciledPayable = await aggregate(
+    "account.move.line",
+    [...postedCompany, ["account_id.account_type", "=", "liability_payable"], ["full_reconcile_id", "=", false], ["amount_residual", "!=", 0]],
+    "amount_residual",
+  );
+
+  // Factures échues impayées (date d'échéance dépassée, non soldées).
+  const overdueReceivable = await aggregate(
+    "account.move",
+    [companyDomain, ["state", "=", "posted"], ["move_type", "in", ["out_invoice", "out_refund"]], ["payment_state", "in", ["not_paid", "partial"]], ["invoice_date_due", "<", today]],
+    "amount_residual",
+  );
+  const overduePayable = await aggregate(
+    "account.move",
+    [companyDomain, ["state", "=", "posted"], ["move_type", "in", ["in_invoice", "in_refund"]], ["payment_state", "in", ["not_paid", "partial"]], ["invoice_date_due", "<", today]],
+    "amount_residual",
+  );
+
+  // Ventilation des écritures postées par type de pièce (globalité de l'activité comptable).
+  let postedByType: { move_type: string; count: number }[] | undefined;
+  try {
+    const typeGrp: any[] = await call(
+      "account.move",
+      "read_group",
+      [[companyDomain, ["date", ">=", start], ["date", "<=", end], ["state", "=", "posted"]], ["id"], ["move_type"]],
+      { lazy: false },
+    );
+    postedByType = typeGrp
+      .map((g) => ({ move_type: String(g.move_type ?? "entry"), count: Number(g.__count) || 0 }))
+      .filter((x) => x.count > 0);
+  } catch {
+    postedByType = undefined;
+  }
+
   return {
     companyId,
     year,
@@ -139,5 +211,10 @@ export async function fetchOdooAccounting(
     journalsWithPosted,
     totalDebit: round2(balances.reduce((s, b) => s + b.debit, 0)),
     totalCredit: round2(balances.reduce((s, b) => s + b.credit, 0)),
+    unreconciledReceivable,
+    unreconciledPayable,
+    overdueReceivable,
+    overduePayable,
+    postedByType,
   };
 }
