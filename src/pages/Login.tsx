@@ -1,7 +1,15 @@
 import { useState } from "react";
-import { Sprout, LogIn, Loader2, AlertCircle, Lock } from "lucide-react";
+import { Sprout, LogIn, Loader2, AlertCircle, Lock, ShieldCheck } from "lucide-react";
 import { Button, Card, CardContent, Field, Input } from "@/components/ui/kit";
 import { login } from "@/lib/auth";
+
+/**
+ * Identifiant du compte administrateur racine — e-mail UNIQUEMENT (jamais le mot de passe).
+ * Sert au raccourci « Accès administrateur » qui pré-remplit l'identifiant ; le mot de passe
+ * reste saisi manuellement à chaque connexion (aucun secret dans le code, aucune connexion
+ * automatique). Voir SUPER_ADMIN dans src/data/seed.ts.
+ */
+const ADMIN_USERNAME = "christian.agnamon@pepinierebelkora.com";
 
 /** Porte d'authentification : affichée tant qu'aucun utilisateur n'est connecté. */
 export default function Login() {
@@ -21,6 +29,18 @@ export default function Login() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * Raccourci administrateur : pré-remplit l'identifiant et place le curseur sur le mot de
+   * passe. NE connecte PAS automatiquement — l'admin doit saisir son mot de passe.
+   */
+  function fillAdmin() {
+    setError(null);
+    setUsername(ADMIN_USERNAME);
+    setPassword("");
+    // Focus du champ mot de passe (après le rendu).
+    setTimeout(() => document.getElementById("login-password")?.focus(), 0);
   }
 
   return (
@@ -49,6 +69,7 @@ export default function Login() {
               </Field>
               <Field label="Mot de passe">
                 <Input
+                  id="login-password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -76,6 +97,19 @@ export default function Login() {
           <Lock size={12} />
           Les comptes sont créés par le super administrateur dans Paramètres.
         </p>
+
+        <div className="mt-2 flex justify-center">
+          <button
+            type="button"
+            onClick={fillAdmin}
+            disabled={busy}
+            title="Pré-remplit l'identifiant administrateur — le mot de passe reste à saisir"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground/70 transition-colors hover:text-primary hover:bg-accent/60 disabled:opacity-50"
+          >
+            <ShieldCheck size={12} />
+            Accès administrateur
+          </button>
+        </div>
       </div>
     </div>
   );
