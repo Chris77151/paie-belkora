@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Calculator, FileDown, FileText, Printer, Lock, CheckCircle2, X, SlidersHorizontal,
+  Calculator, FileDown, FileText, Printer, Lock, Unlock, CheckCircle2, X, SlidersHorizontal,
 } from "lucide-react";
 import {
   actions, currentFirm, employeesOfFirm, payslipsOfPeriod, uid, useStore,
@@ -72,6 +72,15 @@ export default function Payroll() {
     actions.setPeriodStatus(period.id, "validated");
   }
 
+  /** Remet une période verrouillée (validée/déclarée/payée) en brouillon : la saisie redevient modifiable. */
+  function revertToDraft() {
+    if (!period) return;
+    const hasClosure = (s.accountingClosures ?? []).some((c) => c.id === `${firm.id}_${year}_${month}`);
+    const warn = hasClosure ? `\n\n${t("pay.revert.closureWarn")}` : "";
+    if (!confirm(`${t("pay.revert.confirm")} ${periodLabel(year, month)} ?${warn}`)) return;
+    actions.setPeriodStatus(period.id, "draft");
+  }
+
   async function exportAll() {
     for (const r of rows) {
       await exportPayslipPdf(view(r.emp, r.result, r.slip.input));
@@ -108,6 +117,9 @@ export default function Payroll() {
           ) : (
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={exportAll}><FileDown size={16} /> {t("pay.exportGroup")}</Button>
+              <Button variant="outline" onClick={revertToDraft} title={t("pay.revert.hint")}>
+                <Unlock size={16} /> {t("pay.revert")}
+              </Button>
               {period?.status === "validated" && (
                 <Button variant="sage" onClick={() => actions.setPeriodStatus(period!.id, "declared")}>
                   <CheckCircle2 size={16} /> {t("pay.markDeclared")}
