@@ -10,7 +10,8 @@ import { currentFirm, useStore } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import { MONTHS_FR, mad } from "@/lib/format";
 import {
-  buildAuditSnapshot, runFullAudit, type AuditReport, type AuditFinding, type Gravite,
+  buildAuditSnapshot, runFullAudit, buildRegularisationDossier,
+  type AuditReport, type AuditFinding, type Gravite,
 } from "@/lib/audit-engine";
 import { cn } from "@/lib/cn";
 
@@ -64,6 +65,19 @@ export default function Audit() {
 
   const bySeverity = report ? count(report.constats) : null;
 
+  /** « Corriger » : génère et télécharge le DOSSIER DE RÉGULARISATION (proposition sûre, sans écriture Odoo). */
+  function correct() {
+    if (!report) return;
+    const md = buildRegularisationDossier(report, firm.name, period);
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `dossier-regularisation_${firm.name.replace(/\s+/g, "-")}_${period.replace(/\s+/g, "-")}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div>
       <PageHeader
@@ -71,9 +85,16 @@ export default function Audit() {
         subtitle={`${firm.name} · ${t("page.audit.sub")}`}
       >
         {report && (
-          <Badge tone={report.score_fiabilite >= 75 ? "success" : report.score_fiabilite >= 50 ? "warning" : "destructive"}>
-            Fiabilité {report.score_fiabilite}/100
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge tone={report.score_fiabilite >= 75 ? "success" : report.score_fiabilite >= 50 ? "warning" : "destructive"}>
+              Fiabilité {report.score_fiabilite}/100
+            </Badge>
+            {report.constats.length > 0 && (
+              <Button variant="sage" onClick={correct} title="Générer le dossier de régularisation (proposition — sans écriture Odoo)">
+                <Wrench size={16} /> Corriger
+              </Button>
+            )}
+          </div>
         )}
       </PageHeader>
 
@@ -203,10 +224,21 @@ function FindingRow({ c }: { c: AuditFinding }) {
       <summary className="flex cursor-pointer items-center gap-2.5 px-4 py-2.5 select-none">
         <Badge tone={GRAVITE_TONE[c.gravite]}>{GRAVITE_LABEL[c.gravite]}</Badge>
         <span className="text-sm font-medium min-w-0 flex-1 truncate">{c.titre}</span>
+        {c.comptes.length > 0 && (
+          <span className="hidden md:inline font-mono text-[11px] text-primary">{c.comptes.join(" · ")}</span>
+        )}
         <span className="hidden sm:inline text-xs text-muted-foreground">{c.assertion} · {c.cycle}</span>
         <ChevronDown size={15} className="shrink-0 text-muted-foreground" />
       </summary>
       <div className="px-4 space-y-3 text-sm">
+        {c.comptes.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Comptes PCGE :</span>
+            {c.comptes.map((n) => (
+              <span key={n} className="rounded border border-primary/30 bg-primary/5 px-1.5 py-0.5 font-mono text-[11px] text-primary">{n}</span>
+            ))}
+          </div>
+        )}
         <Detail label="Problème détecté" value={c.detail} />
         <Detail label="Recommandation" value={c.recommandation} icon={<CheckCircle2 size={13} className="text-sage" />} />
         <div className="grid gap-3 sm:grid-cols-2">

@@ -36,6 +36,8 @@ export interface AuditFinding {
   recommandation: string;
   reference_normative: string;
   action_odoo: string;
+  /** Numéros de compte PCGE concernés (extraits du constat, allowlist — sans faux positif). */
+  comptes: string[];
 }
 
 export interface AuditReport {
@@ -91,11 +93,36 @@ const names = (list: Employee[], n = 4) => {
 };
 const dh = (n: number) => `${n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 
+/**
+ * Comptes PCGE reconnus dans les constats (paie + cycles Odoo). ALLOWLIST : on n'extrait QUE ces
+ * codes, ce qui évite tout faux positif (montants, années 2025/2026, quantités). Triés du plus
+ * long au plus court pour matcher 617411 avant 6174, 44525 avant 4452, etc.
+ */
+const PCGE_ACCOUNTS = [
+  "617411", "617412", "61671", "61744", "61741", "44525", "4455", "3455", "4432", "4441", "4457",
+  "5141", "3421", "3411", "4421", "4411", "4434", "3431", "3491", "4491", "6171", "471", "472",
+  "342", "441", "445",
+].sort((a, b) => b.length - a.length);
+
+/** Extrait les comptes PCGE réellement cités dans le texte d'un constat (allowlist, avec suffixe « x » toléré). */
+export function extractComptes(detail: string, recommandation: string, action_odoo: string): string[] {
+  const hay = `${detail} ${recommandation} ${action_odoo}`;
+  const found: string[] = [];
+  for (const code of PCGE_ACCOUNTS) {
+    if (found.some((c) => c.startsWith(code))) continue; // déjà couvert par un code plus long
+    if (new RegExp(`\\b${code}x?\\b`).test(hay)) found.push(code);
+  }
+  return found.sort();
+}
+
 function F(
   categorie_assertion: AssertionCategory, assertion: string, cycle: string, gravite: Gravite,
   titre: string, detail: string, recommandation: string, reference_normative: string, action_odoo: string,
 ): AuditFinding {
-  return { categorie_assertion, assertion, cycle, gravite, titre, detail, recommandation, reference_normative, action_odoo };
+  return {
+    categorie_assertion, assertion, cycle, gravite, titre, detail, recommandation, reference_normative, action_odoo,
+    comptes: extractComptes(detail, recommandation, action_odoo),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -432,6 +459,40 @@ function assembleReport(findings: AuditFinding[], firmName: string, scope: strin
     `${by.moyen} moyen(s), ${by.info} pour information (${findings.length} au total).`;
   const sorted = [...findings].sort((a, b) => RANK[a.gravite] - RANK[b.gravite]);
   return { synthese, score_fiabilite: score, scope, constats: sorted };
+}
+
+/* ------------------------------------------------------------------ dossier de régularisation ------------------------------------------------------------------ */
+
+/**
+ * Construit un DOSSIER DE RÉGULARISATION lisible à partir du rapport d'audit — une PROPOSITION
+ * traçable, PAS une écriture appliquée. Chaque constat devient une fiche : comptes concernés,
+ * problème, correction proposée, référence normative et action Odoo. L'exécution réelle dans Odoo
+ * reste faite par le comptable (ou via le skill `odoo-correction-anomalies`), jamais en aveugle.
+ * Fonction PURE (texte Markdown).
+ */
+export function buildRegularisationDossier(report: AuditReport, firmName: string, period: string): string {
+  const lines: string[] = [];
+  lines.push(`# Dossier de régularisation — ${firmName}`);
+  lines.push(`Période : ${period} · Périmètre : ${report.scope} · Fiabilité : ${report.score_fiabilite}/100`);
+  lines.push("");
+  lines.push("> PROPOSITION de régularisation (non appliquée). Chaque écriture doit être contrôlée pièce");
+  lines.push("> à l'appui puis passée dans Odoo par le comptable — aucune écriture n'est faite en aveugle.");
+  lines.push("");
+  const ordered = [...report.constats].sort((a, b) => RANK[a.gravite] - RANK[b.gravite]);
+  ordered.forEach((c, i) => {
+    lines.push(`## ${i + 1}. [${c.gravite.toUpperCase()}] ${c.titre}`);
+    lines.push(`- Cycle / assertion : ${c.cycle} · ${c.assertion} (${c.categorie_assertion})`);
+    if (c.comptes.length) lines.push(`- Comptes PCGE : ${c.comptes.join(", ")}`);
+    lines.push(`- Problème : ${c.detail}`);
+    lines.push(`- Correction proposée : ${c.recommandation}`);
+    lines.push(`- Référence : ${c.reference_normative}`);
+    lines.push(`- Action Odoo : ${c.action_odoo}`);
+    lines.push("");
+  });
+  lines.push("---");
+  lines.push("Exécution réelle : skill Claude Code `odoo-correction-anomalies` (lecture Odoo réelle,");
+  lines.push("correction sûre, rapport de régularité) ou passage manuel par le comptable.");
+  return lines.join("\n");
 }
 
 /** Audit PAIE seule (synchrone, 100 % local). */
