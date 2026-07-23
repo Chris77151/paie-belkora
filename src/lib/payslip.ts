@@ -62,6 +62,7 @@ interface Row { cells: [string, string, string, string, string]; kind: RowKind }
 function mainRows(v: PayslipView): Row[] {
   const { result: r } = v;
   const inp = defaults(v);
+  const p = getParams(v.period.year); // taux affichés dérivés de params.ts (source unique)
   const rows: Row[] = [];
   const days = inp.days_worked || 0;
   const dailyBase = days > 0 ? r.salaireBase / days : v.employee.base_hourly_rate;
@@ -87,8 +88,8 @@ function mainRows(v: PayslipView): Row[] {
   rows.push({ cells: ["SALAIRE BRUT", "", "", f(r.salaireBrut), ""], kind: "bold" });
   rows.push({ cells: ["Salaire brut soumis à cotisations", f(r.sbi), "", "", ""], kind: "italic" });
 
-  rows.push({ cells: ["CNSS prestations sociales", f(r.employerDetail.cnssBase), pctv(0.0448), "", f(r.cnssSalarie)], kind: "normal" });
-  rows.push({ cells: ["AMO", f(r.sbi), pctv(0.0226), "", f(r.amoSalarie)], kind: "normal" });
+  rows.push({ cells: ["CNSS prestations sociales", f(r.employerDetail.cnssBase), pctv(p.cnssEmployeeRate), "", f(r.cnssSalarie)], kind: "normal" });
+  rows.push({ cells: ["AMO", f(r.sbi), pctv(p.amoEmployeeRate), "", f(r.amoSalarie)], kind: "normal" });
   rows.push({ cells: ["Total cotisations salariales", "", "", "", f(r.cnssSalarie + r.amoSalarie)], kind: "bold" });
 
   // Abattement fiscal (art. 59 CGI) : sert au SEUL calcul de l'IR, ce N'EST PAS une retenue
