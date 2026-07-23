@@ -858,6 +858,8 @@ const SYNC_LABEL: Record<SyncStatus, string> = {
 
 function CloudSyncCard() {
   const t = useT();
+  const session = useSession();
+  const isSuperAdmin = session?.role === "super_admin";
   const existing = getSupabaseConfig();
   const [url, setUrl] = useState(existing?.url ?? "");
   const [anonKey, setAnonKey] = useState(existing?.anonKey ?? "");
@@ -866,6 +868,29 @@ function CloudSyncCard() {
   const [copied, setCopied] = useState(false);
   const { status, error } = useSyncStatus();
   const configured = isSupabaseConfigured();
+
+  // Volet sensible : la persistance cloud (URL + clé, portée de TOUTES les données) est
+  // réservée au super administrateur. Les autres rôles voient un simple avis, sans les champs.
+  if (!isSuperAdmin) {
+    return (
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>
+            <span className="inline-flex items-center gap-2">
+              <Cloud size={16} className="text-primary" />
+              {t("set.cloud.title")}
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="flex items-start gap-2 text-sm text-muted-foreground">
+            <ShieldAlert size={16} className="mt-0.5 shrink-0 text-warning" />
+            Seul le super administrateur peut configurer la persistance cloud (Supabase).
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   async function handleTest() {
     setTesting(true);

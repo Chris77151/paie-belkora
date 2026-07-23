@@ -4,6 +4,7 @@ import {
   Lock, Info, AlertTriangle,
 } from "lucide-react";
 import { actions, currentFirm, useStore } from "@/data/store";
+import { useSession } from "@/lib/auth";
 import { useT, type TKey } from "@/lib/i18n";
 import { odooFetchBankSnapshot, odooReadiness, odooErrorHint } from "@/lib/odoo";
 import { buildAuditEvents, buildBaseline, severityRank } from "@/lib/bank-audit";
@@ -13,7 +14,8 @@ import {
 } from "@/components/ui/kit";
 import { dateFr } from "@/lib/format";
 
-const ADMIN_ROLES: AppRole[] = ["super_admin", "firm_admin"];
+/** Zone sensible : réservée au SUPER administrateur uniquement. */
+const SUPER_ONLY: AppRole[] = ["super_admin"];
 
 const CLASS_META: Record<BankEventClass, { labelKey: TKey; tone: Parameters<typeof Badge>[0]["tone"] }> = {
   NON_AUTORISE: { labelKey: "sec.class.NON_AUTORISE", tone: "destructive" },
@@ -26,10 +28,10 @@ const SEV_TONE: Record<BankSeverity, Parameters<typeof Badge>[0]["tone"]> = {
   critique: "destructive", eleve: "warning", moyen: "muted", info: "success",
 };
 
-/** Garde-fou : refuse le RENDU (pas seulement le menu) si le rôle n'est pas admin. */
+/** Garde-fou : refuse le RENDU (pas seulement le menu) si le rôle n'est pas super admin. */
 function AdminOnly({ role, children }: { role: AppRole; children: React.ReactNode }) {
   const t = useT();
-  if (!ADMIN_ROLES.includes(role)) {
+  if (!SUPER_ONLY.includes(role)) {
     return (
       <Card>
         <CardContent className="pt-6">
@@ -49,7 +51,9 @@ function AdminOnly({ role, children }: { role: AppRole; children: React.ReactNod
 export default function Security() {
   const s = useStore();
   const t = useT();
-  const role = s.currentRole ?? "firm_admin";
+  const session = useSession();
+  // Le rôle fait foi via le compte authentifié (session), défaut sûr = le plus restreint.
+  const role = session?.role ?? "lecture_seule";
   const firm = currentFirm(s);
   const [busy, setBusy] = useState<"scan" | "baseline" | null>(null);
   const [warn, setWarn] = useState<string | null>(null);

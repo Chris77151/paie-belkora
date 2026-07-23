@@ -104,8 +104,8 @@ export const ADMIN_ROLES: AppRole[] = ["super_admin", "firm_admin"];
  * authentifié (session.role), jamais via une valeur modifiable librement dans l'UI.
  */
 export const ROUTE_ACCESS: Record<string, AppRole[]> = {
-  "/settings": ADMIN_ROLES, // paramétrage société + gestion des utilisateurs
-  "/securite": ADMIN_ROLES, // audit des données bancaires (RIB)
+  "/settings": ADMIN_ROLES, // paramétrage société (le volet persistance cloud y est réservé au super admin)
+  "/securite": ["super_admin"], // ZONE SENSIBLE : audit des données bancaires (RIB) — super admin uniquement
   "/assistant": ["super_admin", "firm_admin", "gestionnaire_paie"], // l'IA peut modifier/supprimer des données
 };
 
