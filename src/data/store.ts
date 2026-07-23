@@ -426,6 +426,29 @@ export const actions = {
     state = seed();
     persist();
   },
+  /**
+   * Réparation d'intégrité (volet « Stabilisation & Calculs ») — IDEMPOTENTE : purge les
+   * données orphelines (bulletins/congés/accidents rattachés à un salarié ou une période
+   * inexistants) et recale la société active si elle est invalide. Ne touche jamais aux taux
+   * ni au code ; ne supprime aucune donnée réelle rattachée à des entités existantes.
+   * Renvoie le détail de ce qui a été réparé.
+   */
+  repairIntegrity(): { payslips: number; leaves: number; accidents: number; currentFirm: boolean } {
+    const empIds = new Set(state.employees.map((e) => e.id));
+    const firmIds = new Set(state.firms.map((f) => f.id));
+    const periodIds = new Set(state.periods.map((p) => p.id));
+    const badSlips = state.payslips.filter((p) => !empIds.has(p.employee_id) || !periodIds.has(p.period_id)).length;
+    const badLeaves = (state.leaves ?? []).filter((l) => !empIds.has(l.employee_id)).length;
+    const badAcc = (state.workAccidents ?? []).filter((a) => !empIds.has(a.employee_id)).length;
+    const badFirm = !firmIds.has(state.currentFirmId);
+    set((s) => {
+      s.payslips = s.payslips.filter((p) => empIds.has(p.employee_id) && periodIds.has(p.period_id));
+      s.leaves = (s.leaves ?? []).filter((l) => empIds.has(l.employee_id));
+      s.workAccidents = (s.workAccidents ?? []).filter((a) => empIds.has(a.employee_id));
+      if (!firmIds.has(s.currentFirmId) && s.firms.length) s.currentFirmId = s.firms[0].id;
+    });
+    return { payslips: badSlips, leaves: badLeaves, accidents: badAcc, currentFirm: badFirm };
+  },
 };
 
 /* ---- moteur d'alertes de conformité (dérivé, non persisté) ---- */

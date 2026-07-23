@@ -16,6 +16,7 @@ import Security from "./pages/Security";
 import Audit from "./pages/Audit";
 import Assistant from "./pages/Assistant";
 import Settings from "./pages/Settings";
+import Stability from "./pages/Stability";
 
 /**
  * Garde de route : n'affiche `element` que si le rôle du compte connecté y a droit.
@@ -51,6 +52,7 @@ const router = createHashRouter([
       { path: "securite", element: g(<Security />) },
       { path: "audit", element: g(<Audit />) },
       { path: "assistant", element: g(<Assistant />) },
+      { path: "stability", element: g(<Stability />) },
       { path: "settings", element: g(<Settings />) },
     ],
   },

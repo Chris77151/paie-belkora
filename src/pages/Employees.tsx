@@ -5,7 +5,7 @@ import {
   ArrowRight, AlertTriangle, CheckCircle2,
 } from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, uid, useStore } from "@/data/store";
-import { useCanWrite } from "@/lib/auth";
+import { useCanWrite, useSession } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import {
   odooImportEmployees, buildEmployeeSyncPlan, applyEmployeeSyncPlan,
@@ -36,6 +36,7 @@ export default function Employees() {
   const s = useStore();
   const t = useT();
   const canEdit = useCanWrite(); // false pour le rôle « lecture seule »
+  const isSuperAdmin = useSession()?.role === "super_admin"; // import Odoo réservé au super admin
   const firm = currentFirm(s);
   const all = employeesOfFirm(s, firm.id);
   const [searchParams] = useSearchParams();
@@ -108,9 +109,11 @@ export default function Employees() {
   return (
     <div>
       <PageHeader title={t("page.employees.title")} subtitle={`${all.length} ${t("page.employees.count")} · ${firm.name}`}>
-        <Button variant="outline" onClick={importFromOdoo} disabled={importing || !canEdit}>
-          {importing ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} {t("emp.importOdoo")}
-        </Button>
+        {isSuperAdmin && (
+          <Button variant="outline" onClick={importFromOdoo} disabled={importing || !canEdit}>
+            {importing ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} {t("emp.importOdoo")}
+          </Button>
+        )}
         <Button variant="sage" onClick={prepareSync} disabled={syncing || !canEdit} title={t("emp.syncOdoo.hint")}>
           {syncing ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />} {t("emp.syncOdoo")}
         </Button>

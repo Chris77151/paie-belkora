@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutDashboard, Users, Calculator, FileText, ShieldAlert,
   CalendarDays, Settings, Moon, Sun, Sprout, BookText, FileSignature,
-  Search, UserRound, ShieldCheck, Bot, ScanSearch, LogOut, Menu, X, HardHat, Languages, Lock as LockIcon,
+  Search, UserRound, ShieldCheck, Bot, ScanSearch, LogOut, Menu, X, HardHat, Languages, Lock as LockIcon, Activity,
 } from "lucide-react";
 import { actions, currentFirm, deriveAlerts, useStore } from "@/data/store";
 import { Select } from "@/components/ui/kit";
@@ -34,6 +34,7 @@ const NAV_GROUPS: { labelKey: TKey; items: NavItem[] }[] = [
   ] },
   { labelKey: "nav.group.systeme", items: [
     { to: "/assistant", labelKey: "nav.assistant", icon: Bot },
+    { to: "/stability", labelKey: "nav.stability", icon: Activity },
     { to: "/settings", labelKey: "nav.settings", icon: Settings },
   ] },
 ];
