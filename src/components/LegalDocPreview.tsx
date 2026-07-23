@@ -1,22 +1,26 @@
 /**
  * Aperçu WYSIWYG d'un document juridique (LegalDoc) — même structure de blocs que le rendu
- * PDF/HTML de rh-legal.ts, pour un contrôle visuel avant export. Aux couleurs du logo Miya.
+ * PDF/HTML de rh-legal.ts, pour un contrôle visuel avant export. Les couleurs dérivent de la
+ * société émettrice (spectre de firm.brand_color), à l'identique de l'export ; vert Miya par défaut.
  */
 import type { Firm } from "@/data/types";
 import type { LegalDoc } from "@/lib/rh-legal";
 import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
+import { paletteForFirm } from "@/lib/brand-color";
 
 export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: LegalDoc; lang?: "fr" | "ar" }) {
   const ar = lang === "ar" && doc.ar ? doc.ar : null;
   const c = ar ?? doc;
   const rtl = !!ar;
+  const pal = paletteForFirm(firm.brand_color); // couleurs dérivées de la société (défaut = vert Miya)
   return (
     <div
       dir={rtl ? "rtl" : "ltr"}
-      className={`mx-auto max-w-[720px] rounded-md border bg-white text-[#28342c] shadow-sm px-9 py-8 text-[12.5px] leading-[1.7] ${rtl ? "text-right [font-family:'Amiri','Arabic_Typesetting',Tahoma,Arial,sans-serif]" : ""}`}
+      style={{ color: pal.inkHex }}
+      className={`mx-auto max-w-[720px] rounded-md border bg-white shadow-sm px-9 py-8 text-[12.5px] leading-[1.7] ${rtl ? "text-right [font-family:'Amiri','Arabic_Typesetting',Tahoma,Arial,sans-serif]" : ""}`}
     >
       {/* En-tête */}
-      <div className="flex items-center gap-4 border-b-[1.5px] border-[#8BA25F] pb-3">
+      <div className="flex items-center gap-4 border-b-[1.5px] pb-3" style={{ borderColor: pal.oliveHex }}>
         <img src={firm.logo_path || "/logo-miya.png"} alt="logo" className="h-11 w-auto object-contain" />
         <div>
           <div className="font-bold text-[14px]">
@@ -43,9 +47,9 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
 
       {/* Titre */}
       <div className="mt-6 text-center">
-        <div className="text-[19px] font-bold text-[#3a522a]">{c.heading}</div>
+        <div className="text-[19px] font-bold" style={{ color: pal.deepHex }}>{c.heading}</div>
         {c.subheading && <div className="mt-1 text-[11.5px] text-neutral-500">{c.subheading}</div>}
-        <div className="mx-auto mt-2.5 h-[2.5px] w-16 rounded bg-[#8DB94E]" />
+        <div className="mx-auto mt-2.5 h-[2.5px] w-16 rounded" style={{ backgroundColor: pal.limeHex }} />
       </div>
 
       {/* Corps */}
@@ -54,7 +58,7 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
           switch (b.k) {
             case "h":
               return (
-                <div key={i} className="pt-2 font-bold text-[13px] text-[#3a522a]">
+                <div key={i} className="pt-2 font-bold text-[13px]" style={{ color: pal.deepHex }}>
                   {b.t}
                 </div>
               );
@@ -101,8 +105,8 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
         <div className={`mt-8 flex gap-8 ${c.signatures.length >= 2 ? "" : "justify-start"}`}>
           {c.signatures.map((col, i) => (
             <div key={i} className={c.signatures!.length >= 2 ? "flex-1" : "w-3/5"}>
-              <div className="font-bold text-[12.5px] text-[#3a522a]">{col.title}</div>
-              <div className="mt-1 mb-2 h-[2px] w-6 bg-[#8DB94E]" />
+              <div className="font-bold text-[12.5px]" style={{ color: pal.deepHex }}>{col.title}</div>
+              <div className="mt-1 mb-2 h-[2px] w-6" style={{ backgroundColor: pal.limeHex }} />
               {col.lines.map((l, j) => (
                 <div key={j} className="text-[12px]">
                   {l}
@@ -117,7 +121,7 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
 
       <div className="mt-8 border-t border-neutral-200 pt-2 text-center text-[9px] italic text-neutral-400">
         {firmLegalLine(firm)}
-        <div className="not-italic text-[#8DB94E] mt-0.5">Document généré par Belkora Paie & RH — référentiel Maroc.</div>
+        <div className="not-italic mt-0.5" style={{ color: pal.limeHex }}>Document généré par Belkora Paie & RH — référentiel Maroc.</div>
       </div>
     </div>
   );

@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/kit";
 import { cn } from "@/lib/cn";
 import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
+import { paletteForFirm } from "@/lib/brand-color";
 import type { Employee, Firm } from "@/data/types";
 import { LegalDocPreview } from "@/components/LegalDocPreview";
 import {
@@ -288,6 +289,7 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
 
   const missing = missingFields(view);
   const paras = bodyParagraphs(view);
+  const pal = paletteForFirm(firm.brand_color); // aperçu aux couleurs de la société (comme l'export)
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -436,8 +438,8 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
             <CardTitle>{t("doc.preview")} — {DOC_TITLE[type]}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="mx-auto max-w-[640px] rounded-md border bg-white text-[#28342c] shadow-sm px-9 py-8">
-              <div className="flex items-center gap-4 border-b-2 border-[#8BA25F] pb-3">
+            <div className="mx-auto max-w-[640px] rounded-md border bg-white shadow-sm px-9 py-8" style={{ color: pal.inkHex }}>
+              <div className="flex items-center gap-4 border-b-2 pb-3" style={{ borderColor: pal.oliveHex }}>
                 <img src={firm.logo_path || "/logo-miya.png"} alt="logo" className="h-11 w-auto object-contain" />
                 <div>
                   <div className="font-bold text-[15px]">
@@ -451,7 +453,7 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
               </div>
 
               <div className="my-6 flex justify-center">
-                <div className="border-[1.4px] border-[#8BA25F] rounded px-7 py-2 font-bold tracking-wide text-[16px]">
+                <div className="border-[1.4px] rounded px-7 py-2 font-bold tracking-wide text-[16px]" style={{ borderColor: pal.oliveHex }}>
                   {DOC_TITLE[type]}
                 </div>
               </div>
