@@ -36,7 +36,7 @@ entre appareils). Jeu de départ : 2 sociétés, **0 salarié** (à saisir ou im
 | Bordereau CNSS + fichier BDS DAMANCOM, état 9421/IR | ✅ |
 | Moteur d'alertes de conformité (CNSS, CIN, mineur, CDD, contrat) | ✅ |
 | Congés payés, soldes, absences/IPE | ✅ |
-| Écritures comptables de paie (OD + règlement), PCGE validé expert-comptable | ✅ + 8 tests d'équilibre |
+| Écritures comptables de paie (OD + règlement), PCGE validé expert-comptable — **source unique de vérité** : agrège UNIQUEMENT les bulletins validés de la période (aucun recalcul, aucune valeur par défaut). **TFP incluse dans 4441 par défaut** (recouvrement CNSS/OFPPT), option isolée 4457. **Invariants bloquants** à chaque génération : équilibre débit=crédit, organismes sociaux (4441+4457)=Σ cotisations au centime, 6171=4432+retenues+IR — génération/validation bloquées avec détail de l'écart si un invariant échoue | ✅ + 14 tests |
 | Export des écritures : XML · Excel (.xlsx) · PDF | ✅ |
 | Multi-sociétés : création / suppression de sociétés | ✅ |
 | Import Odoo des salariés (JSON-RPC hr.employee, filtré par company_id ; salaire réel `wage`, CNSS `l10n_ma_cnss_number`, CIN) | ✅ |

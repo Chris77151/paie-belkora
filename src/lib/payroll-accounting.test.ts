@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computePayslip, type PayrollInput } from "./payroll-engine";
-import { buildPayrollEntry, buildSettlementEntry, sumResults } from "./payroll-accounting";
+import { buildPayrollEntry, buildSettlementEntry, sumResults, checkPayrollEntryInvariants } from "./payroll-accounting";
 import { DEFAULT_ACCOUNTS } from "./accounting-accounts";
 
 const aboubi: PayrollInput = {
@@ -29,18 +29,58 @@ describe("Écriture de paie (journal OD)", () => {
     const l = entry.lines.find((x) => x.account === "4432");
     expect(l?.credit).toBe(4135.52);
   });
-  it("crédit 4441 = CNSS+AMO+AF 898,96 (hors TFP)", () => {
+  it("crédit 4441 = CNSS+AMO+AF+TFP 953,80 (TFP incluse par défaut)", () => {
     const l = entry.lines.find((x) => x.account === "4441");
-    expect(l?.credit).toBe(898.96);
+    expect(l?.credit).toBe(953.8); // 898,96 + 54,84
   });
-  it("crédit 4457 = TFP 54,84 (taxe, hors CNSS)", () => {
-    const l = entry.lines.find((x) => x.account === "4457");
-    expect(l?.credit).toBe(54.84);
+  it("aucune ligne 4457 par défaut (TFP recouvrée par la CNSS)", () => {
+    expect(entry.lines.find((x) => x.account === "4457")).toBeUndefined();
   });
   it("ligne IR à 0 est éliminée", () => {
     expect(entry.lines.find((x) => x.account === "44525")).toBeUndefined();
   });
 });
+
+describe("Écriture de paie — TFP isolée (option tfpInCnss=false)", () => {
+  const totals = sumResults([computePayslip(aboubi)]);
+  const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { tfpInCnss: false });
+
+  it("reste équilibrée", () => {
+    expect(entry.balanced).toBe(true);
+    expect(entry.totalDebit).toBe(5089.32);
+  });
+  it("crédit 4441 = 898,96 (hors TFP) et 4457 = 54,84", () => {
+    expect(entry.lines.find((x) => x.account === "4441")?.credit).toBe(898.96);
+    expect(entry.lines.find((x) => x.account === "4457")?.credit).toBe(54.84);
+  });
+});
+
+describe("Invariants d'écriture (contrôle bloquant)", () => {
+  const totals = sumResults([computePayslip(aboubi)]);
+
+  it("les 3 invariants passent en mode par défaut (TFP en 4441)", () => {
+    const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7);
+    const inv = checkPayrollEntryInvariants(entry, totals, DEFAULT_ACCOUNTS);
+    expect(inv.ok).toBe(true);
+    expect(inv.results.map((r) => r.code)).toEqual(["equilibre", "organismes", "remunerations"]);
+    for (const r of inv.results) expect(Math.abs(r.delta)).toBeLessThan(0.01);
+  });
+
+  it("les 3 invariants passent aussi en TFP isolée (4441+4457)", () => {
+    const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { tfpInCnss: false });
+    expect(checkPayrollEntryInvariants(entry, totals, DEFAULT_ACCOUNTS).ok).toBe(true);
+  });
+
+  it("détecte un écart si l'écriture diverge des bulletins (organismes falsifiés)", () => {
+    const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7);
+    const tampered = { ...totals, cnssPatronal: round(totals.cnssPatronal + 100) };
+    const inv = checkPayrollEntryInvariants(entry, tampered, DEFAULT_ACCOUNTS);
+    expect(inv.ok).toBe(false);
+    expect(inv.results.find((r) => r.code === "organismes")?.ok).toBe(false);
+  });
+});
+
+const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 describe("Écriture de règlement (journal BQ)", () => {
   const totals = sumResults([computePayslip(aboubi)]);

@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { Calculator, FileCode2, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, Sparkles, Lock, Unlock } from "lucide-react";
-import { actions, currentFirm, employeesOfFirm, payslipsOfPeriod, useStore } from "@/data/store";
+import { actions, currentFirm, payslipsOfPeriod, useStore } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import { useSession } from "@/lib/auth";
-import { computeFor, defaultInput } from "@/lib/payroll-helpers";
 import type { PayrollResult } from "@/lib/payroll-engine";
-import { buildPayrollEntry, buildSettlementEntry, sumResults, type JournalEntry } from "@/lib/payroll-accounting";
+import {
+  buildPayrollEntry, buildSettlementEntry, sumResults, checkPayrollEntryInvariants,
+  type JournalEntry, type InvariantCheck,
+} from "@/lib/payroll-accounting";
 import { DEFAULT_ACCOUNTS } from "@/lib/accounting-accounts";
 import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml } from "@/lib/accounting-export";
 import { Badge, Button, Card, CardContent, Field, PageHeader, Select, Table, Td, Th } from "@/components/ui/kit";
@@ -26,23 +28,25 @@ export default function Accounting() {
   const closure = (s.accountingClosures ?? []).find((c) => c.id === closureId);
   const isValidated = !!closure;
 
-  const results = useMemo<PayrollResult[]>(() => {
+  // SOURCE UNIQUE DE VÉRITÉ : on n'agrège QUE les bulletins réellement validés (calculés) de la
+  // période. Aucun recalcul, aucune valeur par défaut — sinon divergence garantie avec la BDS/CNSS.
+  const { results, hasValidated } = useMemo<{ results: PayrollResult[]; hasValidated: boolean }>(() => {
     const period = s.periods.find((p) => p.firm_id === firm.id && p.year === year && p.month === month);
-    const emps = employeesOfFirm(s, firm.id).filter((e) => e.is_active);
     if (period) {
-      const slips = payslipsOfPeriod(s, period.id);
-      const frozen = slips.filter((sl) => sl.result).map((sl) => sl.result as PayrollResult);
-      if (frozen.length) return frozen;
+      const frozen = payslipsOfPeriod(s, period.id).filter((sl) => sl.result).map((sl) => sl.result as PayrollResult);
+      if (frozen.length) return { results: frozen, hasValidated: true };
     }
-    return emps.map((e) => computeFor(e, firm, year, month, defaultInput(e)));
+    return { results: [], hasValidated: false };
   }, [s, firm, year, month]);
 
-  const { paie, reglement, totals } = useMemo(() => {
+  const { paie, reglement, totals, invariants } = useMemo(() => {
     const t = sumResults(results);
+    const paieEntry = buildPayrollEntry(t, DEFAULT_ACCOUNTS, year, month); // TFP incluse dans 4441 (défaut)
     return {
       totals: t,
-      paie: buildPayrollEntry(t, DEFAULT_ACCOUNTS, year, month),
+      paie: paieEntry,
       reglement: buildSettlementEntry(t, DEFAULT_ACCOUNTS, year, month),
+      invariants: checkPayrollEntryInvariants(paieEntry, t, DEFAULT_ACCOUNTS),
     };
   }, [results, year, month]);
 
@@ -50,11 +54,13 @@ export default function Accounting() {
   // Période validée : on affiche l'INSTANTANÉ figé ; sinon les écritures dérivées à la volée.
   const entries: JournalEntry[] = isValidated ? closure!.entries : [paie, reglement];
   const balanced = entries.every((e) => e.balanced);
+  // Génération/validation autorisées seulement si TOUS les invariants passent (bloquant).
+  const controlsOk = balanced && invariants.ok;
   const showEntries = isValidated || generated;
 
   function validate() {
-    if (!balanced) {
-      window.alert("Impossible de valider : les écritures ne sont pas équilibrées.");
+    if (!controlsOk) {
+      window.alert("Impossible de valider : un contrôle d'invariant a échoué (voir le détail). Corrigez la paie avant de figer la période.");
       return;
     }
     if (!window.confirm(`Valider et verrouiller les écritures de ${period} ? La période sera figée.`)) return;
@@ -83,9 +89,9 @@ export default function Accounting() {
         {isValidated ? (
           <Badge tone="success"><Lock size={13} /> Validée · verrouillée</Badge>
         ) : showEntries ? (
-          <Badge tone={balanced ? "success" : "destructive"}>
-            {balanced ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
-            {balanced ? "Équilibrées (brouillon)" : "Déséquilibre"}
+          <Badge tone={controlsOk ? "success" : "destructive"}>
+            {controlsOk ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+            {controlsOk ? "Invariants OK (brouillon)" : "Contrôle échoué"}
           </Badge>
         ) : null}
       </PageHeader>
@@ -110,12 +116,12 @@ export default function Accounting() {
           ) : (
             <>
               {!generated && (
-                <Button variant="outline" onClick={() => setGenerated(true)}>
+                <Button variant="outline" onClick={() => setGenerated(true)} disabled={!hasValidated}>
                   <Sparkles size={16} /> Générer les écritures
                 </Button>
               )}
               {generated && (
-                <Button onClick={validate} disabled={!balanced}>
+                <Button onClick={validate} disabled={!controlsOk}>
                   <Lock size={16} /> Valider la période
                 </Button>
               )}
@@ -127,12 +133,25 @@ export default function Accounting() {
       {!showEntries ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <Calculator size={40} className="mx-auto text-muted-foreground/50" />
-            <p className="mt-4 text-sm text-muted-foreground">
-              Sélectionnez une période et cliquez sur <b>Générer les écritures</b>.<br />
-              Écriture de paie (journal OD) + écriture de règlement (banque), conformes au PCGE.
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground/80">{totals.headcount} salarié(s) actif(s) · {period}</p>
+            {hasValidated ? (
+              <>
+                <Calculator size={40} className="mx-auto text-muted-foreground/50" />
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Cliquez sur <b>Générer les écritures</b>.<br />
+                  Écriture de paie (journal OD) + règlement (banque), conformes au PCGE — <b>agrégées à partir des bulletins validés</b>.
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground/80">{totals.headcount} bulletin(s) validé(s) · {period}</p>
+              </>
+            ) : (
+              <>
+                <AlertTriangle size={40} className="mx-auto text-warning/70" />
+                <p className="mt-4 text-sm text-muted-foreground max-w-lg mx-auto">
+                  <b>Aucun bulletin validé</b> pour {period}. L'écriture comptable n'agrège que des bulletins
+                  <b> réels validés</b> (elle ne recalcule jamais). Calculez et validez d'abord la paie sur la
+                  page <b>Paie</b>, puis revenez générer les écritures.
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -146,6 +165,8 @@ export default function Accounting() {
               </span>
             </div>
           )}
+
+          <InvariantsPanel check={invariants} />
 
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <span className="text-sm text-muted-foreground mr-2">Exporter :</span>
@@ -177,6 +198,43 @@ export default function Accounting() {
         </>
       )}
     </div>
+  );
+}
+
+/** Contrôle d'invariants (bloquant) — affiché avant l'export/validation. */
+function InvariantsPanel({ check }: { check: InvariantCheck }) {
+  return (
+    <Card className={`mb-4 ${check.ok ? "" : "border-destructive/50"}`}>
+      <div className="flex items-center justify-between px-5 py-3 border-b">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          {check.ok ? <CheckCircle2 size={16} className="text-success" /> : <AlertTriangle size={16} className="text-destructive" />}
+          Contrôle d'invariants comptables
+        </div>
+        <Badge tone={check.ok ? "success" : "destructive"}>
+          {check.ok ? "Tous validés" : "Écart détecté — génération bloquée"}
+        </Badge>
+      </div>
+      <Table>
+        <thead>
+          <tr>
+            <Th>Invariant</Th><Th className="text-right">Attendu</Th><Th className="text-right">Obtenu</Th><Th className="text-right">Écart</Th><Th></Th>
+          </tr>
+        </thead>
+        <tbody>
+          {check.results.map((r) => (
+            <tr key={r.code} className={r.ok ? "" : "bg-destructive/5"}>
+              <Td className="text-muted-foreground">{r.label}</Td>
+              <Td className="text-right num">{mad(r.expected)}</Td>
+              <Td className="text-right num">{mad(r.actual)}</Td>
+              <Td className={`text-right num ${r.ok ? "text-muted-foreground" : "text-destructive font-semibold"}`}>{mad(r.delta)}</Td>
+              <Td className="text-right">
+                <Badge tone={r.ok ? "success" : "destructive"}>{r.ok ? "OK" : "Écart"}</Badge>
+              </Td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </Card>
   );
 }
 

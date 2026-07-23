@@ -67,20 +67,34 @@ function finalize(entry: Omit<JournalEntry, "totalDebit" | "totalCredit" | "bala
 const D = (account: string, label: string, debit: number): JournalLine => ({ account, label, debit: round2(debit), credit: 0 });
 const C = (account: string, label: string, credit: number): JournalLine => ({ account, label, debit: 0, credit: round2(credit) });
 
-/** Écriture de paie (journal OD) — constatation de la charge et des dettes. */
+/** Options de génération des écritures de paie. */
+export interface PayrollEntryOptions {
+  /**
+   * TFP créditée sur le bordereau CNSS (compte 4441) — DÉFAUT `true`, fidèle au recouvrement réel
+   * par la CNSS pour le compte de l'OFPPT. Si `false`, la TFP est isolée en 4457 (État – taxes).
+   * Le compte de CHARGE 61671 est présent dans les deux cas.
+   */
+  tfpInCnss?: boolean;
+}
+
+/**
+ * Écriture de paie (journal OD) — constatation de la charge et des dettes.
+ * N'AGRÈGE que les montants réels des bulletins (via `totals`) : ne recalcule jamais un taux.
+ */
 export function buildPayrollEntry(
   totals: PayrollTotals,
   accounts: PayrollAccounts,
   year: number,
   month: number,
+  opts: PayrollEntryOptions = {},
 ): JournalEntry {
+  const tfpInCnss = opts.tfpInCnss ?? true;
   const date = new Date(year, month, 0).toISOString().slice(0, 10); // fin de mois
   const ref = `PAIE-${year}-${String(month).padStart(2, "0")}`;
   const L = ACCOUNT_LABELS;
-  // 4441 CNSS = CNSS + AMO + AF (sal. + patr.) — la TFP est une TAXE, elle va en 4457.
-  const cnssTotal = round2(
-    totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af,
-  );
+  // 4441 = CNSS + AMO + AF (sal. + patr.) ; + TFP par défaut (recouvrement CNSS/OFPPT).
+  const organismesBase = totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af;
+  const cnssTotal = round2(organismesBase + (tfpInCnss ? totals.tfp : 0));
   return finalize({
     journal: "OD",
     date,
@@ -91,10 +105,10 @@ export function buildPayrollEntry(
       D(accounts.cnssPatronal, L.cnssPatronal, totals.cnssPatronal),
       D(accounts.amoPatronal, L.amoPatronal, totals.amoPatronal),
       D(accounts.allocationsFamiliales, L.allocationsFamiliales, totals.af),
-      D(accounts.tfp, L.tfp, totals.tfp),
+      D(accounts.tfp, L.tfp, totals.tfp), // charge 61671 (toujours)
       C(accounts.remunerationsDues, L.remunerationsDues, totals.netAPayer),
       C(accounts.cnssOrganisme, L.cnssOrganisme, cnssTotal),
-      C(accounts.etatTfp, L.etatTfp, totals.tfp),
+      C(accounts.etatTfp, L.etatTfp, tfpInCnss ? 0 : totals.tfp), // 4457 seulement si TFP isolée (ligne à 0 éliminée)
       C(accounts.etatIr, L.etatIr, totals.ir),
     ],
   });
@@ -106,15 +120,16 @@ export function buildSettlementEntry(
   accounts: PayrollAccounts,
   year: number,
   month: number,
+  opts: PayrollEntryOptions = {},
 ): JournalEntry {
+  const tfpInCnss = opts.tfpInCnss ?? true;
   const date = new Date(year, month, 0).toISOString().slice(0, 10);
   const ref = `REGL-${year}-${String(month).padStart(2, "0")}`;
   const L = ACCOUNT_LABELS;
-  const cnssTotal = round2(
-    totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af,
-  );
-  // CNSS (→CNSS), TFP (→CNSS/OFPPT) et IR (→DGI) sont des versements distincts.
-  const total = round2(totals.netAPayer + cnssTotal + totals.tfp + totals.ir);
+  const organismesBase = totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af;
+  const cnssTotal = round2(organismesBase + (tfpInCnss ? totals.tfp : 0));
+  // CNSS (→CNSS, TFP incluse par défaut) et IR (→DGI) sont des versements distincts.
+  const total = round2(totals.netAPayer + cnssTotal + (tfpInCnss ? 0 : totals.tfp) + totals.ir);
   return finalize({
     journal: "BQ",
     date,
@@ -122,10 +137,66 @@ export function buildSettlementEntry(
     description: `Règlement paie ${year}-${String(month).padStart(2, "0")}`,
     lines: [
       D(accounts.remunerationsDues, `${L.remunerationsDues} (virement salaires)`, totals.netAPayer),
-      D(accounts.cnssOrganisme, `${L.cnssOrganisme} (bordereau CNSS)`, cnssTotal),
-      D(accounts.etatTfp, `${L.etatTfp} (OFPPT)`, totals.tfp),
+      D(accounts.cnssOrganisme, `${L.cnssOrganisme} (bordereau CNSS${tfpInCnss ? " + TFP" : ""})`, cnssTotal),
+      D(accounts.etatTfp, `${L.etatTfp} (OFPPT)`, tfpInCnss ? 0 : totals.tfp),
       D(accounts.etatIr, `${L.etatIr} (versement IR)`, totals.ir),
       C(accounts.banque, L.banque, total),
     ],
   });
+}
+
+/* ------------------------------------------------------------------ invariants (contrôle bloquant) ------------------------------------------------------------------ */
+
+export interface InvariantResult {
+  code: string;
+  label: string;
+  ok: boolean;
+  /** Montant attendu (dérivé des bulletins). */
+  expected: number;
+  /** Montant obtenu dans l'écriture. */
+  actual: number;
+  /** actual − expected (0 attendu). */
+  delta: number;
+}
+export interface InvariantCheck {
+  ok: boolean;
+  results: InvariantResult[];
+}
+
+const creditOf = (e: JournalEntry, account: string) =>
+  e.lines.filter((l) => l.account === account).reduce((s, l) => s + l.credit, 0);
+const debitOf = (e: JournalEntry, account: string) =>
+  e.lines.filter((l) => l.account === account).reduce((s, l) => s + l.debit, 0);
+
+/**
+ * Contrôle d'invariants de l'écriture de paie, exécuté À CHAQUE génération (bloquant) :
+ *  (a) équilibre débit = crédit ;
+ *  (b) organismes sociaux (4441 + 4457) = Σ cotisations des bulletins (CNSS+AMO+AF+TFP, parts sal.+patr.) ;
+ *  (c) rémunérations 6171 = 4432 (net) + retenues salariales (CNSS+AMO) + IR.
+ * Tolérance : 0,01 DH (le centime). PURE, sans effet de bord.
+ */
+export function checkPayrollEntryInvariants(
+  entry: JournalEntry,
+  totals: PayrollTotals,
+  accounts: PayrollAccounts,
+): InvariantCheck {
+  const results: InvariantResult[] = [];
+  const push = (code: string, label: string, expected: number, actual: number) => {
+    const e = round2(expected);
+    const a = round2(actual);
+    results.push({ code, label, expected: e, actual: a, delta: round2(a - e), ok: Math.abs(a - e) < 0.01 });
+  };
+
+  push("equilibre", "Équilibre débit = crédit", entry.totalDebit, entry.totalCredit);
+
+  const organismes = creditOf(entry, accounts.cnssOrganisme) + creditOf(entry, accounts.etatTfp);
+  const cotisations =
+    totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af + totals.tfp;
+  push("organismes", "Organismes sociaux (4441+4457) = Σ cotisations bulletins", cotisations, organismes);
+
+  const brut = debitOf(entry, accounts.remunerations);
+  const attendu = creditOf(entry, accounts.remunerationsDues) + totals.cnssSalarie + totals.amoSalarie + totals.ir;
+  push("remunerations", "6171 = 4432 (net) + retenues salariales + IR", attendu, brut);
+
+  return { ok: results.every((r) => r.ok), results };
 }
