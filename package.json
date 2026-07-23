@@ -15,6 +15,7 @@
     "@anthropic-ai/sdk": "^0.111.0",
     "@supabase/supabase-js": "^2.110.8",
     "clsx": "^2.1.1",
+    "html2canvas": "^1.4.1",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
     "lucide-react": "^0.454.0",

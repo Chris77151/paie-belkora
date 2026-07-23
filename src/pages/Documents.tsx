@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   FileSignature,
   FileDown,
@@ -11,6 +11,7 @@ import {
   DoorOpen,
   Baby,
   Languages,
+  Camera,
 } from "lucide-react";
 import { useStore, currentFirm, employeesOfFirm } from "@/data/store";
 import {
@@ -85,6 +86,7 @@ import {
   type StcResult,
 } from "@/lib/stc-engine";
 import { mad, num } from "@/lib/format";
+import { exportElementToPdf, previewFileName } from "@/lib/preview-export";
 import { useT, type TKey } from "@/lib/i18n";
 import { Calculator, Wallet } from "lucide-react";
 import {
@@ -290,6 +292,9 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
   const missing = missingFields(view);
   const paras = bodyParagraphs(view);
   const pal = paletteForFirm(firm.brand_color); // aperçu aux couleurs de la société (comme l'export)
+  const previewRef = useRef<HTMLDivElement>(null);
+  const exportPreview = () =>
+    previewRef.current && exportElementToPdf(previewRef.current, previewFileName(DOC_TITLE[type], `${employee.first_name}_${employee.last_name}`));
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -420,12 +425,15 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
             </Field>
           </div>
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
             <Button variant="outline" className="flex-1" onClick={() => openRhDocHtml(view)}>
               <Printer size={16} /> {t("btn.html")}
             </Button>
             <Button className="flex-1" onClick={() => exportRhDocPdf(view)}>
               <FileDown size={16} /> {t("btn.pdf")}
+            </Button>
+            <Button variant="sage" className="w-full" onClick={exportPreview}>
+              <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
         </CardContent>
@@ -438,7 +446,7 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
             <CardTitle>{t("doc.preview")} — {DOC_TITLE[type]}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="mx-auto max-w-[640px] rounded-md border bg-white shadow-sm px-9 py-8" style={{ color: pal.inkHex }}>
+            <div ref={previewRef} className="mx-auto max-w-[640px] rounded-md border bg-white shadow-sm px-9 py-8" style={{ color: pal.inkHex }}>
               <div className="flex items-center gap-4 border-b-2 pb-3" style={{ borderColor: pal.oliveHex }}>
                 <img src={firm.logo_path || "/logo-miya.png"} alt="logo" className="h-11 w-auto object-contain" />
                 <div>
@@ -543,6 +551,9 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
   const doc = buildContractDoc(view);
   const missing = contractMissingFields(view);
   const prefilled = contractPrefilled(view);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const exportPreview = () =>
+    previewRef.current && exportElementToPdf(previewRef.current, previewFileName(doc.fileTitle, `${employee.first_name}_${employee.last_name}`));
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -674,12 +685,15 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
             </Field>
           </div>
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
             <Button variant="outline" className="flex-1" onClick={() => openContractHtml(view)}>
               <Printer size={16} /> HTML
             </Button>
             <Button className="flex-1" onClick={() => exportContractPdf(view)}>
               <FileDown size={16} /> PDF
+            </Button>
+            <Button variant="sage" className="w-full" onClick={exportPreview}>
+              <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
         </CardContent>
@@ -694,7 +708,9 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
             <CardTitle>{t("doc.preview")} — {doc.heading}</CardTitle>
           </CardHeader>
           <CardContent>
-            <LegalDocPreview firm={firm} doc={doc} />
+            <div ref={previewRef}>
+              <LegalDocPreview firm={firm} doc={doc} />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -772,6 +788,9 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
   const missing = disciplineMissingFields(view);
   const prefilled = disciplinePrefilled(view);
   const current = DISCIPLINE_TYPES.find((t) => t.value === type)!;
+  const previewRef = useRef<HTMLDivElement>(null);
+  const exportPreview = () =>
+    previewRef.current && exportElementToPdf(previewRef.current, previewFileName(doc.fileTitle, `${employee.first_name}_${employee.last_name}`));
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -926,12 +945,15 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
             </Field>
           </div>
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
             <Button variant="outline" className="flex-1" onClick={() => openDisciplineHtml(view)}>
               <Printer size={16} /> HTML
             </Button>
             <Button className="flex-1" onClick={() => exportDisciplinePdf(view)}>
               <FileDown size={16} /> PDF
+            </Button>
+            <Button variant="sage" className="w-full" onClick={exportPreview}>
+              <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
         </CardContent>
@@ -946,7 +968,9 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
             <CardTitle>{t("doc.preview")} — {doc.heading}</CardTitle>
           </CardHeader>
           <CardContent>
-            <LegalDocPreview firm={firm} doc={doc} />
+            <div ref={previewRef}>
+              <LegalDocPreview firm={firm} doc={doc} />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1066,6 +1090,9 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
   const missing = ruptureMissingFields(view);
   const prefilled = rupturePrefilled(view);
   const current = RUPTURE_TYPES.find((t) => t.value === type)!;
+  const previewRef = useRef<HTMLDivElement>(null);
+  const exportPreview = () =>
+    previewRef.current && exportElementToPdf(previewRef.current, previewFileName(doc.fileTitle, `${employee.first_name}_${employee.last_name}`));
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -1271,12 +1298,15 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
             </Field>
           </div>
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
             <Button variant="outline" className="flex-1" onClick={() => openRuptureHtml(view)}>
               <Printer size={16} /> HTML
             </Button>
             <Button className="flex-1" onClick={() => exportRupturePdf(view)}>
               <FileDown size={16} /> PDF
+            </Button>
+            <Button variant="sage" className="w-full" onClick={exportPreview}>
+              <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
         </CardContent>
@@ -1292,7 +1322,9 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
             <CardTitle>{t("doc.preview")} — {doc.heading}</CardTitle>
           </CardHeader>
           <CardContent>
-            <LegalDocPreview firm={firm} doc={doc} />
+            <div ref={previewRef}>
+              <LegalDocPreview firm={firm} doc={doc} />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1409,6 +1441,9 @@ function MineurPanel({ firm }: { firm: Firm }) {
   const missing = mineurMissingFields(view);
   const prefilled = mineurPrefilled(view);
   const current = MINEUR_TYPES.find((t) => t.value === type)!;
+  const previewRef = useRef<HTMLDivElement>(null);
+  const exportPreview = () =>
+    previewRef.current && exportElementToPdf(previewRef.current, previewFileName(doc.fileTitle, `${firm.name}_${lang}`));
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -1480,6 +1515,9 @@ function MineurPanel({ firm }: { firm: Firm }) {
             <Button className="flex-1" onClick={() => exportMineurPdf(view)}>
               <FileDown size={16} /> PDF (FR)
             </Button>
+            <Button variant="sage" className="w-full" onClick={exportPreview}>
+              <Camera size={16} /> {t("doc.exportPreview")} ({lang === "ar" ? "AR" : "FR"})
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -1495,7 +1533,9 @@ function MineurPanel({ firm }: { firm: Firm }) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <LegalDocPreview firm={firm} doc={doc} lang={lang} />
+            <div ref={previewRef}>
+              <LegalDocPreview firm={firm} doc={doc} lang={lang} />
+            </div>
           </CardContent>
         </Card>
       </div>

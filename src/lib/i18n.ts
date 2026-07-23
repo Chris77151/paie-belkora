@@ -195,6 +195,7 @@ export const DICT = {
   "doc.params.contract": { fr: "Paramètres du contrat", ar: "إعدادات العقد" },
   "doc.params.sanction": { fr: "Paramètres de la sanction", ar: "إعدادات العقوبة" },
   "doc.preview": { fr: "Aperçu", ar: "معاينة" },
+  "doc.exportPreview": { fr: "Exporter l'aperçu (PDF fidèle)", ar: "تصدير المعاينة (PDF مطابق)" },
   "doc.type": { fr: "Type de document", ar: "نوع الوثيقة" },
   "doc.employee": { fr: "Salarié", ar: "الأجير" },
   "doc.civility": { fr: "Civilité", ar: "صفة المخاطبة" },
