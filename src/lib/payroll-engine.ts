@@ -16,6 +16,17 @@ import { getParams, type PayrollParams } from "./params";
 
 export type Regime = "SMIG" | "SMAG";
 
+/**
+ * Exonération CNSS/AMO/AF/TFP d'un salarié (dispositifs marocains) :
+ *  - `none`      : régime de droit commun (défaut).
+ *  - `totale`    : indemnité de STAGE hors assiette (contrat de stage ANAPEC) — aucune cotisation
+ *                  (parts salariale ET patronale : CNSS, AMO, AF, TFP = 0).
+ *  - `patronale` : recrutement TAHFIZ / IDMAJ (ANAPEC) — exonération de la part PATRONALE
+ *                  (CNSS patr., AMO patr., AF, TFP = 0) ; les parts SALARIALES restent dues.
+ * Sous réserve d'éligibilité et de la durée du dispositif (à documenter par salarié).
+ */
+export type CnssExemption = "none" | "totale" | "patronale";
+
 export interface PayrollInput {
   year: number;
   month: number;
@@ -41,6 +52,9 @@ export interface PayrollInput {
 
   /** Transport hors périmètre urbain -> plafond d'exonération 750 au lieu de 500. */
   transportOutsideUrban?: boolean;
+
+  /** Exonération CNSS/AMO/AF/TFP (dispositif ANAPEC/stage). Défaut : `none`. */
+  cnssExemption?: CnssExemption;
 }
 
 export interface PayrollResult {
@@ -179,10 +193,15 @@ export function computePayslip(input: PayrollInput): PayrollResult {
   // 2. SBI = brut − indemnités exonérées
   const sbi = round2(salaireBrut - indemnitesExonerees);
 
+  // Exonération CNSS/AMO/AF/TFP (dispositif ANAPEC/stage), appliquée AVANT le calcul du SNI/IR.
+  const exemption = input.cnssExemption ?? "none";
+  const exoSalarial = exemption === "totale"; // stage : aucune retenue salariale
+  const exoPatronal = exemption === "totale" || exemption === "patronale"; // stage OU TAHFIZ/IDMAJ
+
   // 3bis. Cotisations salariales (assiette = SBI, CNSS plafonnée)
   const cnssBase = Math.min(sbi, p.cnssCeiling);
-  const cnssSalarie = round2(cnssBase * p.cnssEmployeeRate);
-  const amoSalarie = round2(sbi * p.amoEmployeeRate);
+  const cnssSalarie = exoSalarial ? 0 : round2(cnssBase * p.cnssEmployeeRate);
+  const amoSalarie = exoSalarial ? 0 : round2(sbi * p.amoEmployeeRate);
 
   // 3. Frais professionnels (CGI art. 59-I-A)
   const sbiAnnual = sbi * 12;
@@ -208,14 +227,14 @@ export function computePayslip(input: PayrollInput): PayrollResult {
   // 7. Net à payer
   const netAPayer = round2(salaireBrut - cnssSalarie - amoSalarie - ir);
 
-  // Charges patronales — détail réglementaire puis agrégats
-  const cnssCourtTerme = round2(cnssBase * p.cnssEmployerCourtTermeRate);
-  const cnssIpe = round2(cnssBase * p.cnssEmployerIpeRate);
-  const cnssLongTerme = round2(cnssBase * p.cnssEmployerLongTermeRate);
-  const af = round2(sbi * p.familyAllocRate);
-  const amoBase = round2(sbi * p.amoEmployerBaseRate);
-  const amoSolidarite = round2(sbi * p.amoEmployerSolidariteRate);
-  const tfp = round2(sbi * p.tfpRate);
+  // Charges patronales — détail réglementaire puis agrégats (exonérées si dispositif patronal)
+  const cnssCourtTerme = exoPatronal ? 0 : round2(cnssBase * p.cnssEmployerCourtTermeRate);
+  const cnssIpe = exoPatronal ? 0 : round2(cnssBase * p.cnssEmployerIpeRate);
+  const cnssLongTerme = exoPatronal ? 0 : round2(cnssBase * p.cnssEmployerLongTermeRate);
+  const af = exoPatronal ? 0 : round2(sbi * p.familyAllocRate);
+  const amoBase = exoPatronal ? 0 : round2(sbi * p.amoEmployerBaseRate);
+  const amoSolidarite = exoPatronal ? 0 : round2(sbi * p.amoEmployerSolidariteRate);
+  const tfp = exoPatronal ? 0 : round2(sbi * p.tfpRate);
 
   const cnssPatronal = round2(cnssCourtTerme + cnssIpe + cnssLongTerme);
   const amoPatronal = round2(amoBase + amoSolidarite);

@@ -3,7 +3,7 @@
  * En V1 la persistance est locale (localStorage) ; ces types restent valides pour
  * un branchement Supabase ultérieur (mêmes colonnes).
  */
-import type { PayrollResult } from "@/lib/payroll-engine";
+import type { PayrollResult, CnssExemption } from "@/lib/payroll-engine";
 import type { JournalEntry } from "@/lib/payroll-accounting";
 
 export type Regime = "SMIG" | "SMAG";
@@ -80,6 +80,8 @@ export interface Employee {
   address?: string;
   is_active: boolean;
   hazardous_site?: boolean; // site BTP/dangereux -> contrôle mineur
+  /** Exonération CNSS/AMO/AF/TFP (dispositif ANAPEC/stage). Défaut : droit commun. */
+  cnss_exemption?: CnssExemption;
 }
 
 export interface PayrollPeriod {

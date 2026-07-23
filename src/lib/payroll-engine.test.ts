@@ -190,3 +190,46 @@ describe("fonctions unitaires", () => {
   it("irAnnuel = 0 sous 40 000", () => expect(irAnnuel(39000, p)).toBe(0));
   it("irAnnuel tranche 20 %", () => expect(irAnnuel(70000, p)).toBe(70000 * 0.2 - 10000));
 });
+
+describe("Exonération CNSS (dispositifs ANAPEC / stage)", () => {
+  // Salaire au-dessus du SMIG pour des cotisations non nulles en droit commun.
+  const inp = (over: Partial<PayrollInput> = {}) => base({ hourlyRate: 30, dependents: 1, ...over });
+
+  it("droit commun : cotisations non nulles (référence)", () => {
+    const r = computePayslip(inp());
+    expect(r.cnssSalarie).toBeGreaterThan(0);
+    expect(r.cnssPatronal).toBeGreaterThan(0);
+    expect(r.af).toBeGreaterThan(0);
+    expect(r.tfp).toBeGreaterThan(0);
+  });
+
+  it("totale (stage ANAPEC) : AUCUNE cotisation, ni salariale ni patronale", () => {
+    const r = computePayslip(inp({ cnssExemption: "totale" }));
+    expect(r.cnssSalarie).toBe(0);
+    expect(r.amoSalarie).toBe(0);
+    expect(r.cnssPatronal).toBe(0);
+    expect(r.amoPatronal).toBe(0);
+    expect(r.af).toBe(0);
+    expect(r.tfp).toBe(0);
+    expect(r.chargesPatronales).toBe(0);
+    // Net = brut − IR (aucune retenue sociale).
+    expect(r.netAPayer).toBe(round2(r.salaireBrut - r.ir));
+  });
+
+  it("patronale (TAHFIZ / IDMAJ) : part salariale due, part patronale exonérée", () => {
+    const ref = computePayslip(inp());
+    const r = computePayslip(inp({ cnssExemption: "patronale" }));
+    // Parts salariales identiques au droit commun (retenues maintenues).
+    expect(r.cnssSalarie).toBe(ref.cnssSalarie);
+    expect(r.amoSalarie).toBe(ref.amoSalarie);
+    expect(r.cnssSalarie).toBeGreaterThan(0);
+    // Parts patronales à zéro.
+    expect(r.cnssPatronal).toBe(0);
+    expect(r.amoPatronal).toBe(0);
+    expect(r.af).toBe(0);
+    expect(r.tfp).toBe(0);
+    // Net inchangé (le salarié paie sa part), mais coût employeur = brut seul.
+    expect(r.netAPayer).toBe(ref.netAPayer);
+    expect(r.coutTotalEmployeur).toBe(r.salaireBrut);
+  });
+});

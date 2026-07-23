@@ -82,6 +82,28 @@ describe("Invariants d'écriture (contrôle bloquant)", () => {
 
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+describe("Alignement BDS — salarié exonéré CNSS", () => {
+  const droitCommun = computePayslip({ ...aboubi, hourlyRate: 30 });
+  const stagiaire = computePayslip({ ...aboubi, hourlyRate: 30, cnssExemption: "totale" });
+
+  it("un stagiaire (exonération totale) ne contribue pas au 4441", () => {
+    const totals = sumResults([stagiaire]);
+    const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7);
+    // Aucune cotisation sociale -> pas de ligne 4441.
+    expect(entry.lines.find((x) => x.account === "4441")).toBeUndefined();
+    expect(entry.balanced).toBe(true);
+    expect(checkPayrollEntryInvariants(entry, totals, DEFAULT_ACCOUNTS).ok).toBe(true);
+  });
+
+  it("l'assiette 4441 exclut le stagiaire dans un groupe mixte (droit commun + stage)", () => {
+    const soloEntry = buildPayrollEntry(sumResults([droitCommun]), DEFAULT_ACCOUNTS, 2026, 7);
+    const mixEntry = buildPayrollEntry(sumResults([droitCommun, stagiaire]), DEFAULT_ACCOUNTS, 2026, 7);
+    const c4441 = (e: typeof soloEntry) => e.lines.find((x) => x.account === "4441")?.credit ?? 0;
+    // Le 4441 du groupe mixte = celui du seul salarié de droit commun (le stagiaire ajoute 0).
+    expect(c4441(mixEntry)).toBe(c4441(soloEntry));
+  });
+});
+
 describe("Écriture de règlement (journal BQ)", () => {
   const totals = sumResults([computePayslip(aboubi)]);
   const entry = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7);

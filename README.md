@@ -24,7 +24,7 @@ entre appareils). Jeu de départ : 2 sociétés, **0 salarié** (à saisir ou im
 
 | Domaine | État |
 |---|---|
-| Moteur de paie Maroc (SMIG 17,92/191 h, CNSS 4,48 % plafond 6 000, AMO 2,26 %, IR barème LF 2025, frais pro 35 %/25 %, prime d'ancienneté, HS art. 201) | ✅ + 22 tests |
+| Moteur de paie Maroc (SMIG 17,92/191 h, CNSS 4,48 % plafond 6 000, AMO 2,26 %, IR barème LF 2025, frais pro 35 %/25 %, prime d'ancienneté, HS art. 201) — + **exonération CNSS par salarié** (dispositifs ANAPEC) : `totale` (stage — indemnité hors assiette, CNSS/AMO/AF/TFP = 0) ou `patronale` (TAHFIZ/IDMAJ — part patronale exonérée, part salariale due), pour aligner le calcul et l'écriture comptable sur la **BDS DAMANCOM** réelle | ✅ + 40 tests |
 | Paramètres réglementaires isolés dans `payroll_params` (aucun taux en dur) | ✅ |
 | 7 pages : Tableau de bord, Salariés, Paie, Déclarations, Conformité, Congés, Paramètres | ✅ |
 | Bulletin de paie : PDF (jsPDF + logo), LaTeX (.tex), HTML imprimable | ✅ |

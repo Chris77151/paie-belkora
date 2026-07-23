@@ -43,6 +43,7 @@ export function toEngineInput(
     salissure: input.salissure,
     otherGross: input.other_gross,
     transportOutsideUrban: input.transport_outside_urban,
+    cnssExemption: emp.cnss_exemption ?? "none",
   };
 }
 

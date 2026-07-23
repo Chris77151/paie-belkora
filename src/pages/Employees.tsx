@@ -13,6 +13,7 @@ import {
 } from "@/lib/odoo";
 import type { SyncPlan } from "@/lib/odoo";
 import type { ContractType, Employee } from "@/data/types";
+import type { CnssExemption } from "@/lib/payroll-engine";
 import {
   Badge, Button, Card, CardContent, Field, Input, PageHeader, Select, Table, Td, Th,
 } from "@/components/ui/kit";
@@ -427,6 +428,13 @@ function EmployeeDrawer({ emp, onClose }: { emp: Employee; onClose: () => void }
           <Field label={t("emp.contractType")}>
             <Select value={f.contract_type} onChange={(e) => set({ contract_type: e.target.value as ContractType })}>
               {CONTRACTS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </Select>
+          </Field>
+          <Field label={t("emp.cnssExemption")} hint={t("emp.cnssExemption.hint")}>
+            <Select value={f.cnss_exemption ?? "none"} onChange={(e) => set({ cnss_exemption: e.target.value as CnssExemption })}>
+              <option value="none">{t("emp.cnssExemption.none")}</option>
+              <option value="patronale">{t("emp.cnssExemption.patronale")}</option>
+              <option value="totale">{t("emp.cnssExemption.totale")}</option>
             </Select>
           </Field>
           <Field label={t("emp.site")}><Input value={f.site ?? ""} onChange={(e) => set({ site: e.target.value })} /></Field>
