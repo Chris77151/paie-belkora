@@ -21,7 +21,8 @@ import {
   type LegalBlock,
   type LegalDoc,
 } from "./rh-legal";
-import { num } from "./format";
+import { num, amountToWordsFr } from "./format";
+import { firmIdentityClause } from "./firm-legal";
 
 /** Décomposition chiffrée du solde de tout compte, injectée dans le reçu (calcul auto). */
 export interface StcBreakdown {
@@ -138,39 +139,101 @@ function accordBlocks(v: RhRuptureView): LegalBlock[] {
   ];
 }
 
+/**
+ * Reçu pour solde de tout compte — modèle MBD (art. 73-76). 5 sections + annexe illettré.
+ * Auto-remplissage : identité depuis l'employé, décompte depuis le moteur STC quand disponible ;
+ * sinon rubriques vierges à remplir (pointillés). Tout en blocs (l'ordre du modèle est respecté).
+ */
 function recuBlocks(v: RhRuptureView): LegalBlock[] {
   const f = v.firm;
-  const ident = [f.name.toUpperCase(), f.rc && `RC ${f.rc}`, f.ice && `ICE ${f.ice}`].filter(Boolean).join(", ");
-  // Si le calcul automatique est disponible, on affiche les vrais montants ; sinon placeholders.
+  const e = v.employee;
+  const identity = firmIdentityClause(f);
+  const sig = val(v.signatoryName ?? f.signatory_name);
+  const role = val(v.signatoryRole ?? f.signatory_role);
+  const dot = "……………";
   const b = v.stc;
-  const net = b ? `${num(b.net)}` : val(v.netAmount);
-  const decompo: string[] = b
+  const netStr = b ? num(b.net) : (v.netAmount?.trim() ? v.netAmount.trim() : dot);
+  const netLettres = b ? amountToWordsFr(b.net) : dot;
+  const year = (() => { const d = new Date(v.issueDate); return isNaN(d.getFullYear()) ? "" : d.getFullYear(); })();
+
+  // Décompte : lignes réelles du moteur STC si dispo, sinon rubriques vierges du modèle.
+  const decompteRows: string[][] = b
     ? [
-        ...b.lines.map((l) => `${l.label} : ${num(l.amount)} DH`),
-        `Total brut : ${num(b.grossTotal)} DH`,
-        `Retenue CNSS salariale : (–) ${num(b.cnss)} DH`,
-        `Retenue AMO salariale : (–) ${num(b.amo)} DH`,
-        `Retenue IR : (–) ${num(b.ir)} DH`,
-        ...(b.otherDeductions > 0 ? [`Autres retenues (avances, prêts…) : (–) ${num(b.otherDeductions)} DH`] : []),
-        `NET PAYÉ : ${num(b.net)} DH`,
+        ...b.lines.map((l) => [l.label, "", "", num(l.amount)]),
+        ["TOTAL BRUT", "", "", num(b.grossTotal)],
+        ["– Cotisation salariale CNSS (4,48 % ; plafond 6 000 DH/mois)", "", "", `(–) ${num(b.cnss)}`],
+        ["– Cotisation salariale AMO (2,26 % ; sans plafond)", "", "", `(–) ${num(b.amo)}`],
+        ["– Impôt sur le revenu, retenue à la source (barème CGI)", "", "", `(–) ${num(b.ir)}`],
+        ...(b.otherDeductions > 0 ? [["– Compensation avance / prêt consenti au Salarié", "", "", `(–) ${num(b.otherDeductions)}`]] : []),
+        ["NET À PAYER (pour solde de tout compte)", "", "", num(b.net)],
       ]
     : [
-        `Salaire des jours travaillés non encore payés : ${PH} DH`,
-        `Indemnité compensatrice de congés payés (art. 231) : ${PH} DH`,
-        `Autres sommes dues (heures supplémentaires, indemnités…) : ${PH} DH`,
-        `Total brut : ${PH} DH`,
-        `Retenues sociales et fiscales (CNSS, AMO, IR) : (–) ${PH} DH`,
-        `NET PAYÉ : ${net} DH`,
+        ["1. Salaire des jours travaillés non réglés", dot, `${dot} j`, dot],
+        ["2. Heures supplémentaires (art. 201)", dot, `${dot} h`, dot],
+        ["3. Indemnité compensatrice de congé annuel payé (1,5 j/mois — art. 231, 238)", dot, `${dot} mois`, dot],
+        ["4. Indemnité compensatrice de préavis (art. 43 et 51)", dot, dot, dot],
+        ["5. Indemnité de licenciement (art. 52, 53, 55)", dot, dot, dot],
+        ["6. Reliquats / primes / rappels divers", dot, dot, dot],
+        ["TOTAL BRUT", "", "", dot],
+        ["– Cotisation salariale CNSS (4,48 % ; plafond 6 000 DH/mois)", "", "", dot],
+        ["– Cotisation salariale AMO (2,26 % ; sans plafond)", "", "", dot],
+        ["– Impôt sur le revenu, retenue à la source (barème CGI)", "", "", dot],
+        ["– Compensation avance / prêt consenti au Salarié", "", "", dot],
+        ["NET À PAYER (pour solde de tout compte)", "", "", dot],
       ];
+
   return [
-    { k: "p", t: `Je soussigné(e) ${fullName(v.employee) || PH}, CIN n° ${val(v.cin ?? v.employee.cin)}, N° CNSS ${val(v.cnss ?? v.employee.cnss_number)}, ayant été employé(e) par la société ${ident}, en qualité d'ouvrier de chantier : ${val(v.jobTitle ?? v.employee.position)}, dans le cadre d'un contrat pour accomplir un travail déterminé sur le chantier ${val(v.site ?? v.employee.site)}, du ${valDate(v.contractStart)} au ${valDate(v.contractEnd)},` },
-    { k: "p", t: `reconnais avoir reçu de l'Employeur, à la cessation de mon contrat, la somme nette de ${net} DH, pour solde de tout compte, se décomposant comme suit :` },
-    { k: "ul", items: decompo },
-    { k: "check", items: [`Virement bancaire (réf. : ${PH})`, "Espèces"] },
-    { k: "p", t: "Le présent reçu :" },
-    { k: "ul", items: [
-      "est établi en deux (2) exemplaires, dont un remis au Salarié ;",
-      "peut être dénoncé dans les soixante (60) jours suivant sa signature (art. 75) ; passé ce délai, il devient définitif et a effet libératoire pour les sommes qui y sont mentionnées.",
+    { k: "center", t: `Référence reçu : STC-${year || 2026}-${dot}` },
+
+    // 1. Les parties
+    { k: "h", t: "1. Les parties" },
+    { k: "p", t: `L'EMPLOYEUR : ${f.name.toUpperCase()}${identity ? ` — ${identity}` : ""}, représentée par ${sig}, en qualité de ${role}, ci-après désignée « l'Employeur », d'une part.` },
+    { k: "h", t: "Le Salarié" },
+    { k: "p", t: `Nom et prénom : ${fullName(e) || dot}      N° CIN : ${val(v.cin ?? e.cin)}` },
+    { k: "p", t: `N° CNSS : ${val(v.cnss ?? e.cnss_number)}      Né(e) le : ${valDate(e.birth_date)}` },
+    { k: "p", t: `Fonction / qualification : ${val(v.jobTitle ?? e.position)}      Chantier / affectation : ${val(v.site ?? e.site)}` },
+    { k: "p", t: `Adresse : ${val(v.address ?? e.address)}` },
+    { k: "p", t: "ci-après désigné(e) « le Salarié », d'autre part." },
+
+    // 2. Relation de travail et rupture
+    { k: "h", t: "2. Relation de travail et rupture" },
+    { k: "p", t: "Nature du contrat :" },
+    { k: "check", items: ["CDD de chantier / travail déterminé", "CDD à terme", "Journalier", "CDI"] },
+    { k: "p", t: `Date d'entrée : ${valDate(v.contractStart)}      Date de sortie (cessation) : ${valDate(v.contractEnd)}` },
+    { k: "p", t: "Motif de la rupture :" },
+    { k: "check", items: ["Arrivée du terme / achèvement du travail déterminé", "Démission", "Licenciement", "Rupture d'un commun accord", `Autre : ${dot}`] },
+
+    // 3. Décompte des sommes dues
+    { k: "h", t: "3. Décompte des sommes dues" },
+    { k: "p", t: "Article 74-1 : le reçu pour solde de tout compte doit porter indication détaillée des sommes versées au Salarié." },
+    { k: "table", head: ["Rubrique (fondement légal)", "Base", "Nombre", "Montant (DH)"], align: ["left", "right", "right", "right"], rows: decompteRows },
+    { k: "p", t: `Arrêté le présent reçu à la somme nette de ${netStr} dirhams, en toutes lettres : ${netLettres}.` },
+    { k: "p", t: "Réglé par :" },
+    { k: "check", items: ["Virement bancaire", `Chèque n° ${dot}`, `Espèces — le ${dot}`] },
+
+    // 4. Mentions légales
+    { k: "h", t: "4. Mentions légales" },
+    { k: "p", t: "Le Salarié reconnaît avoir reçu de l'Employeur la somme nette ci-dessus, pour solde de tout compte, en règlement de tout paiement dû au titre de l'exécution et de la cessation de son contrat de travail (art. 73)." },
+    { k: "p", t: "Le présent reçu, établi en deux exemplaires, peut être dénoncé dans les soixante (60) jours de sa signature, par lettre recommandée avec accusé de réception ou par assignation précisant les droits invoqués ; passé ce délai sans dénonciation régulière, il vaut solde de tout compte définitif (art. 74 à 76)." },
+
+    // 5. Signatures
+    { k: "h", t: "5. Signatures" },
+    { k: "p", t: `Fait à ${v.issueCity?.trim() || f.city || dot}, le ${valDate(v.issueDate)}, en deux exemplaires originaux, dont un remis au Salarié.` },
+    { k: "table", head: ["Le Salarié", "Pour l'Entreprise"], rows: [
+      ["", f.name.toUpperCase()],
+      ["", `Représentée par ${sig}, ${role}`],
+      [" ", " "],
+      [" ", " "],
+      ["Signature (précédée de « Lu et approuvé — pour solde de tout compte », art. 74)", "Signature et cachet"],
+    ] },
+
+    // Annexe — salarié illettré (art. 74 in fine)
+    { k: "h", t: "Annexe — Salarié ne sachant ni lire ni écrire (art. 74 in fine)" },
+    { k: "p", t: "Le Salarié déclarant ne savoir ni lire ni écrire, le présent reçu lui a été intégralement lu ; il y appose son empreinte digitale ci-après, et le reçu est contresigné par l'agent chargé de l'inspection du travail, dans le cadre de la conciliation prévue à l'article 532 du Code du travail." },
+    { k: "table", head: ["Empreinte digitale du Salarié", "Contreseing — Inspection du travail"], rows: [
+      [" ", `Nom de l'agent : ${dot}`],
+      [" ", `Cachet et signature : ${dot}`],
+      [" ", `Le : ${dot}`],
     ] },
   ];
 }
@@ -210,15 +273,8 @@ export function buildRuptureDoc(v: RhRuptureView): LegalDoc {
       { title: "L'Employeur", lines: [`Représenté par : ${val(v.signatoryName ?? v.firm.signatory_name)}`], caption: "Signature, cachet et légalisation" },
       { title: "Le Salarié", lines: [], caption: "Signature précédée de « Lu et approuvé — bon pour accord », et légalisation" },
     ];
-  } else {
-    doc.faitA = faitA + ".";
-    doc.legalNote =
-      "Ce reçu n'a pas à être légalisé : la mention manuscrite « lu et approuvé » et la signature du Salarié suffisent (art. 74). Pour un salarié illettré, le reçu lui est lu et expliqué, et son empreinte digitale est apposée avec la mention « lecture faite ».";
-    doc.signatures = [
-      { title: "Le Salarié", lines: [], caption: "Signature précédée de la mention manuscrite obligatoire « Lu et approuvé — pour solde de tout compte » (art. 74)" },
-      { title: "Pour l'Employeur", lines: [v.firm.name.toUpperCase(), `Représenté par : ${val(v.signatoryName ?? v.firm.signatory_name)}`], caption: "Signature et cachet" },
-    ];
   }
+  // recu-solde : signatures + « Fait à » + annexe sont intégrés aux blocs (modèle complet), rien à ajouter ici.
   return doc;
 }
 

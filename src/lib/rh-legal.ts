@@ -16,6 +16,7 @@
  * du store.
  */
 import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import type { Firm } from "@/data/types";
 import { dateFr } from "./format";
 import { firmIdentityClause, firmLegalLine as firmLegalLineCanonical } from "./firm-legal";
@@ -71,7 +72,8 @@ export type LegalBlock =
   | { k: "ul"; items: string[] } // liste à puces
   | { k: "check"; items: string[] } // liste de cases à cocher (☐)
   | { k: "center"; t: string; strong?: boolean } // ligne centrée
-  | { k: "sp"; h?: number }; // espace vertical (mm)
+  | { k: "sp"; h?: number } // espace vertical (mm)
+  | { k: "table"; head?: string[]; rows: string[][]; align?: ("left" | "right" | "center")[] }; // tableau (décompte…)
 
 /** Colonne de signature (Employeur / Salarié). */
 export interface SignatureCol {
@@ -358,6 +360,24 @@ export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
       case "sp":
         ctx.y += b.h ?? 3;
         break;
+      case "table": {
+        ensure(ctx, 24);
+        const colStyles: Record<number, { halign: "left" | "right" | "center" }> = {};
+        (b.align ?? []).forEach((a, i) => { colStyles[i] = { halign: a }; });
+        autoTable(doc, {
+          startY: ctx.y,
+          margin: { left: M, right: M, top: 20 },
+          head: b.head ? [b.head] : undefined,
+          body: b.rows,
+          theme: "grid",
+          styles: { font: "helvetica", fontSize: 8.2, cellPadding: 1.5, textColor: INK, lineColor: [210, 214, 204], lineWidth: 0.15, overflow: "linebreak" },
+          headStyles: { fillColor: VERT_FONCE, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.2 },
+          columnStyles: colStyles,
+        });
+        ctx.y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 3;
+        ctx.page = doc.getNumberOfPages(); // autoTable a pu ajouter des pages
+        break;
+      }
     }
   }
 
@@ -382,8 +402,8 @@ export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
     drawSignatures(ctx, d.signatures);
   }
 
-  // Pieds de page (numérotation a posteriori)
-  const total = ctx.page;
+  // Pieds de page (numérotation a posteriori) — total réel (autoTable a pu ajouter des pages)
+  const total = doc.getNumberOfPages();
   for (let p = 1; p <= total; p++) {
     doc.setPage(p);
     footer({ ...ctx, page: p }, total);
@@ -424,6 +444,16 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
       case "sp":
         parts.push(`<div style="height:${b.h ?? 8}px"></div>`);
         break;
+      case "table": {
+        const th = b.head
+          ? `<thead><tr>${b.head.map((h, i) => `<th style="text-align:${b.align?.[i] ?? "left"}">${esc(h)}</th>`).join("")}</tr></thead>`
+          : "";
+        const tb = `<tbody>${b.rows
+          .map((r) => `<tr>${r.map((cell, i) => `<td style="text-align:${b.align?.[i] ?? "left"}">${esc(cell)}</td>`).join("")}</tr>`)
+          .join("")}</tbody>`;
+        parts.push(`<table class="dt">${th}${tb}</table>`);
+        break;
+      }
     }
   }
 
@@ -483,6 +513,9 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
  ul{font-size:13.5px;line-height:1.7;margin:0 0 12px;padding-left:20px}
  ul.chk{list-style:none;padding-left:4px}
  ul.chk li:before{content:"\\2610\\00a0\\00a0"}
+ table.dt{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 14px}
+ table.dt th{background:var(--vf);color:#fff;font-weight:700;padding:5px 7px;border:1px solid #cfd4c7;text-align:left}
+ table.dt td{padding:4px 7px;border:1px solid #dfe3d8}
  .faitA{text-align:center;font-weight:700;font-size:14px;margin:26px 0 4px}
  .note{text-align:center;font-style:italic;color:var(--muted);font-size:11px;margin-bottom:14px}
  .sigs{display:flex;gap:32px;margin-top:24px}

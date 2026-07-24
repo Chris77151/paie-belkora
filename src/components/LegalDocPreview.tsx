@@ -92,6 +92,39 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
               );
             case "sp":
               return <div key={i} style={{ height: b.h ?? 8 }} />;
+            case "table":
+              return (
+                <div key={i} className="overflow-x-auto">
+                  <table className="my-2 w-full border-collapse text-[11.5px]">
+                    {b.head && (
+                      <thead>
+                        <tr>
+                          {b.head.map((h, j) => (
+                            <th
+                              key={j}
+                              className="border px-1.5 py-1 font-semibold"
+                              style={{ backgroundColor: pal.deepHex, color: "#fff", textAlign: b.align?.[j] ?? "left", borderColor: pal.oliveHex }}
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                    )}
+                    <tbody>
+                      {b.rows.map((r, ri) => (
+                        <tr key={ri}>
+                          {r.map((cell, ci) => (
+                            <td key={ci} className="border border-neutral-300 px-1.5 py-1" style={{ textAlign: b.align?.[ci] ?? "left" }}>
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
             default:
               return null;
           }
