@@ -296,6 +296,15 @@ export async function buildPayslipDoc(v: PayslipView): Promise<jsPDF> {
     y = (doc as any).lastAutoTable.finalY;
   }
 
+  // Bloc de BAS DE PAGE (décompte monétaire + « Arrêté à la somme de » + mentions légales).
+  // Il doit rester ancré en bas même quand la « Partie réservée à l'employeur » est masquée :
+  // sinon tout le bas du bulletin remonte et laisse un grand vide. Si le contenu au-dessus est
+  // long, le flux naturel l'emporte (max) pour ne jamais chevaucher.
+  const PAGE_H = 297;        // A4 (mm)
+  const BOTTOM_MARGIN = 10;  // marge basse
+  const TRAILING_H = 34;     // hauteur du bloc final (décompte 2 lignes + arrêté + filet + mentions)
+  y = Math.max(y, PAGE_H - BOTTOM_MARGIN - TRAILING_H);
+
   // Décompte monétaire
   const den = denominations(v.result.netAPayer);
   autoTable(doc, {
@@ -360,7 +369,9 @@ export function buildPayslipHtml(v: PayslipView): string {
  :root{--lime:${pal.limeHex};--olive:${pal.oliveHex};--sage:${pal.sageHex};--tint:${pal.tintHex};--ink:${pal.inkHex}}
  *{box-sizing:border-box;font-family:"IBM Plex Sans",Arial,sans-serif}
  body{margin:0;padding:24px;background:#f4f5f2;color:var(--ink);font-size:13px}
- .sheet{max-width:820px;margin:auto;background:#fff;padding:26px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,.08)}
+ .sheet{max-width:820px;margin:auto;background:#fff;padding:26px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,.08);display:flex;flex-direction:column;min-height:1040px}
+ /* Bloc final (décompte + arrêté + mentions) ancré en bas, même si la section employeur est masquée. */
+ .bottom{margin-top:auto}
  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
  .top img{height:52px;object-fit:contain}
  .firm{font-weight:700;font-size:15px}
@@ -385,7 +396,7 @@ export function buildPayslipHtml(v: PayslipView): string {
  .foot{margin-top:12px;border-top:1px solid #e0e4da;padding-top:6px;color:#999;font-size:10px;font-style:italic}
  .noprint{margin-bottom:14px}
  button{background:var(--lime);color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer}
- @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;border-radius:0}.noprint{display:none}}
+ @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;border-radius:0;min-height:262mm}.noprint{display:none}}
 </style></head><body>
 <div class="noprint"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
 <div class="sheet">
@@ -407,10 +418,12 @@ export function buildPayslipHtml(v: PayslipView): string {
    <tr style="text-align:center"><td>26</td><td>${inp.days_worked}</td><td>0</td><td>0</td><td>${inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100}</td></tr></table>
  <table><tr><th style="text-align:left">LIBELLE</th><th>Nbre ou Base</th><th>TAUX</th><th>GAINS</th><th>RETENUES</th></tr>${mainTr}</table>
  ${v.showEmployerSection === false ? "" : `<table class="emp"><tr><th style="text-align:left">Partie réservée à l'employeur — charges patronales</th><th>Base</th><th>Taux %</th><th>Plafond</th><th>Montant</th></tr>${empTr}</table>`}
+ <div class="bottom">
  <table class="den"><tr><th style="text-align:left">Décompte monétaire</th><th>200</th><th>100</th><th>50</th><th>20</th><th>10</th><th>5</th><th>2</th><th>1</th><th>Mode</th><th>Net à payer</th></tr>
    <tr><td style="text-align:left;font-weight:700"></td>${denTd}<td>Virement</td><td>${f(v.result.netAPayer)}</td></tr></table>
  <div class="words"><b>Arrêté à la somme de :</b><i>${amountToWordsFr(v.result.netAPayer).toUpperCase()}</i></div>
  <div class="foot">CGI Maroc art. 73 – Loi 65-00 CNSS/AMO • Document à conserver 5 ans minimum. • Généré par Belkora Paie, référentiel Maroc ${period.year}.</div>
+ </div>
 </div></body></html>`;
 }
 
@@ -487,6 +500,7 @@ ${v.showEmployerSection === false ? "" : `\\noindent\\begin{tabular}{|p{7.2cm}|r
 ${rowsEmp}
 \\hline\\end{tabular}
 \\vspace{6pt}`}
+\\vfill
 \\noindent\\textbf{Net à payer : ${f(r.netAPayer)} DH}\\\\
 \\textit{Arrêté à la somme de : ${esc(amountToWordsFr(r.netAPayer).toUpperCase())}.}
 \\vspace{4pt}\\\\{\\footnotesize\\itshape CGI Maroc art. 73 -- Loi 65-00 CNSS/AMO. Document à conserver 5 ans minimum. Généré par Belkora Paie.}

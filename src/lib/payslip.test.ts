@@ -39,6 +39,26 @@ describe("bulletin — « Partie réservée à l'employeur » optionnelle", () =
     expect(buildPayslipLatex(view(false))).not.toContain("Charges patronales");
   });
 
+  it("HTML : le bloc de bas de page reste ancré en bas (avec ET sans section employeur)", () => {
+    for (const show of [true, false]) {
+      const html = buildPayslipHtml(view(show));
+      // Le bloc final est isolé et poussé en bas (flex + margin-top:auto sur une hauteur mini).
+      expect(html).toContain('<div class="bottom">');
+      expect(html).toContain(".bottom{margin-top:auto}");
+      expect(html).toContain("flex-direction:column");
+      expect(html).toContain("min-height:1040px"); // hauteur mini à l'écran
+      expect(html).toContain("min-height:262mm");  // hauteur mini à l'impression
+      // Le décompte et les mentions restent présents dans les deux cas.
+      expect(html).toContain("Décompte monétaire");
+      expect(html).toContain("Arrêté à la somme de");
+    }
+  });
+
+  it("LaTeX : le bloc final est poussé en bas de page (\\vfill) dans les deux cas", () => {
+    expect(buildPayslipLatex(view(true))).toContain("\\vfill");
+    expect(buildPayslipLatex(view(false))).toContain("\\vfill");
+  });
+
   it("le CALCUL est inchangé : le net et les charges patronales restent identiques", () => {
     // Masquer la section n'affecte que l'affichage, jamais les montants calculés.
     expect(result.chargesPatronales).toBeGreaterThan(0);
