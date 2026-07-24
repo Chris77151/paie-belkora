@@ -304,6 +304,8 @@ export const DICT = {
   "pay.validate": { fr: "Valider la période", ar: "المصادقة على الفترة" },
   "pay.markDeclared": { fr: "Marquer déclarée", ar: "تعليم كمُصرَّح بها" },
   "pay.markPaid": { fr: "Marquer payée", ar: "تعليم كمؤدَّاة" },
+  "pay.showEmployer": { fr: "Partie employeur", ar: "قسم المشغّل" },
+  "pay.showEmployer.hint": { fr: "Inclure la « Partie réservée à l'employeur » (charges patronales et coût total employeur) sur les bulletins exportés (PDF, HTML, LaTeX). Décocher pour un bulletin remis au salarié sans le coût employeur — le calcul et les déclarations restent inchangés.", ar: "تضمين «القسم الخاص بالمشغّل» (المساهمات والتكلفة الإجمالية) في كشوف الأجور المصدَّرة. أزل التحديد لتسليم الأجير كشفاً بدون تكلفة المشغّل — الحساب والتصاريح لا تتغير." },
   "pay.revert": { fr: "Remettre en brouillon", ar: "إرجاع إلى مسودة" },
   "pay.revert.hint": { fr: "Rouvrir la période : la saisie des bulletins redevient modifiable.", ar: "إعادة فتح الفترة: تصبح إدخالات كشوف الأجور قابلة للتعديل من جديد." },
   "pay.revert.confirm": { fr: "Remettre en brouillon la période", ar: "إرجاع الفترة إلى مسودة" },

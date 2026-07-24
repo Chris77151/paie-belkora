@@ -25,6 +25,8 @@ export default function Payroll() {
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(6);
   const [editing, setEditing] = useState<Employee | null>(null);
+  // Affichage de la « Partie réservée à l'employeur » (charges patronales) sur les bulletins exportés.
+  const [showEmployer, setShowEmployer] = useState(true);
 
   const period = s.periods.find((p) => p.firm_id === firm.id && p.year === year && p.month === month);
   const locked = period?.status !== "draft" && period != null;
@@ -88,6 +90,7 @@ export default function Payroll() {
   }
   const view = (emp: Employee, result: PayrollResult, input: PayslipInput): PayslipView => ({
     firm, employee: emp, period: period!, result, input,
+    showEmployerSection: showEmployer, // « Partie réservée à l'employeur » : optionnelle à l'export
   });
 
   return (
@@ -109,6 +112,18 @@ export default function Payroll() {
             </Select>
           </Field>
           <div className="flex-1" />
+          <label
+            className="flex items-center gap-2 text-[13px] text-muted-foreground cursor-pointer select-none"
+            title={t("pay.showEmployer.hint")}
+          >
+            <input
+              type="checkbox"
+              checked={showEmployer}
+              onChange={(e) => setShowEmployer(e.target.checked)}
+              className="h-4 w-4 accent-primary"
+            />
+            {t("pay.showEmployer")}
+          </label>
           {!locked ? (
             <>
               <Button variant="outline" onClick={exportAll}><FileDown size={16} /> {t("pay.exportGroup")}</Button>

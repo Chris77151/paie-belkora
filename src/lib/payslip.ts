@@ -18,6 +18,13 @@ export interface PayslipView {
   period: PayrollPeriod;
   result: PayrollResult;
   input?: PayslipInput;
+  /**
+   * Afficher la « Partie réservée à l'employeur » (charges patronales + coût total employeur).
+   * Défaut : `true` (comportement historique). Mettre à `false` pour un bulletin remis au salarié
+   * sans le coût employeur. N'affecte QUE l'affichage : les charges restent calculées (écritures
+   * comptables, BDS CNSS et totaux inchangés).
+   */
+  showEmployerSection?: boolean;
 }
 
 /* Couleurs de marque — dérivées de la société (firm.brand_color) au début de chaque rendu.
@@ -264,28 +271,30 @@ export async function buildPayslipDoc(v: PayslipView): Promise<jsPDF> {
   });
   y = (doc as any).lastAutoTable.finalY;
 
-  // Charges patronales
-  const emp = employerRows(v);
-  autoTable(doc, {
-    startY: y + 3,
-    head: [["Partie réservée à l'employeur — charges patronales", "Base", "Taux %", "Plafond", "Montant"]],
-    body: emp.map((r) => r.cells),
-    theme: "grid",
-    styles: { fontSize: 8, lineColor: [214, 218, 208], textColor: INK, cellPadding: 1.4 },
-    headStyles: { fillColor: SAGE_DARK, textColor: 255, fontStyle: "bold", fontSize: 7.6, halign: "center" },
-    columnStyles: {
-      0: { cellWidth: full - 28 - 22 - 26 - 30 },
-      1: { cellWidth: 28, halign: "right" },
-      2: { cellWidth: 22, halign: "right" },
-      3: { cellWidth: 26, halign: "right" },
-      4: { cellWidth: 30, halign: "right" },
-    },
-    margin: { left: M, right: M },
-    didParseCell: (data) => {
-      if (emp[data.row.index]?.kind === "bold") { data.cell.styles.fontStyle = "bold"; data.cell.styles.fillColor = TINT; }
-    },
-  });
-  y = (doc as any).lastAutoTable.finalY;
+  // Charges patronales — section OPTIONNELLE (masquée si showEmployerSection === false).
+  if (v.showEmployerSection !== false) {
+    const emp = employerRows(v);
+    autoTable(doc, {
+      startY: y + 3,
+      head: [["Partie réservée à l'employeur — charges patronales", "Base", "Taux %", "Plafond", "Montant"]],
+      body: emp.map((r) => r.cells),
+      theme: "grid",
+      styles: { fontSize: 8, lineColor: [214, 218, 208], textColor: INK, cellPadding: 1.4 },
+      headStyles: { fillColor: SAGE_DARK, textColor: 255, fontStyle: "bold", fontSize: 7.6, halign: "center" },
+      columnStyles: {
+        0: { cellWidth: full - 28 - 22 - 26 - 30 },
+        1: { cellWidth: 28, halign: "right" },
+        2: { cellWidth: 22, halign: "right" },
+        3: { cellWidth: 26, halign: "right" },
+        4: { cellWidth: 30, halign: "right" },
+      },
+      margin: { left: M, right: M },
+      didParseCell: (data) => {
+        if (emp[data.row.index]?.kind === "bold") { data.cell.styles.fontStyle = "bold"; data.cell.styles.fillColor = TINT; }
+      },
+    });
+    y = (doc as any).lastAutoTable.finalY;
+  }
 
   // Décompte monétaire
   const den = denominations(v.result.netAPayer);
@@ -397,7 +406,7 @@ export function buildPayslipHtml(v: PayslipView): string {
  <table><tr><th>Jours ouvrés</th><th>Jours travaillés</th><th>Absences</th><th>Maladie</th><th>H. supp.</th></tr>
    <tr style="text-align:center"><td>26</td><td>${inp.days_worked}</td><td>0</td><td>0</td><td>${inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100}</td></tr></table>
  <table><tr><th style="text-align:left">LIBELLE</th><th>Nbre ou Base</th><th>TAUX</th><th>GAINS</th><th>RETENUES</th></tr>${mainTr}</table>
- <table class="emp"><tr><th style="text-align:left">Partie réservée à l'employeur — charges patronales</th><th>Base</th><th>Taux %</th><th>Plafond</th><th>Montant</th></tr>${empTr}</table>
+ ${v.showEmployerSection === false ? "" : `<table class="emp"><tr><th style="text-align:left">Partie réservée à l'employeur — charges patronales</th><th>Base</th><th>Taux %</th><th>Plafond</th><th>Montant</th></tr>${empTr}</table>`}
  <table class="den"><tr><th style="text-align:left">Décompte monétaire</th><th>200</th><th>100</th><th>50</th><th>20</th><th>10</th><th>5</th><th>2</th><th>1</th><th>Mode</th><th>Net à payer</th></tr>
    <tr><td style="text-align:left;font-weight:700"></td>${denTd}<td>Virement</td><td>${f(v.result.netAPayer)}</td></tr></table>
  <div class="words"><b>Arrêté à la somme de :</b><i>${amountToWordsFr(v.result.netAPayer).toUpperCase()}</i></div>
@@ -473,11 +482,11 @@ export function buildPayslipLatex(v: PayslipView, template?: string): string {
 ${rowsMain}
 \\hline\\end{tabular}
 \\vspace{6pt}
-\\noindent\\begin{tabular}{|p{7.2cm}|r|r|r|r|}\\hline
+${v.showEmployerSection === false ? "" : `\\noindent\\begin{tabular}{|p{7.2cm}|r|r|r|r|}\\hline
 \\rowcolor{sage}\\textcolor{white}{\\textbf{Charges patronales}} & \\textcolor{white}{\\textbf{Base}} & \\textcolor{white}{\\textbf{Taux \\%}} & \\textcolor{white}{\\textbf{Plafond}} & \\textcolor{white}{\\textbf{Montant}} \\\\ \\hline
 ${rowsEmp}
 \\hline\\end{tabular}
-\\vspace{6pt}
+\\vspace{6pt}`}
 \\noindent\\textbf{Net à payer : ${f(r.netAPayer)} DH}\\\\
 \\textit{Arrêté à la somme de : ${esc(amountToWordsFr(r.netAPayer).toUpperCase())}.}
 \\vspace{4pt}\\\\{\\footnotesize\\itshape CGI Maroc art. 73 -- Loi 65-00 CNSS/AMO. Document à conserver 5 ans minimum. Généré par Belkora Paie.}
