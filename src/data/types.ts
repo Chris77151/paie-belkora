@@ -47,6 +47,11 @@ export interface Firm {
   signatory_role?: string;
   /** Identifiant de la société correspondante dans Odoo (res.company.id) pour l'import. */
   odoo_company_id?: number;
+  /**
+   * Sel (256 bits, hex) de l'audit RIB — sert à calculer l'empreinte HMAC-SHA-256 des RIB.
+   * Généré automatiquement à la première base de référence. Ne contient AUCUN RIB.
+   */
+  bank_audit_salt?: string;
 }
 
 /** Paramètres de connexion à l'API Odoo (JSON-RPC). */

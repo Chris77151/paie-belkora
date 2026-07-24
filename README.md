@@ -35,6 +35,7 @@ entre appareils). Jeu de départ : 2 sociétés, **0 salarié** (à saisir ou im
 | Calcul en masse, saisie variable, validation & gel de période | ✅ |
 | Bordereau CNSS + fichier BDS DAMANCOM, état 9421/IR | ✅ |
 | Moteur d'alertes de conformité (CNSS, CIN, mineur, CDD, contrat) | ✅ |
+| **Sécurité / Audit RIB** (`src/lib/bank-audit.ts`, super-admin) : analyse **tous les RIB de tous les tiers** présents dans Odoo (fournisseurs, clients, salariés — `company_id = false` inclus) + ceux de la société. Détection d'écart vs base de référence, classement du risque (non autorisé / à vérifier / nouveau / supprimé), acteur et habilitation. **Chiffrement de qualité** : empreinte **HMAC-SHA-256 salée** (sel 256 bits par société) — le RIB en clair n'est **jamais** stocké ni affiché (empreinte + masque `****1234`). Comparaison **rétro-compatible** avec les bases antérieures | ✅ + 11 tests |
 | Congés payés, soldes, absences/IPE | ✅ |
 | Écritures comptables de paie (OD + règlement), PCGE validé expert-comptable — **source unique de vérité** : agrège UNIQUEMENT les bulletins validés de la période (aucun recalcul, aucune valeur par défaut). **TFP incluse dans 4441 par défaut** (recouvrement CNSS/OFPPT), option isolée 4457. **Invariants bloquants** à chaque génération : équilibre débit=crédit, organismes sociaux (4441+4457)=Σ cotisations au centime, 6171=4432+retenues+IR — génération/validation bloquées avec détail de l'écart si un invariant échoue | ✅ + 14 tests |
 | Export des écritures : XML · Excel (.xlsx) · PDF | ✅ |

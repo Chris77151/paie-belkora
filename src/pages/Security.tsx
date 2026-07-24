@@ -7,7 +7,7 @@ import { actions, currentFirm, useStore } from "@/data/store";
 import { useSession } from "@/lib/auth";
 import { useT, type TKey } from "@/lib/i18n";
 import { odooFetchBankSnapshot, odooReadiness, odooErrorHint } from "@/lib/odoo";
-import { buildAuditEvents, buildBaseline, severityRank } from "@/lib/bank-audit";
+import { buildAuditEvents, buildBaseline, severityRank, withFingerprints, newAuditSalt } from "@/lib/bank-audit";
 import type { AppRole, BankAuditEvent, BankEventClass, BankSeverity } from "@/data/types";
 import {
   Badge, Button, Card, CardContent, PageHeader, Select, Table, Td, Th,
@@ -76,12 +76,23 @@ export default function Security() {
     return true;
   }
 
+  /** Sel d'empreinte propre à la société (créé une fois, persisté). Ne contient aucun RIB. */
+  function ensureSalt(): string {
+    if (firm.bank_audit_salt?.trim()) return firm.bank_audit_salt;
+    const salt = newAuditSalt();
+    actions.upsertFirm({ ...firm, bank_audit_salt: salt });
+    return salt;
+  }
+
   async function establishBaseline() {
     if (!guardOdoo() || !s.odoo || !firm.odoo_company_id) return;
     setBusy("baseline"); setWarn(null);
     try {
       const snap = await odooFetchBankSnapshot(s.odoo, firm.odoo_company_id);
-      const base = buildBaseline(firm.id, snap.records, `app:${role}`, new Date().toISOString());
+      // Empreintes cryptographiques (HMAC-SHA-256 salée) calculées AVANT stockage : le RIB en
+      // clair ne quitte jamais cette fonction.
+      const records = await withFingerprints(snap.records, ensureSalt());
+      const base = buildBaseline(firm.id, records, `app:${role}`, new Date().toISOString());
       actions.setBankBaseline(firm.id, base);
       actions.setBankAudit(firm.id, []); // repart d'une référence propre
       if (!snap.groupResolved) setWarn("Groupe habilité introuvable dans Odoo : les autorisations ne seront pas vérifiées (tout acteur est considéré habilité). Définissez un groupe « RIB habilité » ou ajustez la recherche.");
@@ -96,8 +107,9 @@ export default function Security() {
     setBusy("scan"); setWarn(null);
     try {
       const snap = await odooFetchBankSnapshot(s.odoo, firm.odoo_company_id);
+      const records = await withFingerprints(snap.records, ensureSalt());
       const baseline = (s.bankBaseline ?? []);
-      const evts = buildAuditEvents(firm.id, snap.records, baseline, new Date().toISOString());
+      const evts = buildAuditEvents(firm.id, records, baseline, new Date().toISOString());
       actions.setBankAudit(firm.id, evts);
       if (!snap.groupResolved) setWarn("Groupe habilité introuvable dans Odoo : autorisations non vérifiées (aucun événement « non autorisé » ne peut être établi de façon fiable).");
       if (baselineCount === 0) setWarn((w) => (w ? w + " " : "") + "Aucune base de référence : tous les comptes apparaissent comme « Nouveau ». Établissez d'abord la base de référence.");

@@ -466,6 +466,8 @@ export interface OdooBankRecord {
   actor_authorized: boolean;
   on_payment: boolean;
   when: string;            // write_date (ISO)
+  /** Empreinte cryptographique (HMAC-SHA-256 salée) pré-calculée — cf. ribFingerprint(). */
+  acc_fingerprint?: string;
 }
 
 export interface OdooBankSnapshot {
@@ -517,8 +519,11 @@ export async function odooFetchBankSnapshot(
     id: number; acc_number?: string | false; partner_id?: [number, string] | false;
     write_uid?: [number, string] | false; write_date?: string | false; allow_out_payment?: boolean;
   }> = await call("res.partner.bank", "search_read",
-    [[["company_id", "=", odooCompanyId]]],
-    { fields: ["id", "acc_number", "partner_id", "write_uid", "write_date", "allow_out_payment"], limit: 5000 });
+    // Dans Odoo, les RIB de TIERS (fournisseurs / clients / salariés) ont company_id = false
+    // (comptes partagés) ; seuls les comptes propres de la société portent un company_id.
+    // On audite donc TOUS les RIB de tiers + ceux de la société active.
+    [["|", ["company_id", "=", false], ["company_id", "=", odooCompanyId]]],
+    { fields: ["id", "acc_number", "partner_id", "write_uid", "write_date", "allow_out_payment"], limit: 20000 });
 
   // 2) Tiers (rangs fournisseur/client, salarié) et utilisateurs (acteurs).
   const partnerIds = Array.from(new Set(banks.map((b) => (b.partner_id ? b.partner_id[0] : 0)).filter(Boolean)));
