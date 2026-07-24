@@ -92,6 +92,10 @@ export function odooErrorHint(message: string): string {
   if (/authentifi|refus|access denied|login/i.test(message)) {
     return `${message}\n\nVérifiez l'identifiant (e-mail) et la CLÉ API dans Paramètres → Connexion Odoo. La clé API se génère dans Odoo : avatar → Préférences → onglet « Sécurité du compte » → « Nouvelle clé API ».`;
   }
+  // Champ/modèle inexistant : écart de VERSION Odoo, pas un problème d'URL/CORS.
+  if (/invalid field|unknown field|doesn't exist|does not exist|invalid model/i.test(message)) {
+    return `${message}\n\nCe champ ou modèle n'existe pas dans cette version d'Odoo (les noms changent d'une version à l'autre). Ce n'est pas un problème d'URL ni de CORS. Signalez le message ci-dessus pour adapter la lecture à votre version.`;
+  }
   return `${message}\n\nVérifiez l'URL/CORS (proxy « /odoo ») et la connexion dans Paramètres → Connexion Odoo.`;
 }
 
@@ -474,6 +478,23 @@ export interface OdooBankSnapshot {
 const partnerKind = (p: { supplier_rank?: number; customer_rank?: number; employee?: boolean }) =>
   p.employee ? "salarie" : (p.supplier_rank ?? 0) > 0 ? "fournisseur" : "client";
 
+/** Nom du champ « groupes » de `res.users` : `groups_id` (Odoo ≤ 18) renommé `group_ids` (Odoo ≥ 19). */
+export type UserGroupsField = "group_ids" | "groups_id" | null;
+
+/**
+ * Choisit le nom RÉEL du champ « groupes » de `res.users` d'après la réponse de `fields_get`.
+ * Préfère `group_ids` (Odoo ≥ 19), sinon `groups_id` (Odoo ≤ 18), sinon `null` (indéterminable).
+ * Évite l'erreur « Invalid field 'groups_id' on 'res.users' » qui faisait échouer tout l'audit.
+ * Fonction PURE (testable sans Odoo).
+ */
+export function pickUserGroupsField(fieldsMeta: unknown): UserGroupsField {
+  if (!fieldsMeta || typeof fieldsMeta !== "object") return null;
+  const meta = fieldsMeta as Record<string, unknown>;
+  if ("group_ids" in meta) return "group_ids";
+  if ("groups_id" in meta) return "groups_id";
+  return null;
+}
+
 /**
  * Lit l'état courant des comptes bancaires d'une société (LECTURE SEULE) et
  * enrichit chaque compte avec le tiers, le dernier modificateur et son
@@ -507,16 +528,32 @@ export async function odooFetchBankSnapshot(
     partnerIds.length
       ? await call("res.partner", "read", [partnerIds], { fields: ["id", "name", "supplier_rank", "customer_rank", "employee"] })
       : [];
-  const users: Array<{ id: number; name?: string; login?: string; groups_id?: number[] }> =
-    userIds.length
-      ? await call("res.users", "read", [userIds], { fields: ["id", "name", "login", "groups_id"] })
-      : [];
+  // Le champ « groupes » de res.users s'appelle `groups_id` (Odoo <= 18) et `group_ids` (Odoo >= 19).
+  // On le détecte pour éviter « Invalid field 'groups_id' on 'res.users' » qui faisait échouer TOUT l'audit.
+  let groupsField: UserGroupsField = null;
+  try {
+    const meta = await call("res.users", "fields_get", [["group_ids", "groups_id"]], { attributes: ["type"] });
+    groupsField = pickUserGroupsField(meta as Record<string, unknown>);
+  } catch {
+    groupsField = null; // introspection indisponible : on dégrade au lieu d'échouer
+  }
+
+  const userFields = ["id", "name", "login", ...(groupsField ? [groupsField] : [])];
+  let users: Array<{ id: number; name?: string; login?: string; [k: string]: unknown }> = [];
+  if (userIds.length) {
+    try {
+      users = await call("res.users", "read", [userIds], { fields: userFields });
+    } catch {
+      users = []; // lecture des acteurs impossible : l'audit continue avec le nom de write_uid
+    }
+  }
 
   // 3) Groupe habilité à modifier les RIB.
   const groups: Array<{ id: number; full_name?: string }> =
     await call("res.groups", "search_read", [[["full_name", "ilike", authorizedGroupQuery]]], { fields: ["id", "full_name"] });
   const authGroupIds = new Set(groups.map((g) => g.id));
-  const groupResolved = authGroupIds.size > 0;
+  // L'habilitation n'est vérifiable que si le groupe ET le champ « groupes » sont disponibles.
+  const groupResolved = authGroupIds.size > 0 && !!groupsField && users.length > 0;
 
   const pById = new Map(partners.map((p) => [p.id, p]));
   const uById = new Map(users.map((u) => [u.id, u]));
@@ -526,7 +563,8 @@ export async function odooFetchBankSnapshot(
     .map((b) => {
       const p = b.partner_id ? pById.get(b.partner_id[0]) : undefined;
       const u = b.write_uid ? uById.get(b.write_uid[0]) : undefined;
-      const inGroup = u?.groups_id?.some((g) => authGroupIds.has(g)) ?? false;
+      const userGroups = groupsField && u ? (u[groupsField] as number[] | undefined) : undefined;
+      const inGroup = userGroups?.some((g) => authGroupIds.has(g)) ?? false;
       return {
         odoo_bank_id: b.id,
         acc_number: String(b.acc_number),
