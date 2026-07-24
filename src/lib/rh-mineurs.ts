@@ -78,7 +78,7 @@ function firmIdentAr(f: Firm): string {
 function autorisationFr(v: RhMineurView): LegalBlock[] {
   return [
     { k: "h", t: "Le représentant légal" },
-    { k: "p", t: `Je soussigné(e) (Prénom et NOM) : ${PH}` },
+    { k: "p", t: `Je soussigné(e) ${PH}` },
     { k: "p", t: `Agissant en qualité de : ${PH} (père / mère / tuteur légal « wali »)` },
     { k: "p", t: `CIN n° : ${PH}    Demeurant à : ${PH}` },
     { k: "p", t: `Justificatif du lien : ${PH} (livret de famille / acte de tutelle)` },
@@ -96,7 +96,7 @@ function autorisationFr(v: RhMineurView): LegalBlock[] {
 function autorisationAr(v: RhMineurView): LegalBlock[] {
   return [
     { k: "h", t: "النائب الشرعي" },
-    { k: "p", t: `أنا الموقّع(ة) أسفله (الاسم الكامل): ${PH}` },
+    { k: "p", t: `أنا الموقّع(ة) أسفله: ${PH}` },
     { k: "p", t: `بصفتي: ${PH} (الأب / الأم / الوصي الشرعي «الولي»)` },
     { k: "p", t: `بطاقة التعريف الوطنية رقم: ${PH}    القاطن(ة) بـ: ${PH}` },
     { k: "p", t: `ما يُثبت صلة القرابة: ${PH} (دفتر الحالة المدنية / عقد الوصاية)` },

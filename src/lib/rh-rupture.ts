@@ -163,7 +163,7 @@ function recuBlocks(v: RhRuptureView): LegalBlock[] {
         `NET PAYÉ : ${net} DH`,
       ];
   return [
-    { k: "p", t: `Je soussigné(e) (Prénom et NOM) : ${fullName(v.employee) || PH}, CIN n° ${val(v.cin ?? v.employee.cin)}, N° CNSS ${val(v.cnss ?? v.employee.cnss_number)}, ayant été employé(e) par la société ${ident}, en qualité d'ouvrier de chantier : ${val(v.jobTitle ?? v.employee.position)}, dans le cadre d'un contrat pour accomplir un travail déterminé sur le chantier ${val(v.site ?? v.employee.site)}, du ${valDate(v.contractStart)} au ${valDate(v.contractEnd)},` },
+    { k: "p", t: `Je soussigné(e) ${fullName(v.employee) || PH}, CIN n° ${val(v.cin ?? v.employee.cin)}, N° CNSS ${val(v.cnss ?? v.employee.cnss_number)}, ayant été employé(e) par la société ${ident}, en qualité d'ouvrier de chantier : ${val(v.jobTitle ?? v.employee.position)}, dans le cadre d'un contrat pour accomplir un travail déterminé sur le chantier ${val(v.site ?? v.employee.site)}, du ${valDate(v.contractStart)} au ${valDate(v.contractEnd)},` },
     { k: "p", t: `reconnais avoir reçu de l'Employeur, à la cessation de mon contrat, la somme nette de ${net} DH, pour solde de tout compte, se décomposant comme suit :` },
     { k: "ul", items: decompo },
     { k: "check", items: [`Virement bancaire (réf. : ${PH})`, "Espèces"] },
