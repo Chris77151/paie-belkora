@@ -77,6 +77,12 @@ export interface RhRuptureView {
   contractStart?: string;
   contractEnd?: string;
   netAmount?: string;
+  /** Reçu (modèle MBD) : correspondances des pointillés / cases à cocher. */
+  birthDate?: string; // date de naissance (override ; sinon employee.birth_date)
+  reference?: string; // n° de référence du reçu (STC-AAAA-…)
+  departureReason?: string; // motif de départ (coche « Motif de la rupture » + « Nature du contrat »)
+  paymentMode?: "virement" | "cheque" | "especes" | ""; // coche « Réglé par »
+  chequeNumber?: string; // n° de chèque si règlement par chèque
   /** Décomposition chiffrée issue du moteur STC — quand présente, le reçu affiche les vrais montants. */
   stc?: StcBreakdown;
   /** En-tête & signature. */
@@ -156,6 +162,20 @@ function recuBlocks(v: RhRuptureView): LegalBlock[] {
   const netLettres = b ? amountToWordsFr(b.net) : dot;
   const year = (() => { const d = new Date(v.issueDate); return isNaN(d.getFullYear()) ? "" : d.getFullYear(); })();
 
+  // Correspondances des CASES À COCHER (pré-cochage exclusif d'après les données saisies).
+  const r = v.departureReason;
+  const chantier = r === "fin_travail_determine";
+  const natureIdx = chantier ? 0 : e.contract_type === "CDD" ? 1 : e.contract_type === "Interim" ? 2 : e.contract_type === "CDI" ? 3 : -1;
+  const natureChecked = [0, 1, 2, 3].map((i) => i === natureIdx);
+  const motifIdx =
+    r === "fin_travail_determine" || r === "fin_cdd" ? 0 :
+    r === "demission" ? 1 :
+    r === "licenciement" || r === "faute_grave" ? 2 :
+    r === "rupture_amiable" ? 3 :
+    r === "depart_retraite" ? 4 : -1;
+  const motifChecked = [0, 1, 2, 3, 4].map((i) => i === motifIdx);
+  const payChecked = [v.paymentMode === "virement", v.paymentMode === "cheque", v.paymentMode === "especes"];
+
   // Décompte : lignes réelles du moteur STC si dispo, sinon rubriques vierges du modèle.
   const decompteRows: string[][] = b
     ? [
@@ -183,14 +203,14 @@ function recuBlocks(v: RhRuptureView): LegalBlock[] {
       ];
 
   return [
-    { k: "center", t: `Référence reçu : STC-${year || 2026}-${dot}` },
+    { k: "center", t: `Référence reçu : STC-${year || 2026}-${v.reference?.trim() || dot}` },
 
     // 1. Les parties
     { k: "h", t: "1. Les parties" },
     { k: "p", t: `L'EMPLOYEUR : ${f.name.toUpperCase()}${identity ? ` — ${identity}` : ""}, représentée par ${sig}, en qualité de ${role}, ci-après désignée « l'Employeur », d'une part.` },
     { k: "h", t: "Le Salarié" },
     { k: "p", t: `Nom et prénom : ${fullName(e) || dot}      N° CIN : ${val(v.cin ?? e.cin)}` },
-    { k: "p", t: `N° CNSS : ${val(v.cnss ?? e.cnss_number)}      Né(e) le : ${valDate(e.birth_date)}` },
+    { k: "p", t: `N° CNSS : ${val(v.cnss ?? e.cnss_number)}      Né(e) le : ${valDate(v.birthDate ?? e.birth_date)}` },
     { k: "p", t: `Fonction / qualification : ${val(v.jobTitle ?? e.position)}      Chantier / affectation : ${val(v.site ?? e.site)}` },
     { k: "p", t: `Adresse : ${val(v.address ?? e.address)}` },
     { k: "p", t: "ci-après désigné(e) « le Salarié », d'autre part." },
@@ -198,10 +218,10 @@ function recuBlocks(v: RhRuptureView): LegalBlock[] {
     // 2. Relation de travail et rupture
     { k: "h", t: "2. Relation de travail et rupture" },
     { k: "p", t: "Nature du contrat :" },
-    { k: "check", items: ["CDD de chantier / travail déterminé", "CDD à terme", "Journalier", "CDI"] },
+    { k: "check", items: ["CDD de chantier / travail déterminé", "CDD à terme", "Journalier", "CDI"], checked: natureChecked },
     { k: "p", t: `Date d'entrée : ${valDate(v.contractStart)}      Date de sortie (cessation) : ${valDate(v.contractEnd)}` },
     { k: "p", t: "Motif de la rupture :" },
-    { k: "check", items: ["Arrivée du terme / achèvement du travail déterminé", "Démission", "Licenciement", "Rupture d'un commun accord", `Autre : ${dot}`] },
+    { k: "check", items: ["Arrivée du terme / achèvement du travail déterminé", "Démission", "Licenciement", "Rupture d'un commun accord", `Autre : ${dot}`], checked: motifChecked },
 
     // 3. Décompte des sommes dues
     { k: "h", t: "3. Décompte des sommes dues" },
@@ -209,7 +229,7 @@ function recuBlocks(v: RhRuptureView): LegalBlock[] {
     { k: "table", head: ["Rubrique (fondement légal)", "Base", "Nombre", "Montant (DH)"], align: ["left", "right", "right", "right"], rows: decompteRows },
     { k: "p", t: `Arrêté le présent reçu à la somme nette de ${netStr} dirhams, en toutes lettres : ${netLettres}.` },
     { k: "p", t: "Réglé par :" },
-    { k: "check", items: ["Virement bancaire", `Chèque n° ${dot}`, `Espèces — le ${dot}`] },
+    { k: "check", items: ["Virement bancaire", `Chèque n° ${v.chequeNumber?.trim() || dot}`, "Espèces"], checked: payChecked },
 
     // 4. Mentions légales
     { k: "h", t: "4. Mentions légales" },

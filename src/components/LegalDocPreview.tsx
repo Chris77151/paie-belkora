@@ -80,7 +80,7 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
               return (
                 <ul key={i} className="pl-1 space-y-0.5">
                   {b.items.map((it, j) => (
-                    <li key={j}>☐&nbsp;&nbsp;{it}</li>
+                    <li key={j}>{b.checked?.[j] ? "☑" : "☐"}&nbsp;&nbsp;{it}</li>
                   ))}
                 </ul>
               );

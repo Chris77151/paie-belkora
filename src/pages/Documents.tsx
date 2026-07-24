@@ -1063,6 +1063,11 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
   const [contractEnd, setContractEnd] = useState<string>("");
   const [netAmount, setNetAmount] = useState<string>("");
   const [chefChantier, setChefChantier] = useState<string>("");
+  // ---- Reçu (modèle MBD) : correspondances des pointillés / cases ----
+  const [birthDate, setBirthDate] = useState<string>("");
+  const [reference, setReference] = useState<string>("");
+  const [paymentMode, setPaymentMode] = useState<"" | "virement" | "cheque" | "especes">("");
+  const [chequeNumber, setChequeNumber] = useState<string>("");
 
   // ---- Calcul automatique du solde de tout compte (STC) ----
   const [stcOn, setStcOn] = useState<boolean>(false);
@@ -1143,6 +1148,11 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
     netAmount: netAmount || undefined,
     stc: stcBreakdown,
     chefChantier: chefChantier || undefined,
+    birthDate: birthDate || undefined,
+    reference: reference || undefined,
+    departureReason: reason, // coche « Nature du contrat » + « Motif de la rupture »
+    paymentMode: paymentMode || undefined,
+    chequeNumber: chequeNumber || undefined,
     issueDate,
     issueCity: issueCity || undefined,
     signatoryName: signatoryName || undefined,
@@ -1252,6 +1262,35 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
                 <Field label="Fin du contrat">
                   <Input type="date" value={contractEnd} onChange={(e) => setContractEnd(e.target.value)} />
                 </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Date de naissance" hint={employee.birth_date ? "Repris du dossier" : "Absente — placeholder"}>
+                  <Input type="date" value={birthDate || employee.birth_date || ""} onChange={(e) => setBirthDate(e.target.value)} />
+                </Field>
+                <Field label="Adresse du salarié" hint={employee.address ? "Repris du dossier" : "Absente — placeholder"}>
+                  <Input value={address || employee.address || ""} onChange={(e) => setAddress(e.target.value)} />
+                </Field>
+              </div>
+
+              <Field label="Référence reçu" hint="Complète « STC-AAAA-… »">
+                <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ex. 042" />
+              </Field>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Mode de règlement" hint="Coche « Réglé par » sur le reçu">
+                  <Select value={paymentMode} onChange={(e) => setPaymentMode(e.target.value as "" | "virement" | "cheque" | "especes")}>
+                    <option value="">À cocher sur le document</option>
+                    <option value="virement">Virement bancaire</option>
+                    <option value="cheque">Chèque</option>
+                    <option value="especes">Espèces</option>
+                  </Select>
+                </Field>
+                {paymentMode === "cheque" && (
+                  <Field label="N° de chèque">
+                    <Input value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} placeholder="Ex. 1234567" />
+                  </Field>
+                )}
               </div>
 
               {/* Bascule : calcul automatique du STC ou saisie manuelle du net. */}

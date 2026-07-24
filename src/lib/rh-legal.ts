@@ -70,7 +70,7 @@ export type LegalBlock =
   | { k: "h"; t: string } // titre d'article / de section
   | { k: "p"; t: string } // paragraphe justifié
   | { k: "ul"; items: string[] } // liste à puces
-  | { k: "check"; items: string[] } // liste de cases à cocher (☐)
+  | { k: "check"; items: string[]; checked?: boolean[] } // cases à cocher (☐/☑ si checked[i] — pré-cochage auto)
   | { k: "center"; t: string; strong?: boolean } // ligne centrée
   | { k: "sp"; h?: number } // espace vertical (mm)
   | { k: "table"; head?: string[]; rows: string[][]; align?: ("left" | "right" | "center")[] }; // tableau (décompte…)
@@ -241,13 +241,13 @@ function drawList(ctx: Ctx, items: string[], marker: (i: number) => string, fs =
   doc.setFont("helvetica", "normal").setFontSize(fs).setTextColor(...INK);
   const lh = lineHeight(fs);
   const indent = 6;
-  for (const it of items) {
+  items.forEach((it, idx) => {
     const lines = doc.splitTextToSize(it, CW - indent) as string[];
     ensure(ctx, lines.length * lh);
-    doc.text(marker(0), M, ctx.y);
+    doc.text(marker(idx), M, ctx.y);
     doc.text(lines, M + indent, ctx.y, { maxWidth: CW - indent, lineHeightFactor: 1.32 });
     ctx.y += lines.length * lh + 1.2;
-  }
+  });
   ctx.y += 1.4;
 }
 
@@ -349,7 +349,7 @@ export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
         drawList(ctx, b.items, () => "•");
         break;
       case "check":
-        drawList(ctx, b.items, () => "[ ]");
+        drawList(ctx, b.items, (i) => (b.checked?.[i] ? "[X]" : "[ ]"));
         break;
       case "center":
         ensure(ctx, 8);
@@ -435,7 +435,7 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
         break;
       case "check":
         parts.push(
-          `<ul class="chk">${b.items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`,
+          `<ul class="chk">${b.items.map((it, i) => `<li>${b.checked?.[i] ? "☑" : "☐"}  ${esc(it)}</li>`).join("")}</ul>`,
         );
         break;
       case "center":
@@ -512,7 +512,6 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
  p.ctr{text-align:center}p.strong{font-weight:700}
  ul{font-size:13.5px;line-height:1.7;margin:0 0 12px;padding-left:20px}
  ul.chk{list-style:none;padding-left:4px}
- ul.chk li:before{content:"\\2610\\00a0\\00a0"}
  table.dt{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 14px}
  table.dt th{background:var(--vf);color:#fff;font-weight:700;padding:5px 7px;border:1px solid #cfd4c7;text-align:left}
  table.dt td{padding:4px 7px;border:1px solid #dfe3d8}
