@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { FileDown, FileText, CalendarClock, Landmark } from "lucide-react";
-import { useStore, currentFirm, employeesOfFirm, periodsOfFirm } from "@/data/store";
+import { useStore, currentFirm, employeesOfFirm, periodsOfFirm, actions } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import {
   Card,
@@ -72,7 +72,20 @@ export default function Declarations() {
 
   const cnssTotal = totals.cnssSal + totals.cnssPatr;
 
+  /** Trace une déclaration CNSS produite (traçabilité + KPI du « Journal des documents »). */
+  function trackDecl(format: "bds" | "print") {
+    actions.recordDocGeneration({
+      firm_id: firm.id,
+      doc_type: "declaration_cnss",
+      format,
+      subject: `${firm.name} · ${periodLabel(year, month)}`,
+      period_year: year,
+      period_month: month,
+    });
+  }
+
   function downloadBds() {
+    trackDecl("bds");
     const lines = rows.map(
       ({ emp, r, plafonne }) =>
         `${emp.matricule ?? emp.id};${emp.cnss_number ?? ""};${plafonne.toFixed(2)};${(
@@ -193,7 +206,7 @@ export default function Declarations() {
           </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => window.print()}>
+            <Button variant="outline" onClick={() => { trackDecl("print"); window.print(); }}>
               <FileDown size={16} />
               {t("decl.export")}
             </Button>

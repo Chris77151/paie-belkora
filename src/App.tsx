@@ -6,6 +6,7 @@ import { canAccess, useSession } from "./lib/auth";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
 import Documents from "./pages/Documents";
+import DocumentsLog from "./pages/DocumentsLog";
 import Payroll from "./pages/Payroll";
 import Accounting from "./pages/Accounting";
 import Declarations from "./pages/Declarations";
@@ -43,6 +44,7 @@ const router = createHashRouter([
       { path: "dashboard", element: g(<Dashboard />) },
       { path: "employees", element: g(<Employees />) },
       { path: "documents", element: g(<Documents />) },
+      { path: "documents-log", element: g(<DocumentsLog />) },
       { path: "payroll", element: g(<Payroll />) },
       { path: "accounting", element: g(<Accounting />) },
       { path: "declarations", element: g(<Declarations />) },

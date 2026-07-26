@@ -6,7 +6,7 @@ import {
   actions, currentFirm, employeesOfFirm, payslipsOfPeriod, uid, useStore,
 } from "@/data/store";
 import { useT } from "@/lib/i18n";
-import type { Employee, PayslipInput } from "@/data/types";
+import type { DocFormat, Employee, PayslipInput } from "@/data/types";
 import { computeFor, defaultInput } from "@/lib/payroll-helpers";
 import type { PayrollResult } from "@/lib/payroll-engine";
 import {
@@ -83,8 +83,22 @@ export default function Payroll() {
     actions.setPeriodStatus(period.id, "draft");
   }
 
+  /** Trace un bulletin réellement produit (traçabilité + KPI du volet « Journal des documents »). */
+  function trackSlip(emp: Employee, format: DocFormat) {
+    actions.recordDocGeneration({
+      firm_id: firm.id,
+      doc_type: "bulletin",
+      format,
+      employee_id: emp.id,
+      subject: `${emp.first_name} ${emp.last_name}`,
+      period_year: year,
+      period_month: month,
+    });
+  }
+
   async function exportAll() {
     for (const r of rows) {
+      trackSlip(r.emp, "pdf");
       await exportPayslipPdf(view(r.emp, r.result, r.slip.input));
     }
   }
@@ -191,9 +205,9 @@ export default function Payroll() {
                 <Td className="text-right num font-semibold text-primary">{num(r.netAPayer)}</Td>
                 <Td>
                   <div className="flex items-center justify-center gap-1">
-                    <Button variant="ghost" size="icon" title="PDF" onClick={() => exportPayslipPdf(view(emp, r, slip.input))}><FileDown size={15} /></Button>
-                    <Button variant="ghost" size="icon" title="LaTeX (.tex)" onClick={() => downloadTex(view(emp, r, slip.input), firm.payslip_template_latex)}><FileText size={15} /></Button>
-                    <Button variant="ghost" size="icon" title={t("pay.printable")} onClick={() => openHtmlPayslip(view(emp, r, slip.input))}><Printer size={15} /></Button>
+                    <Button variant="ghost" size="icon" title="PDF" onClick={() => { trackSlip(emp, "pdf"); exportPayslipPdf(view(emp, r, slip.input)); }}><FileDown size={15} /></Button>
+                    <Button variant="ghost" size="icon" title="LaTeX (.tex)" onClick={() => { trackSlip(emp, "latex"); downloadTex(view(emp, r, slip.input), firm.payslip_template_latex); }}><FileText size={15} /></Button>
+                    <Button variant="ghost" size="icon" title={t("pay.printable")} onClick={() => { trackSlip(emp, "html"); openHtmlPayslip(view(emp, r, slip.input)); }}><Printer size={15} /></Button>
                   </div>
                 </Td>
                 <Td className="text-right">

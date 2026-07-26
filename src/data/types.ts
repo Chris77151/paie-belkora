@@ -193,6 +193,36 @@ export interface LoginEvent {
   reason?: LoginFailReason;
 }
 
+/* ---- Journal des documents générés (traçabilité + KPI) ---- */
+/** Famille du document produit. */
+export type DocType =
+  | "bulletin" | "attestation" | "contrat" | "disciplinaire" | "rupture" | "mineurs" | "declaration_cnss";
+/** Format/canal de production. */
+export type DocFormat = "pdf" | "html" | "apercu" | "latex" | "bds" | "print";
+
+/**
+ * Un document réellement généré depuis l'application (bulletin, attestation, déclaration…).
+ * Une trace = un document produit. Sert la traçabilité et les KPI mensuels ; ne contient
+ * aucune donnée sensible (pas de RIB, pas de montant), seulement l'identité du document.
+ */
+export interface DocGenEvent {
+  id: string;
+  /** ISO — horodatage de la génération (pilote les KPI mensuels). */
+  at: string;
+  firm_id: string;
+  doc_type: DocType;
+  format: DocFormat;
+  /** Salarié concerné (absent pour un document non nominatif, ex. mineurs/déclaration). */
+  employee_id?: string;
+  /** Libellé lisible du sujet (nom du salarié, ou société). */
+  subject?: string;
+  /** Période concernée par le document (bulletins, déclarations). */
+  period_year?: number;
+  period_month?: number;
+  /** Identifiant (username) du compte qui a généré. */
+  by?: string;
+}
+
 export type BankEventClass =
   | "AUTORISE" | "NON_AUTORISE" | "A_VERIFIER" | "NOUVEAU" | "SUPPRIME";
 export type BankSeverity = "info" | "moyen" | "eleve" | "critique";
@@ -308,6 +338,8 @@ export interface AppState {
   currentRole?: AppRole;
   /** Journal des connexions à l'application (audit d'accès), borné aux plus récentes. */
   loginEvents?: LoginEvent[];
+  /** Journal des documents générés (traçabilité + KPI), borné aux plus récents. */
+  docGenerations?: DocGenEvent[];
   /** Dernier rapport d'audit RIB (par société), masqué. */
   bankAudit?: BankAuditEvent[];
   /** Base de référence des RIB validés (empreintes) pour la détection d'écart. */

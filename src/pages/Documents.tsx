@@ -13,7 +13,7 @@ import {
   Languages,
   Camera,
 } from "lucide-react";
-import { useStore, currentFirm, employeesOfFirm } from "@/data/store";
+import { useStore, currentFirm, employeesOfFirm, actions } from "@/data/store";
 import {
   Card,
   CardHeader,
@@ -33,7 +33,7 @@ import {
 import { cn } from "@/lib/cn";
 import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
 import { paletteForFirm } from "@/lib/brand-color";
-import type { Employee, Firm } from "@/data/types";
+import type { DocFormat, DocType, Employee, Firm } from "@/data/types";
 import { LegalDocPreview } from "@/components/LegalDocPreview";
 import {
   RH_DOC_TYPES,
@@ -103,6 +103,17 @@ import {
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Trace un document RH réellement produit (traçabilité + KPI du volet « Journal des documents »). */
+function trackRhDoc(firm: Firm, docType: DocType, format: DocFormat, employee?: Employee) {
+  actions.recordDocGeneration({
+    firm_id: firm.id,
+    doc_type: docType,
+    format,
+    employee_id: employee?.id,
+    subject: employee ? `${employee.first_name} ${employee.last_name}` : firm.name,
+  });
 }
 
 /* ================================================================= salarié hors liste (ad-hoc) ================================================================= */
@@ -510,13 +521,13 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
           </div>
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button variant="outline" className="flex-1" onClick={() => openRhDocHtml(view)}>
+            <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "attestation", "html", employee); openRhDocHtml(view); }}>
               <Printer size={16} /> {t("btn.html")}
             </Button>
-            <Button className="flex-1" onClick={() => exportRhDocPdf(view)}>
+            <Button className="flex-1" onClick={() => { trackRhDoc(firm, "attestation", "pdf", employee); exportRhDocPdf(view); }}>
               <FileDown size={16} /> {t("btn.pdf")}
             </Button>
-            <Button variant="sage" className="w-full" onClick={exportPreview}>
+            <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "attestation", "apercu", employee); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
@@ -760,13 +771,13 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
           </div>
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button variant="outline" className="flex-1" onClick={() => openContractHtml(view)}>
+            <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "contrat", "html", employee); openContractHtml(view); }}>
               <Printer size={16} /> HTML
             </Button>
-            <Button className="flex-1" onClick={() => exportContractPdf(view)}>
+            <Button className="flex-1" onClick={() => { trackRhDoc(firm, "contrat", "pdf", employee); exportContractPdf(view); }}>
               <FileDown size={16} /> PDF
             </Button>
-            <Button variant="sage" className="w-full" onClick={exportPreview}>
+            <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "contrat", "apercu", employee); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
@@ -1010,13 +1021,13 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
           </div>
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button variant="outline" className="flex-1" onClick={() => openDisciplineHtml(view)}>
+            <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "disciplinaire", "html", employee); openDisciplineHtml(view); }}>
               <Printer size={16} /> HTML
             </Button>
-            <Button className="flex-1" onClick={() => exportDisciplinePdf(view)}>
+            <Button className="flex-1" onClick={() => { trackRhDoc(firm, "disciplinaire", "pdf", employee); exportDisciplinePdf(view); }}>
               <FileDown size={16} /> PDF
             </Button>
-            <Button variant="sage" className="w-full" onClick={exportPreview}>
+            <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "disciplinaire", "apercu", employee); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
@@ -1393,13 +1404,13 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
           </div>
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button variant="outline" className="flex-1" onClick={() => openRuptureHtml(view)}>
+            <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "rupture", "html", employee); openRuptureHtml(view); }}>
               <Printer size={16} /> HTML
             </Button>
-            <Button className="flex-1" onClick={() => exportRupturePdf(view)}>
+            <Button className="flex-1" onClick={() => { trackRhDoc(firm, "rupture", "pdf", employee); exportRupturePdf(view); }}>
               <FileDown size={16} /> PDF
             </Button>
-            <Button variant="sage" className="w-full" onClick={exportPreview}>
+            <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "rupture", "apercu", employee); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
@@ -1600,16 +1611,16 @@ function MineurPanel({ firm }: { firm: Firm }) {
           </div>
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button variant="outline" className="flex-1" onClick={() => openMineurHtml(view, "fr")}>
+            <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "mineurs", "html"); openMineurHtml(view, "fr"); }}>
               <Printer size={16} /> Ouvrir (FR)
             </Button>
-            <Button variant="outline" className="flex-1" onClick={() => openMineurHtml(view, "ar")}>
+            <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "mineurs", "html"); openMineurHtml(view, "ar"); }}>
               <Printer size={16} /> Ouvrir (AR)
             </Button>
-            <Button className="flex-1" onClick={() => exportMineurPdf(view)}>
+            <Button className="flex-1" onClick={() => { trackRhDoc(firm, "mineurs", "pdf"); exportMineurPdf(view); }}>
               <FileDown size={16} /> PDF (FR)
             </Button>
-            <Button variant="sage" className="w-full" onClick={exportPreview}>
+            <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "mineurs", "apercu"); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")} ({lang === "ar" ? "AR" : "FR"})
             </Button>
           </div>

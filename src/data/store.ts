@@ -11,6 +11,7 @@ import type {
   BankAuditEvent,
   BankBaseline,
   ComplianceAlert,
+  DocGenEvent,
   Employee,
   Firm,
   LoginEvent,
@@ -19,6 +20,7 @@ import type {
   WorkAccident,
 } from "./types";
 import { capLoginEvents } from "@/lib/login-audit";
+import { capDocEvents } from "@/lib/doc-log";
 import { seed, SUPER_ADMIN } from "./seed";
 import { isSupabaseConfigured, loadRemoteState, saveRemoteState } from "@/lib/supabase";
 
@@ -74,6 +76,7 @@ function migrate(s: AppState): AppState {
   if (s.bankAudit == null) s.bankAudit = [];
   if (s.bankBaseline == null) s.bankBaseline = [];
   if (!Array.isArray(s.loginEvents)) s.loginEvents = [];
+  if (!Array.isArray(s.docGenerations)) s.docGenerations = [];
   if (!Array.isArray(s.workAccidents)) s.workAccidents = [];
   if (!Array.isArray(s.accountingClosures)) s.accountingClosures = [];
   // Comptes utilisateurs : garantir la présence ET les credentials du super utilisateur.
@@ -190,6 +193,17 @@ function sessionRole(): AppRole | null {
     return state.users?.find((u) => u.id === id && u.is_active)?.role ?? null;
   } catch {
     return null;
+  }
+}
+
+/** Identifiant (username) du compte connecté — lu sans importer auth.ts (évite un cycle). */
+function sessionUsername(): string | undefined {
+  try {
+    const id = sessionStorage.getItem("gca-paie-session-user");
+    if (!id) return undefined;
+    return state.users?.find((u) => u.id === id && u.is_active)?.username;
+  } catch {
+    return undefined;
   }
 }
 
@@ -409,6 +423,24 @@ export const actions = {
   clearLoginEvents() {
     set((s) => {
       s.loginEvents = [];
+    });
+  },
+  /* ---- Journal des documents générés (traçabilité + KPI) ---- */
+  /**
+   * Consigne un document réellement produit. L'id, l'horodatage et l'auteur (compte connecté)
+   * sont estampillés ici. `view: true` : exporter un document est permis même en lecture
+   * seule, la trace doit donc l'être aussi. Journal borné aux plus récents.
+   */
+  recordDocGeneration(input: Omit<DocGenEvent, "id" | "at" | "by">) {
+    const evt: DocGenEvent = { ...input, id: uid("doc"), at: new Date().toISOString(), by: sessionUsername() };
+    set((s) => {
+      s.docGenerations = capDocEvents([...(s.docGenerations ?? []), evt]);
+    }, { view: true });
+  },
+  /** Purge le journal des documents générés. */
+  clearDocGenerations() {
+    set((s) => {
+      s.docGenerations = [];
     });
   },
   /* ---- Registre des accidents du travail ---- */
