@@ -8,7 +8,7 @@ import autoTable from "jspdf-autotable";
 import type { Employee, Firm, PayrollPeriod, PayslipInput } from "@/data/types";
 import type { PayrollResult } from "./payroll-engine";
 import { getParams } from "./params";
-import { amountToWordsFr, dateFr, periodLabel } from "./format";
+import { amountToWordsFr, asciiSpaces, dateFr, periodLabel } from "./format";
 import { firmDescriptor, firmLegalLine } from "./firm-legal";
 import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
 
@@ -187,8 +187,12 @@ export async function buildPayslipDoc(v: PayslipView): Promise<jsPDF> {
   doc.setFont("helvetica", "bold").setFontSize(12).setTextColor(...INK);
   doc.text(firm.name.toUpperCase(), M, 32);
   doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(110, 110, 110);
-  const headLine = [firmDescriptor(firm), firmLegalLine(firm)].filter(Boolean).join("   ·   ")
-    || `ICE : ${firm.ice ?? "—"}`;
+  // asciiSpaces : neutralise les espaces spéciales (fine insécable U+202F d'Intl, ou collées
+  // dans une saisie) que la police standard du PDF afficherait en glyphe parasite (« 100 /000 »).
+  const headLine = asciiSpaces(
+    [firmDescriptor(firm), firmLegalLine(firm)].filter(Boolean).join("   ·   ")
+      || `ICE : ${firm.ice ?? "—"}`,
+  );
   doc.text(doc.splitTextToSize(headLine, W - 2 * M), M, 36);
 
   // Titre encadré + période

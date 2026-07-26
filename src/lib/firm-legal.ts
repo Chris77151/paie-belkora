@@ -10,12 +10,17 @@
  * jamais de « — » ou de placeholder injecté à la place d'une donnée absente.
  */
 import type { Firm } from "@/data/types";
+import { asciiSpaces } from "./format";
 
 const nz = (v?: string | null): string => (v ?? "").trim();
 
-/** Capital social formaté en dirhams, séparateurs de milliers français : « 100 000 DH ». */
+/**
+ * Capital social formaté en dirhams, séparateurs de milliers : « 100 000 DH ».
+ * `asciiSpaces` remplace l'espace fine insécable (U+202F) d'Intl par une espace normale,
+ * sinon la police standard du PDF l'affiche en glyphe parasite (« 100 /000 »).
+ */
 export function capitalMad(n: number): string {
-  return new Intl.NumberFormat("fr-FR").format(Math.round(n)) + " DH";
+  return asciiSpaces(new Intl.NumberFormat("fr-FR").format(Math.round(n))) + " DH";
 }
 
 /**

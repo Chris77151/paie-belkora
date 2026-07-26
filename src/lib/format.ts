@@ -10,18 +10,32 @@ const nfMad = new Intl.NumberFormat("fr-MA", {
   maximumFractionDigits: 2,
 });
 
+/**
+ * Remplace les espaces « spéciales » par une espace normale (U+0020).
+ *
+ * Intl.NumberFormat(fr-*) sépare les milliers par une espace fine insécable (U+202F), et
+ * certaines saisies contiennent une espace insécable (U+00A0) ou fine (U+2009). Ces
+ * caractères ne sont PAS dans l'encodage WinAnsi des polices standard de jsPDF : ils
+ * s'affichent comme un glyphe parasite sur le bulletin (ex. « 100 /000 » au lieu de
+ * « 100 000 »). On normalise donc à la source, pour un rendu identique en PDF, HTML et UI.
+ */
+export function asciiSpaces(s: string): string {
+  // U+00A0 insecable, U+202F fine insecable, U+2009 fine, U+2007 chiffre, U+2060 sans chasse, U+FEFF zero-largeur
+  return s.replace(/[    ⁠﻿]/g, " ");
+}
+
 export function mad(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return "—";
-  return `${nfMad.format(n)} DH`;
+  return `${asciiSpaces(nfMad.format(n))} DH`;
 }
 
 export function num(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return "—";
-  return nfMad.format(n);
+  return asciiSpaces(nfMad.format(n));
 }
 
 export function pct(n: number): string {
-  return `${(n * 100).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} %`;
+  return `${asciiSpaces((n * 100).toLocaleString("fr-FR", { maximumFractionDigits: 2 }))} %`;
 }
 
 export function periodLabel(year: number, month: number): string {
