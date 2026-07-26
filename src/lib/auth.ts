@@ -12,7 +12,7 @@
  */
 import { useSyncExternalStore } from "react";
 import { actions, getState, uid } from "@/data/store";
-import { successEvent, failureEvent } from "@/lib/login-audit";
+import { successEvent, failureEvent, logoutEvent } from "@/lib/login-audit";
 import type { AppRole, AppUser, LoginFailReason } from "@/data/types";
 
 const SESSION_KEY = "gca-paie-session-user";
@@ -91,6 +91,11 @@ export async function login(
 
 /** Déconnecte l'utilisateur courant. */
 export function logout(): void {
+  // Journaliser AVANT d'effacer la session : on a encore le compte sous la main.
+  const user = currentUser();
+  if (user) {
+    actions.recordLoginEvent(logoutEvent(user, uid("login"), new Date().toISOString()));
+  }
   sessionUserId = null;
   sessionStorage.removeItem(SESSION_KEY);
   emit();

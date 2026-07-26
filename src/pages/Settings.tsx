@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Save, ShieldX, Users, ScrollText, Building2, ImageUp, RotateCcw,
   Plus, Trash2, Check, Plug, Loader2, UserPlus, KeyRound, ShieldAlert,
-  Cloud, Database, Copy, CloudOff, History, LogIn, CircleSlash,
+  Cloud, Database, Copy, CloudOff, History, LogIn, LogOut, CircleSlash,
 } from "lucide-react";
 import {
   useStore, currentFirm, actions, uid,
@@ -620,7 +620,7 @@ function LoginAuditCard() {
   const s = useStore();
   const session = useSession();
   const isSuperAdmin = session?.role === "super_admin";
-  const [filter, setFilter] = useState<"all" | "success" | "failed">("all");
+  const [filter, setFilter] = useState<"all" | "success" | "failed" | "logout">("all");
 
   // Volet sensible : la traçabilité des accès est réservée au super administrateur.
   if (!isSuperAdmin) {
@@ -680,6 +680,7 @@ function LoginAuditCard() {
             <option value="all">{t("set.login.filter.all")}</option>
             <option value="success">{t("set.login.filter.success")}</option>
             <option value="failed">{t("set.login.filter.failed")}</option>
+            <option value="logout">{t("set.login.filter.logout")}</option>
           </Select>
           {all.length > 0 && (
             <Button variant="outline" size="sm" className="text-destructive" onClick={clearLog}>
@@ -715,6 +716,10 @@ function LoginAuditCard() {
                   {e.outcome === "success" ? (
                     <Badge tone="success">
                       <span className="inline-flex items-center gap-1"><LogIn size={12} /> {t("set.login.outcome.success")}</span>
+                    </Badge>
+                  ) : e.outcome === "logout" ? (
+                    <Badge tone="muted">
+                      <span className="inline-flex items-center gap-1"><LogOut size={12} /> {t("set.login.outcome.logout")}</span>
                     </Badge>
                   ) : (
                     <span className="inline-flex items-center gap-1.5">

@@ -14,18 +14,28 @@ import type { AppUser, LoginEvent, LoginFailReason } from "@/data/types";
 /** Taille maximale du journal : au-delà, les entrées les plus anciennes sont oubliées. */
 export const MAX_LOGIN_EVENTS = 500;
 
-/** Événement d'une connexion RÉUSSIE, à partir du compte authentifié. */
-export function successEvent(user: AppUser, id: string, at: string): LoginEvent {
+/** Événement construit à partir du compte authentifié (connexion réussie / déconnexion). */
+function accountEvent(user: AppUser, outcome: "success" | "logout", id: string, at: string): LoginEvent {
   return {
     id,
     at,
-    outcome: "success",
+    outcome,
     username: user.username,
     user_id: user.id,
     full_name: user.full_name,
     role: user.role,
     firm_id: user.firm_id ?? null,
   };
+}
+
+/** Événement d'une connexion RÉUSSIE, à partir du compte authentifié. */
+export function successEvent(user: AppUser, id: string, at: string): LoginEvent {
+  return accountEvent(user, "success", id, at);
+}
+
+/** Événement d'une DÉCONNEXION, à partir du compte qui se déconnecte. */
+export function logoutEvent(user: AppUser, id: string, at: string): LoginEvent {
+  return accountEvent(user, "logout", id, at);
 }
 
 /**

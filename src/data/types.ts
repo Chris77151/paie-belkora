@@ -167,12 +167,13 @@ export interface AppUser {
 }
 
 /* ---- Journal des connexions (audit d'accès à l'application) ---- */
-export type LoginOutcome = "success" | "failed";
+/** Type d'événement d'accès : connexion réussie, échec de connexion, déconnexion. */
+export type LoginOutcome = "success" | "failed" | "logout";
 /** Cause d'un échec de connexion (jamais le mot de passe saisi). */
 export type LoginFailReason = "empty" | "unknown_user" | "disabled" | "bad_password";
 
 /**
- * Une tentative de connexion à l'application (réussie ou échouée).
+ * Un événement d'accès à l'application (connexion réussie, échec, ou déconnexion).
  * Sécurité : on conserve l'IDENTIFIANT saisi (utile pour détecter les tentatives
  * répétées), mais JAMAIS le mot de passe, même en échec.
  */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { successEvent, failureEvent, capLoginEvents, MAX_LOGIN_EVENTS } from "./login-audit";
+import { successEvent, failureEvent, logoutEvent, capLoginEvents, MAX_LOGIN_EVENTS } from "./login-audit";
 import type { AppUser, LoginEvent } from "@/data/types";
 
 const user: AppUser = {
@@ -29,6 +29,19 @@ describe("journal des connexions — construction des événements", () => {
     expect(e.reason).toBeUndefined();
     // Aucune fuite de secret : la sérialisation ne contient aucun champ mot de passe.
     expect(JSON.stringify(e)).not.toContain("password");
+    expect(JSON.stringify(e)).not.toContain("deadbeef");
+  });
+
+  it("déconnexion : capture le compte qui se déconnecte, sans mot de passe ni cause", () => {
+    const e = logoutEvent(user, "log4", "2026-07-26T18:00:00Z");
+    expect(e).toMatchObject({
+      id: "log4",
+      outcome: "logout",
+      username: user.username,
+      user_id: "u1",
+      role: "super_admin",
+    });
+    expect(e.reason).toBeUndefined();
     expect(JSON.stringify(e)).not.toContain("deadbeef");
   });
 
