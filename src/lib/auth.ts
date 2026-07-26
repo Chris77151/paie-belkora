@@ -11,8 +11,9 @@
  * pour un déploiement en ligne, brancher une vraie auth (ex. Supabase Auth + RLS).
  */
 import { useSyncExternalStore } from "react";
-import { actions, getState } from "@/data/store";
-import type { AppRole, AppUser } from "@/data/types";
+import { actions, getState, uid } from "@/data/store";
+import { successEvent, failureEvent } from "@/lib/login-audit";
+import type { AppRole, AppUser, LoginFailReason } from "@/data/types";
 
 const SESSION_KEY = "gca-paie-session-user";
 
@@ -58,19 +59,32 @@ export async function login(
   username: string,
   password: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const uname = username.trim().toLowerCase();
-  if (!uname || !password) return { ok: false, error: "Renseignez l'identifiant et le mot de passe." };
+  const typed = username.trim(); // identifiant tel que saisi (journalisé ; jamais le mot de passe)
+  const uname = typed.toLowerCase();
+
+  /** Consigne un échec dans le journal des connexions, puis renvoie le message d'erreur. */
+  const fail = (
+    reason: LoginFailReason,
+    error: string,
+    user?: AppUser | null,
+  ): { ok: false; error: string } => {
+    actions.recordLoginEvent(failureEvent(typed, reason, uid("login"), new Date().toISOString(), user));
+    return { ok: false, error };
+  };
+
+  if (!uname || !password) return fail("empty", "Renseignez l'identifiant et le mot de passe.");
 
   const user = getState().users?.find((u) => u.username.trim().toLowerCase() === uname);
-  if (!user) return { ok: false, error: "Identifiant inconnu." };
-  if (!user.is_active) return { ok: false, error: "Ce compte est désactivé. Contactez un administrateur." };
+  if (!user) return fail("unknown_user", "Identifiant inconnu.");
+  if (!user.is_active) return fail("disabled", "Ce compte est désactivé. Contactez un administrateur.", user);
 
   const hash = await hashPassword(password);
-  if (hash !== user.password_hash) return { ok: false, error: "Mot de passe incorrect." };
+  if (hash !== user.password_hash) return fail("bad_password", "Mot de passe incorrect.", user);
 
   sessionUserId = user.id;
   sessionStorage.setItem(SESSION_KEY, user.id);
   actions.setCurrentRole(user.role); // garde la logique de rôles existante en phase
+  actions.recordLoginEvent(successEvent(user, uid("login"), new Date().toISOString()));
   emit();
   return { ok: true };
 }

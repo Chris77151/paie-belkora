@@ -166,6 +166,32 @@ export interface AppUser {
   created_at: string;
 }
 
+/* ---- Journal des connexions (audit d'accès à l'application) ---- */
+export type LoginOutcome = "success" | "failed";
+/** Cause d'un échec de connexion (jamais le mot de passe saisi). */
+export type LoginFailReason = "empty" | "unknown_user" | "disabled" | "bad_password";
+
+/**
+ * Une tentative de connexion à l'application (réussie ou échouée).
+ * Sécurité : on conserve l'IDENTIFIANT saisi (utile pour détecter les tentatives
+ * répétées), mais JAMAIS le mot de passe, même en échec.
+ */
+export interface LoginEvent {
+  id: string;
+  /** ISO — horodatage de la tentative. */
+  at: string;
+  outcome: LoginOutcome;
+  /** Identifiant saisi (tel quel, sans casse forcée). */
+  username: string;
+  /** Renseignés seulement si l'identifiant correspond à un compte connu. */
+  user_id?: string;
+  full_name?: string;
+  role?: AppRole;
+  firm_id?: string | null;
+  /** Uniquement si outcome = "failed". */
+  reason?: LoginFailReason;
+}
+
 export type BankEventClass =
   | "AUTORISE" | "NON_AUTORISE" | "A_VERIFIER" | "NOUVEAU" | "SUPPRIME";
 export type BankSeverity = "info" | "moyen" | "eleve" | "critique";
@@ -279,6 +305,8 @@ export interface AppState {
   odoo?: OdooConfig;
   /** Rôle simulé de l'utilisateur courant (V1 local ; auth Supabase à brancher). */
   currentRole?: AppRole;
+  /** Journal des connexions à l'application (audit d'accès), borné aux plus récentes. */
+  loginEvents?: LoginEvent[];
   /** Dernier rapport d'audit RIB (par société), masqué. */
   bankAudit?: BankAuditEvent[];
   /** Base de référence des RIB validés (empreintes) pour la détection d'écart. */

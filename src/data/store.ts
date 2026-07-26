@@ -13,10 +13,12 @@ import type {
   ComplianceAlert,
   Employee,
   Firm,
+  LoginEvent,
   Payslip,
   PayrollPeriod,
   WorkAccident,
 } from "./types";
+import { capLoginEvents } from "@/lib/login-audit";
 import { seed, SUPER_ADMIN } from "./seed";
 import { isSupabaseConfigured, loadRemoteState, saveRemoteState } from "@/lib/supabase";
 
@@ -71,6 +73,7 @@ function migrate(s: AppState): AppState {
   if (s.currentRole == null) s.currentRole = "firm_admin";
   if (s.bankAudit == null) s.bankAudit = [];
   if (s.bankBaseline == null) s.bankBaseline = [];
+  if (!Array.isArray(s.loginEvents)) s.loginEvents = [];
   if (!Array.isArray(s.workAccidents)) s.workAccidents = [];
   if (!Array.isArray(s.accountingClosures)) s.accountingClosures = [];
   // Comptes utilisateurs : garantir la présence ET les credentials du super utilisateur.
@@ -389,6 +392,23 @@ export const actions = {
     set((s) => {
       const others = (s.bankBaseline ?? []).filter((b) => b.firm_id !== firmId);
       s.bankBaseline = [...others, ...baseline];
+    });
+  },
+  /* ---- Journal des connexions (audit d'accès) ---- */
+  /**
+   * Consigne une tentative de connexion (réussie ou échouée). `view: true` : une connexion
+   * doit être tracée même pour un compte « lecture seule », et un échec survient AVANT toute
+   * session (aucun rôle établi). Le journal est borné aux plus récentes.
+   */
+  recordLoginEvent(evt: LoginEvent) {
+    set((s) => {
+      s.loginEvents = capLoginEvents([...(s.loginEvents ?? []), evt]);
+    }, { view: true });
+  },
+  /** Purge le journal des connexions (action réservée au super administrateur côté UI). */
+  clearLoginEvents() {
+    set((s) => {
+      s.loginEvents = [];
     });
   },
   /* ---- Registre des accidents du travail ---- */

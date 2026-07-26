@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Save, ShieldX, Users, ScrollText, Building2, ImageUp, RotateCcw,
   Plus, Trash2, Check, Plug, Loader2, UserPlus, KeyRound, ShieldAlert,
-  Cloud, Database, Copy, CloudOff,
+  Cloud, Database, Copy, CloudOff, History, LogIn, CircleSlash,
 } from "lucide-react";
 import {
   useStore, currentFirm, actions, uid,
@@ -31,7 +31,9 @@ import {
   Td,
   PageHeader,
 } from "@/components/ui/kit";
-import { mad, pct } from "@/lib/format";
+import { mad, pct, dateTimeFr } from "@/lib/format";
+import type { TKey } from "@/lib/i18n";
+import type { LoginEvent, LoginFailReason } from "@/data/types";
 import { paletteForFirm, dominantColorFromImage, DEFAULT_PALETTE } from "@/lib/brand-color";
 import { getParams, AVAILABLE_YEARS } from "@/lib/params";
 import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
@@ -360,6 +362,7 @@ export default function Settings() {
       </Card>
 
       <UsersCard />
+      <LoginAuditCard />
 
       <Card className="mb-6">
         <CardHeader>
@@ -599,6 +602,142 @@ function UsersCard() {
           Authentification locale (ce navigateur). Les mots de passe ne sont jamais stockés en clair
           (empreinte SHA-256). Le super administrateur ne peut être ni supprimé ni désactivé.
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ---------------- Journal des connexions (audit d'accès) ---------------- */
+const LOGIN_REASON_KEY: Record<LoginFailReason, TKey> = {
+  empty: "set.login.reason.empty",
+  unknown_user: "set.login.reason.unknown_user",
+  disabled: "set.login.reason.disabled",
+  bad_password: "set.login.reason.bad_password",
+};
+
+function LoginAuditCard() {
+  const t = useT();
+  const s = useStore();
+  const session = useSession();
+  const isSuperAdmin = session?.role === "super_admin";
+  const [filter, setFilter] = useState<"all" | "success" | "failed">("all");
+
+  // Volet sensible : la traçabilité des accès est réservée au super administrateur.
+  if (!isSuperAdmin) {
+    return (
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>
+            <span className="inline-flex items-center gap-2">
+              <History size={16} className="text-primary" />
+              {t("set.login.title")}
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="flex items-start gap-2 text-sm text-muted-foreground">
+            <ShieldAlert size={16} className="mt-0.5 shrink-0 text-warning" />
+            {t("set.login.superOnly")}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const all = s.loginEvents ?? [];
+  // Plus récent en tête (le journal est stocké dans l'ordre chronologique).
+  const rows: LoginEvent[] = [...all]
+    .reverse()
+    .filter((e) => filter === "all" || e.outcome === filter);
+
+  const firmName = (id?: string | null) =>
+    id ? s.firms.find((f) => f.id === id)?.name ?? "—" : t("set.users.allFirms");
+
+  function clearLog() {
+    if (window.confirm("Vider le journal des connexions ? Cette action est irréversible.")) {
+      actions.clearLoginEvents();
+    }
+  }
+
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>
+          <span className="inline-flex items-center gap-2">
+            <History size={16} className="text-primary" />
+            {t("set.login.title")} ({all.length})
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="mb-4 text-[13px] text-muted-foreground">{t("set.login.hint")}</p>
+
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <span className="text-xs text-muted-foreground">
+            {all.length} {t("set.login.count")}
+          </span>
+          <Select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} className="ml-auto w-44">
+            <option value="all">{t("set.login.filter.all")}</option>
+            <option value="success">{t("set.login.filter.success")}</option>
+            <option value="failed">{t("set.login.filter.failed")}</option>
+          </Select>
+          {all.length > 0 && (
+            <Button variant="outline" size="sm" className="text-destructive" onClick={clearLog}>
+              <Trash2 size={15} /> {t("set.login.clear")}
+            </Button>
+          )}
+        </div>
+
+        <Table>
+          <thead>
+            <tr>
+              <Th>{t("set.login.col.date")}</Th>
+              <Th>{t("set.login.col.user")}</Th>
+              <Th>{t("set.roles.col.role")}</Th>
+              <Th>{t("set.users.col.firm")}</Th>
+              <Th>{t("set.login.col.outcome")}</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((e) => (
+              <tr key={e.id} className="hover:bg-muted/40">
+                <Td className="num text-xs whitespace-nowrap">{dateTimeFr(e.at)}</Td>
+                <Td>
+                  <div className="font-medium">{e.username || "—"}</div>
+                  {e.full_name && <div className="text-xs text-muted-foreground">{e.full_name}</div>}
+                  {!e.user_id && (
+                    <div className="text-[11px] text-muted-foreground italic">{t("set.login.unknownAccount")}</div>
+                  )}
+                </Td>
+                <Td className="text-muted-foreground">{e.role ? ROLE_LABELS[e.role] : "—"}</Td>
+                <Td className="text-muted-foreground">{firmName(e.firm_id)}</Td>
+                <Td>
+                  {e.outcome === "success" ? (
+                    <Badge tone="success">
+                      <span className="inline-flex items-center gap-1"><LogIn size={12} /> {t("set.login.outcome.success")}</span>
+                    </Badge>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Badge tone="destructive">
+                        <span className="inline-flex items-center gap-1"><CircleSlash size={12} /> {t("set.login.outcome.failed")}</span>
+                      </Badge>
+                      {e.reason && (
+                        <span className="text-[11px] text-muted-foreground">{t(LOGIN_REASON_KEY[e.reason])}</span>
+                      )}
+                    </span>
+                  )}
+                </Td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <Td colSpan={5} className="py-8 text-center text-muted-foreground">
+                  {t("set.login.empty")}
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
       </CardContent>
     </Card>
   );
