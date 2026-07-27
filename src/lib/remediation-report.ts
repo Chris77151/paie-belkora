@@ -12,7 +12,7 @@
 import { jsPDF } from "jspdf";
 import { buildRemediationPlan, type AuditReport, type AuditFinding } from "./audit-engine";
 import type { ReconcileOutcome } from "./odoo";
-import { asciiSpaces } from "./format";
+import { pdfText, asciiSpaces } from "./format";
 
 const A4_W = 210;
 const A4_H = 297;
@@ -41,7 +41,7 @@ export function buildRemediationReportPdf(
     doc.setFont("helvetica", opts?.bold ? "bold" : opts?.italic ? "italic" : "normal");
     doc.setFontSize(opts?.size ?? 9);
     doc.setTextColor(...(opts?.color ?? INK));
-    const lines = doc.splitTextToSize(asciiSpaces(s), W - 2 * M) as string[];
+    const lines = doc.splitTextToSize(pdfText(s), W - 2 * M) as string[];
     for (const ln of lines) {
       if (y > A4_H - M) { doc.addPage(); y = M; }
       doc.text(ln, x, y);
