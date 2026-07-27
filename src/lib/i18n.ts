@@ -508,6 +508,7 @@ export const DICT = {
   "doc.type.rupture": { fr: "Rupture / STC", ar: "إنهاء العقد / التصفية" },
   "doc.type.mineurs": { fr: "Mineurs", ar: "القاصرون" },
   "doc.type.declaration_cnss": { fr: "Déclarations CNSS", ar: "تصاريح CNSS" },
+  "doc.type.regularisation": { fr: "Régularisation comptable", ar: "تسوية محاسبية" },
   // Formats
   "doc.format.pdf": { fr: "PDF", ar: "PDF" },
   "doc.format.html": { fr: "HTML / impression", ar: "HTML / طباعة" },

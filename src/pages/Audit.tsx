@@ -6,7 +6,7 @@ import {
 import {
   Badge, Button, Card, CardContent, Field, PageHeader, Select,
 } from "@/components/ui/kit";
-import { currentFirm, useStore } from "@/data/store";
+import { actions, currentFirm, useStore } from "@/data/store";
 import { useSession } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { MONTHS_FR, mad } from "@/lib/format";
@@ -83,6 +83,15 @@ export default function Audit() {
   function correct(applied?: { outcomes: ReconcileOutcome[] }) {
     if (!report) return;
     buildRemediationReportPdf(report, firm.name, period, applied).save(`${fileBase}.pdf`);
+    // Traçabilité : le rapport de régularisation apparaît dans le Journal des documents.
+    actions.recordDocGeneration({
+      firm_id: firm.id,
+      doc_type: "regularisation",
+      format: "pdf",
+      subject: `Régularisation comptable · ${period}`,
+      period_year: year,
+      period_month: month,
+    });
   }
 
   /**

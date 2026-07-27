@@ -196,7 +196,8 @@ export interface LoginEvent {
 /* ---- Journal des documents générés (traçabilité + KPI) ---- */
 /** Famille du document produit. */
 export type DocType =
-  | "bulletin" | "attestation" | "contrat" | "disciplinaire" | "rupture" | "mineurs" | "declaration_cnss";
+  | "bulletin" | "attestation" | "contrat" | "disciplinaire" | "rupture" | "mineurs"
+  | "declaration_cnss" | "regularisation";
 /** Format/canal de production. */
 export type DocFormat = "pdf" | "html" | "apercu" | "latex" | "bds" | "print";
 

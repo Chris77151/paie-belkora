@@ -17,6 +17,7 @@ const TYPE_KEY: Record<DocType, TKey> = {
   rupture: "doc.type.rupture",
   mineurs: "doc.type.mineurs",
   declaration_cnss: "doc.type.declaration_cnss",
+  regularisation: "doc.type.regularisation",
 };
 const FORMAT_KEY: Record<DocFormat, TKey> = {
   pdf: "doc.format.pdf",
@@ -34,6 +35,7 @@ const TYPE_TONE: Record<DocType, Parameters<typeof Badge>[0]["tone"]> = {
   rupture: "destructive",
   mineurs: "warning",
   declaration_cnss: "success",
+  regularisation: "primary",
 };
 
 /** Mois court « juil. 2026 » à partir d'une année + mois (1-12). */
