@@ -587,3 +587,121 @@ export async function odooFetchBankSnapshot(
 
   return { records, groupResolved, authorizedGroupLabel: groups[0]?.full_name };
 }
+
+/* ================================================================= */
+/* Lettrage automatique (rapprochement) — correction Odoo RÉELLE et   */
+/* SÛRE : ne rapproche que des lignes d'un même tiers qui s'apurent   */
+/* exactement (Σ résidu ≈ 0). Réversible dans Odoo (dé-lettrage).     */
+/* ================================================================= */
+
+/** Une ligne d'écriture ouverte (non lettrée) lue dans Odoo. */
+export interface OdooOpenItem {
+  id: number; // account.move.line id
+  account_id: number;
+  account_code: string;
+  partner_id: number | null;
+  partner: string;
+  move_name: string;
+  date: string;
+  residual: number; // amount_residual (signé)
+}
+
+/** Un groupe de lignes d'un même (compte, tiers) qui s'apurent exactement → lettrable sans risque. */
+export interface ReconcileGroup {
+  account_id: number;
+  account_code: string;
+  partner_id: number | null;
+  partner: string;
+  line_ids: number[];
+  sum_residual: number; // ≈ 0
+  amount: number; // volume lettré = Σ des résidus positifs
+}
+
+export interface ReconcileOutcome {
+  group: ReconcileGroup;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Regroupe les lignes ouvertes par (compte, tiers) et NE RETIENT que les groupes qui
+ * s'apurent EXACTEMENT (Σ résidu ≈ 0, à `eps` près) avec des sens opposés (≥1 débit et
+ * ≥1 crédit). PUR & testable — c'est le seul sous-ensemble sûr à lettrer sans jugement :
+ * un rapprochement qui laisse un résidu relèverait d'une analyse humaine.
+ */
+export function groupReconcilable(lines: OdooOpenItem[], eps = 0.01): ReconcileGroup[] {
+  const buckets = new Map<string, OdooOpenItem[]>();
+  for (const l of lines) {
+    const key = `${l.account_id}|${l.partner_id ?? 0}`;
+    (buckets.get(key) ?? buckets.set(key, []).get(key)!).push(l);
+  }
+  const groups: ReconcileGroup[] = [];
+  for (const items of buckets.values()) {
+    if (items.length < 2) continue; // une seule ligne ne se lettre pas
+    const sum = items.reduce((a, l) => a + l.residual, 0);
+    const hasDebit = items.some((l) => l.residual > 0);
+    const hasCredit = items.some((l) => l.residual < 0);
+    if (Math.abs(sum) >= eps || !hasDebit || !hasCredit) continue;
+    const amount = Math.round(items.filter((l) => l.residual > 0).reduce((a, l) => a + l.residual, 0) * 100) / 100;
+    const first = items[0];
+    groups.push({
+      account_id: first.account_id,
+      account_code: first.account_code,
+      partner_id: first.partner_id,
+      partner: first.partner,
+      line_ids: items.map((l) => l.id),
+      sum_residual: Math.round(sum * 100) / 100,
+      amount,
+    });
+  }
+  return groups;
+}
+
+/** Lit les lignes ouvertes (postées, non lettrées, résidu ≠ 0) des comptes lettrables. Lecture seule. */
+export async function odooReadOpenItems(config: OdooConfig, companyId: number): Promise<OdooOpenItem[]> {
+  const userId = await odooAuthenticate(config);
+  const rows: any[] = await jsonRpc(config, "object", "execute_kw", [
+    config.db, userId, config.apiKey, "account.move.line", "search_read",
+    [[
+      ["parent_state", "=", "posted"],
+      ["company_id", "=", companyId],
+      ["account_id.reconcile", "=", true],
+      ["full_reconcile_id", "=", false],
+      ["amount_residual", "!=", 0],
+    ]],
+    { fields: ["id", "account_id", "partner_id", "amount_residual", "move_name", "date"], limit: 20000 },
+  ]);
+  return rows.map((r) => ({
+    id: r.id as number,
+    account_id: Array.isArray(r.account_id) ? (r.account_id[0] as number) : 0,
+    account_code: Array.isArray(r.account_id) ? String(r.account_id[1] ?? "").split(" ")[0] : "",
+    partner_id: Array.isArray(r.partner_id) ? (r.partner_id[0] as number) : null,
+    partner: Array.isArray(r.partner_id) ? String(r.partner_id[1] ?? "") : "(sans tiers)",
+    move_name: String(r.move_name ?? ""),
+    date: String(r.date ?? ""),
+    residual: Math.round((Number(r.amount_residual) || 0) * 100) / 100,
+  }));
+}
+
+/**
+ * Applique le lettrage : appelle `account.move.line`.reconcile() sur chaque groupe équilibré.
+ * Réversible dans Odoo. Chaque groupe est isolé (try/catch) : un échec n'interrompt pas les autres.
+ */
+export async function odooApplyReconcile(
+  config: OdooConfig,
+  groups: ReconcileGroup[],
+): Promise<ReconcileOutcome[]> {
+  const userId = await odooAuthenticate(config);
+  const out: ReconcileOutcome[] = [];
+  for (const g of groups) {
+    try {
+      await jsonRpc(config, "object", "execute_kw", [
+        config.db, userId, config.apiKey, "account.move.line", "reconcile", [g.line_ids],
+      ]);
+      out.push({ group: g, ok: true });
+    } catch (e) {
+      out.push({ group: g, ok: false, error: (e as Error).message });
+    }
+  }
+  return out;
+}

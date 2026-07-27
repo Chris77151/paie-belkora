@@ -1,18 +1,24 @@
 import { useMemo, useState, type ReactNode } from "react";
 import {
   ShieldCheck, Sparkles, Loader2, AlertTriangle, ChevronDown, CheckCircle2,
-  ScrollText, Scale, LayoutList, Wrench, BookMarked,
+  ScrollText, Scale, LayoutList, Wrench, BookMarked, FileDown, DatabaseZap,
 } from "lucide-react";
 import {
   Badge, Button, Card, CardContent, Field, PageHeader, Select,
 } from "@/components/ui/kit";
 import { currentFirm, useStore } from "@/data/store";
+import { useSession } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { MONTHS_FR, mad } from "@/lib/format";
 import {
-  buildAuditSnapshot, runFullAudit, buildRegularisationDossier,
+  buildAuditSnapshot, runFullAudit, buildRemediationPlan,
   type AuditReport, type AuditFinding, type Gravite,
 } from "@/lib/audit-engine";
+import { buildRemediationReportPdf } from "@/lib/remediation-report";
+import {
+  odooReadiness, odooErrorHint, odooReadOpenItems, groupReconcilable, odooApplyReconcile,
+  type ReconcileOutcome,
+} from "@/lib/odoo";
 import { cn } from "@/lib/cn";
 
 const YEARS = [2026, 2025];
@@ -40,10 +46,16 @@ export default function Audit() {
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(6);
   const [busy, setBusy] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<AuditReport | null>(null);
 
+  const session = useSession();
+  const isSuperAdmin = session?.role === "super_admin";
   const period = `${MONTHS_FR[month - 1]} ${year}`;
+  const odooNotReady = odooReadiness(s.odoo, { name: firm.name, odoo_company_id: firm.odoo_company_id });
+  // Y a-t-il des corrections auto-applicables (lettrage) dans le rapport courant ?
+  const hasAuto = report ? buildRemediationPlan(report).auto.length > 0 : false;
 
   // Aperçu local (pur) de ce qui sera audité.
   const snapshot = useMemo(() => buildAuditSnapshot(year, month), [s, firm, year, month]);
@@ -65,17 +77,59 @@ export default function Audit() {
 
   const bySeverity = report ? count(report.constats) : null;
 
-  /** « Corriger » : génère et télécharge le DOSSIER DE RÉGULARISATION (proposition sûre, sans écriture Odoo). */
-  function correct() {
+  const fileBase = `dossier-regularisation_${firm.name.replace(/\s+/g, "-")}_${period.replace(/\s+/g, "-")}`;
+
+  /** « Corriger » : génère le RAPPORT PDF en 2 volets (auto / humain), sans écrire dans Odoo. */
+  function correct(applied?: { outcomes: ReconcileOutcome[] }) {
     if (!report) return;
-    const md = buildRegularisationDossier(report, firm.name, period);
-    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `dossier-regularisation_${firm.name.replace(/\s+/g, "-")}_${period.replace(/\s+/g, "-")}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+    buildRemediationReportPdf(report, firm.name, period, applied).save(`${fileBase}.pdf`);
+  }
+
+  /**
+   * « Appliquer dans Odoo » (super administrateur) : exécute le SEUL sous-ensemble sûr —
+   * le lettrage des écritures d'un même tiers qui s'apurent exactement (réversible dans Odoo).
+   * Aperçu (lecture seule) → confirmation → application → rapport PDF avec le résultat réel.
+   */
+  async function applyInOdoo() {
+    if (!report || !s.odoo || !firm.odoo_company_id) return;
+    if (odooNotReady) { alert(odooNotReady); return; }
+    setApplying(true);
+    setError(null);
+    try {
+      // 1) Aperçu (lecture seule) : que va-t-on lettrer ?
+      const lines = await odooReadOpenItems(s.odoo, firm.odoo_company_id);
+      const groups = groupReconcilable(lines);
+      if (groups.length === 0) {
+        alert("Aucun groupe d'écritures ne s'apure exactement : rien à lettrer automatiquement. "
+          + "Les autres constats relèvent du volet « intervention humaine » du rapport.");
+        return;
+      }
+      const totalLines = groups.reduce((a, g) => a + g.line_ids.length, 0);
+      const totalAmount = groups.reduce((a, g) => a + g.amount, 0);
+      // 2) Confirmation explicite avant toute écriture en production.
+      const okToApply = window.confirm(
+        "Lettrage automatique dans Odoo (RÉVERSIBLE) :\n\n"
+        + `• ${groups.length} groupe(s) tiers/compte qui s'apurent exactement\n`
+        + `• ${totalLines} ligne(s) d'écriture\n`
+        + `• volume ${mad(totalAmount)}\n\n`
+        + "Aucune écriture n'est créée, modifiée ou supprimée : seul le rapprochement est posé "
+        + "(annulable dans Odoo). Appliquer maintenant ?",
+      );
+      if (!okToApply) return;
+      // 3) Application réelle.
+      const outcomes = await odooApplyReconcile(s.odoo, groups);
+      const ok = outcomes.filter((o) => o.ok).length;
+      const ko = outcomes.length - ok;
+      alert(`Lettrage terminé : ${ok} groupe(s) rapproché(s)${ko ? `, ${ko} échec(s)` : ""}. `
+        + `Le rapport PDF détaillé est généré.`);
+      // 4) Rapport PDF incluant le résultat réel.
+      correct({ outcomes });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(`Échec du lettrage automatique : ${odooErrorHint(msg)}`);
+    } finally {
+      setApplying(false);
+    }
   }
 
   return (
@@ -90,8 +144,14 @@ export default function Audit() {
               Fiabilité {report.score_fiabilite}/100
             </Badge>
             {report.constats.length > 0 && (
-              <Button variant="sage" onClick={correct} title="Générer le dossier de régularisation (proposition — sans écriture Odoo)">
-                <Wrench size={16} /> Corriger
+              <Button variant="outline" onClick={() => correct()} title="Générer le rapport PDF de régularisation (2 volets : auto / intervention humaine)">
+                <FileDown size={16} /> Corriger (rapport PDF)
+              </Button>
+            )}
+            {isSuperAdmin && hasAuto && !odooNotReady && (
+              <Button variant="sage" onClick={applyInOdoo} disabled={applying}
+                title="Appliquer le lettrage automatique dans Odoo (réversible) — super administrateur">
+                {applying ? <Loader2 size={16} className="animate-spin" /> : <DatabaseZap size={16} />} Appliquer dans Odoo
               </Button>
             )}
           </div>
@@ -209,8 +269,13 @@ export default function Audit() {
           })}
 
           <p className="text-xs text-muted-foreground">
-            Revue préliminaire automatique (règles d'audit, calcul local). Les constats doivent être
-            vérifiés pièce à l'appui ; le passage des écritures de correction relève de l'expert-comptable.
+            Revue préliminaire automatique (règles d'audit, calcul local). <b>Corriger (rapport PDF)</b> produit
+            un dossier en <b>2 volets</b> : corrections automatiques (lettrage réversible) et actions nécessitant
+            une <b>intervention humaine</b> (détail par anomalie, base normative). <b>Appliquer dans Odoo</b>
+            (super administrateur) exécute le seul sous-ensemble sûr — le lettrage des écritures qui s'apurent
+            exactement, réversible dans Odoo. Les corrections de fond relèvent du comptable ou du skill
+            <code className="font-mono"> odoo-correction-anomalies</code> (lecture Odoo réelle, OD contre-passable,
+            rapport de régularité).
           </p>
         </div>
       )}

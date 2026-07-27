@@ -495,6 +495,48 @@ export function buildRegularisationDossier(report: AuditReport, firmName: string
   return lines.join("\n");
 }
 
+/* ------------------------------------------------------------------ */
+/* Classement des corrections : AUTO (sans jugement) vs HUMAIN         */
+/* ------------------------------------------------------------------ */
+
+export type RemediationMode = "auto" | "humain";
+export interface Remediation {
+  mode: RemediationMode;
+  reason: string;
+}
+
+/**
+ * Détermine si un constat peut être corrigé AUTOMATIQUEMENT (sans intervention humaine).
+ *
+ * Doctrine (skill `odoo-correction-anomalies`) : n'est auto-corrigeable QUE ce qui est
+ * mécanique, non ambigu et RÉVERSIBLE dans Odoo. En pratique, cela se limite au LETTRAGE
+ * de lignes d'un même tiers qui s'apurent exactement (rapprochement `reconcile`, annulable).
+ * Toute anomalie de FOND ou nécessitant un choix d'imputation, un contrôle de pièce, ou une
+ * écriture nouvelle en production reste du ressort HUMAIN — jamais d'écriture en aveugle.
+ */
+export function classifyRemediation(f: AuditFinding): Remediation {
+  if (/\bnon\s+lettr/i.test(f.titre)) {
+    return {
+      mode: "auto",
+      reason: "Rapprochement automatique des écritures d'un même tiers qui s'apurent exactement — opération mécanique et réversible dans Odoo (account.move.line reconcile).",
+    };
+  }
+  return {
+    mode: "humain",
+    reason: "Nécessite un jugement comptable (choix d'imputation, contrôle de pièce, base réelle, écriture nouvelle) : la correction est documentée et exécutée par le comptable.",
+  };
+}
+
+/** Sépare les constats en deux volets : corrections automatiques vs intervention humaine. */
+export function buildRemediationPlan(report: AuditReport): { auto: AuditFinding[]; humain: AuditFinding[] } {
+  const auto: AuditFinding[] = [];
+  const humain: AuditFinding[] = [];
+  for (const c of report.constats) {
+    (classifyRemediation(c).mode === "auto" ? auto : humain).push(c);
+  }
+  return { auto, humain };
+}
+
 /** Audit PAIE seule (synchrone, 100 % local). */
 export function runLocalAudit(year: number, month: number): AuditReport {
   const firm = currentFirm(getState());
