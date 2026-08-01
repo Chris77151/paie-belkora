@@ -17,12 +17,14 @@
  */
 import type { Employee, Firm } from "@/data/types";
 import {
+  fullName,
   legalFileName,
   PH,
   renderLegalHtml,
   renderLegalPdf,
   val,
   valDate,
+  type Civility,
   type LegalBlock,
   type LegalDoc,
 } from "./rh-legal";
@@ -34,7 +36,8 @@ export type DisciplineType =
   | "convocation"
   | "mise-en-demeure"
   | "decision-licenciement";
-export type Civility = "M." | "Mme" | null;
+/** Civilité — définition unique dans `rh-legal.ts`, ré-exportée pour les pages. */
+export type { Civility };
 
 export const DISCIPLINE_TYPES: { value: DisciplineType; label: string; hint: string; degree: number }[] = [
   { value: "avertissement", label: "Avertissement", hint: "Sanction 1er degré (art. 37)", degree: 1 },
@@ -93,9 +96,6 @@ export interface RhDisciplineView {
   signatoryRole?: string;
 }
 
-function fullName(e: Employee): string {
-  return `${e.first_name} ${e.last_name}`.trim().toUpperCase();
-}
 function politesse(c: Civility): string {
   return c === "Mme" ? "Madame" : c === "M." ? "Monsieur" : "Monsieur / Madame";
 }

@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { bodyParagraphs, missingFields, docFileName, PH, type RhDocView } from "./rh-documents";
+import { bodyParagraphs as bodyParagraphsRaw, missingFields, docFileName, PH, type RhDocView } from "./rh-documents";
 import type { Employee, Firm } from "@/data/types";
+
+/**
+ * Le corps des documents balise ses données clés (`**gras**`, `*italique*`) pour que le rendu
+ * mette en évidence nom, dates et durée — cf. `pdf-kit.ts`. Ces tests portent sur le CONTENU
+ * (zéro invention, accords, placeholders), pas sur la mise en forme : on retire donc le balisage
+ * avant d'affirmer. Le rendu du balisage lui-même est couvert par `pdf-kit.test.ts`.
+ */
+const unmark = (s: string) => s.replace(/\*\*(.+?)\*\*/gs, "$1").replace(/\*(.+?)\*/gs, "$1");
+const bodyParagraphs = (v: RhDocView): string[] => bodyParagraphsRaw(v).map(unmark);
 
 const firm: Firm = {
   id: "f1",

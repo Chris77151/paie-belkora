@@ -11,25 +11,18 @@
  * société émettrice (spectre dérivé de firm.brand_color ; vert Miya par défaut).
  * Rendus : PDF (jsPDF) et HTML imprimable. Les fonctions de texte sont PURES (testables).
  */
-import { jsPDF } from "jspdf";
+import type { jsPDF } from "jspdf";
 import type { Employee, Firm } from "@/data/types";
 import { dateFr } from "./format";
-import { firmDescriptor, firmIdentityClause, firmLegalLine } from "./firm-legal";
-import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
-
-/* Couleurs de marque — dérivées de la société (firm.brand_color) au début de chaque rendu,
- * comme payslip.ts. Sans couleur de marque définie, on garde EXACTEMENT le vert Miya d'origine.
- * `usePalette(firm)` réassigne LIME/OLIVE/INK : tous les usages `...LIME` restent inchangés. */
-let LIME: RGB = paletteForFirm(undefined).lime;
-let OLIVE: RGB = paletteForFirm(undefined).olive;
-let INK: RGB = paletteForFirm(undefined).ink;
-function usePalette(firm: Firm): PayslipPalette {
-  const pal = paletteForFirm(firm.brand_color);
-  LIME = pal.lime;
-  OLIVE = pal.olive;
-  INK = pal.ink;
-  return pal;
-}
+import { firmIdentityClause, firmLegalLine } from "./firm-legal";
+import {
+  fullName,
+  renderLegalHtml,
+  renderLegalPdf,
+  type Civility,
+  type LegalBlock,
+  type LegalDoc,
+} from "./rh-legal";
 
 export type RhDocType =
   | "attestation-travail"
@@ -44,7 +37,8 @@ export const RH_DOC_TYPES: { value: RhDocType; label: string; hint: string }[] =
   { value: "attestation-stage", label: "Attestation de stage", hint: "Stagiaire (PFE / formation) — en cours ou achevé" },
 ];
 
-export type Civility = "M." | "Mme" | null;
+/** Civilité — définition unique dans `rh-legal.ts`, ré-exportée pour les pages. */
+export type { Civility };
 
 /** Vue d'un document RH : le salarié + la société + les compléments saisis (jamais devinés). */
 export interface RhDocView {
@@ -111,10 +105,6 @@ function accords(civ: Civility, signatoryRoleFem: boolean): Accords {
   };
 }
 
-function fullName(e: Employee): string {
-  return `${e.first_name} ${e.last_name}`.trim().toUpperCase();
-}
-
 /** Valeur réelle ou placeholder — sans jamais inventer. */
 function val(v: string | undefined | null): string {
   const s = (v ?? "").trim();
@@ -144,21 +134,21 @@ function stageParagraphs(v: RhDocView): string[] {
   // Identité légale de l'entité (source unique firm-legal.ts ; champs réels, rien d'inventé).
   const legal = firmIdentityClause(v.firm);
 
-  const intro = `Je ${a.soussigne} ${sig}, agissant en qualité de ${role} de la société ${firmName}${
+  const intro = `Je ${a.soussigne} **${sig}**, agissant en qualité de ${role} de la société **${firmName}**${
     legal ? ", " + legal : ""
   }, atteste par la présente que :`;
 
   const statut =
     v.stageOngoing === false
       ? v.endDate?.trim()
-        ? ` Ce stage s'est achevé le ${dateFr(v.endDate)}.`
+        ? ` Ce stage s'est achevé le **${dateFr(v.endDate)}**.`
         : ""
       : " Ce stage est, à ce jour, toujours en cours.";
 
   const identite =
-    `${a.civilite} ${nom}, titulaire de la carte nationale d'identité n° ${cin}, effectue, depuis le ${debut}, ` +
+    `**${a.civilite} ${nom}**, titulaire de la carte nationale d'identité n° ${cin}, effectue, depuis le **${debut}**, ` +
     `un ${typeStage} au sein de notre société, dans le cadre de sa formation en ${formation}, ` +
-    `pour une durée prévue de ${duree}.${statut}`;
+    `pour une durée prévue de **${duree}**.${statut}`;
 
   const paras: string[] = [intro, identite];
 
@@ -197,21 +187,21 @@ export function bodyParagraphs(v: RhDocView): string[] {
 
   const intro =
     v.type === "certificat-travail"
-      ? `Je ${a.soussigne} ${sig}, ${role} de la société ${firmName}, certifie par la présente que :`
-      : `Je ${a.soussigne} ${sig}, ${role} de la société ${firmName}, atteste par la présente que :`;
+      ? `Je ${a.soussigne} **${sig}**, ${role} de la société **${firmName}**, certifie par la présente que :`
+      : `Je ${a.soussigne} **${sig}**, ${role} de la société **${firmName}**, atteste par la présente que :`;
 
-  const identite = `${a.civilite} ${nom}, titulaire de la carte d'identité nationale n° ${cin}, ${a.immatricule} à la CNSS sous le n° ${cnss},`;
+  const identite = `**${a.civilite} ${nom}**, titulaire de la carte d'identité nationale n° ${cin}, ${a.immatricule} à la CNSS sous le n° ${cnss},`;
 
   const paras: string[] = [intro, identite];
 
   if (v.type === "certificat-travail") {
     const fin = v.endDate?.trim() ? dateFr(v.endDate) : PH;
-    paras.push(`a été ${a.employe} au sein de notre entreprise en qualité de ${poste}, du ${embauche} au ${fin}.`);
+    paras.push(`a été ${a.employe} au sein de notre entreprise en qualité de **${poste}**, du **${embauche}** au **${fin}**.`);
     paras.push("Le présent certificat lui est délivré pour servir et faire valoir ce que de droit, libre de tout engagement.");
   } else {
-    let emploi = `est ${a.employe} au sein de notre entreprise en qualité de ${poste}, et ce depuis le ${embauche}`;
+    let emploi = `est ${a.employe} au sein de notre entreprise en qualité de **${poste}**, et ce depuis le **${embauche}**`;
     if (v.type === "attestation-salaire") {
-      emploi += `, et perçoit à ce titre une rémunération mensuelle de ${val(v.salary)}`;
+      emploi += `, et perçoit à ce titre une rémunération mensuelle de **${val(v.salary)}**`;
     }
     paras.push(emploi + ".");
     paras.push(`En foi de quoi, la présente attestation est délivrée à ${a.interesse} pour servir et faire valoir ce que de droit.`);
@@ -256,98 +246,33 @@ export function docFileName(v: RhDocView): string {
   return `${t}_${nom}.pdf`;
 }
 
-/* -------------------------------------------------- logo -------------------------------------------------- */
-async function loadLogo(path?: string): Promise<{ data: string; fmt: string } | null> {
-  if (!path) return null;
-  try {
-    if (path.startsWith("data:")) {
-      return { data: path, fmt: path.includes("jpeg") || path.includes("jpg") ? "JPEG" : "PNG" };
-    }
-    const res = await fetch(path);
-    const blob = await res.blob();
-    const data = await new Promise<string>((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result as string);
-      fr.onerror = reject;
-      fr.readAsDataURL(blob);
-    });
-    return { data, fmt: blob.type.includes("jpeg") ? "JPEG" : "PNG" };
-  } catch {
-    return null;
-  }
-}
-
-/** Pied de page légal — source unique (ICE · IF · RC · Patente · CNSS · Tél · E-mail · siège). */
-function legalFooterLine(firm: Firm): string {
-  return firmLegalLine(firm, { includeAddress: true });
+/* -------------------------------------------------- description PURE du document -------------------------------------------------- */
+/**
+ * Traduit la vue en `LegalDoc` — le modèle commun à TOUS les documents RH/juridiques.
+ *
+ * Les attestations disposaient auparavant de leur propre moteur de rendu : marges (20 mm) et
+ * logo (38 × 19 mm) différents des contrats et courriers, aucune pagination (une attestation de
+ * stage avec missions débordait sous le pied de page, silencieusement), et un facteur
+ * d'interligne inventé (`fs * 0,5`) au lieu de la conversion point → mm. Passer par
+ * `renderLegalPdf` supprime ces trois défauts d'un coup et aligne le rendu sur le reste.
+ */
+export function buildRhDoc(v: RhDocView): LegalDoc {
+  const { firm } = v;
+  const ville = (v.city ?? firm.city ?? PH).trim() || PH;
+  const sigName = (v.signatoryName ?? firm.signatory_name ?? PH).trim() || PH;
+  const sigRole = (v.signatoryRole ?? firm.signatory_role ?? PH).trim() || PH;
+  return {
+    fileTitle: DOC_TITLE[v.type],
+    heading: DOC_TITLE[v.type],
+    blocks: bodyParagraphs(v).map((t): LegalBlock => ({ k: "p", t })),
+    faitA: `Fait à ${ville}, le ${dateFr(v.issueDate)}.`,
+    signatures: [{ title: sigName, lines: [sigRole], caption: "(Signature et cachet)" }],
+  };
 }
 
 /* -------------------------------------------------- PDF -------------------------------------------------- */
 export async function buildRhDocPdf(v: RhDocView): Promise<jsPDF> {
-  const { firm } = v;
-  usePalette(firm); // couleurs dérivées de la société (défaut = vert Miya)
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const W = 210;
-  const H = 297;
-  const M = 20;
-  const full = W - 2 * M;
-
-  // En-tête : logo + société
-  const logo = await loadLogo(firm.logo_path || "/logo-miya.png");
-  if (logo) {
-    try { doc.addImage(logo.data, logo.fmt, M, 12, 38, 19); } catch { /* ignore */ }
-  }
-  const headX = logo ? M + 44 : M;
-  doc.setFont("helvetica", "bold").setFontSize(13).setTextColor(...INK);
-  doc.text(firm.name.toUpperCase(), headX, 17.5);
-  doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(110, 110, 110);
-  const descr = firmDescriptor(firm);
-  if (descr) doc.text(descr, headX, 21.5);
-  const legalLines = doc.splitTextToSize(firmLegalLine(firm, { includeAddress: true }), W - headX - M);
-  doc.text(legalLines, headX, descr ? 25 : 22);
-
-  doc.setDrawColor(...OLIVE).setLineWidth(0.5).line(M, 34, W - M, 34);
-
-  // Titre encadré
-  doc.setDrawColor(...OLIVE).setLineWidth(0.4);
-  const titleW = 110;
-  doc.rect((W - titleW) / 2, 42, titleW, 12);
-  doc.setFont("helvetica", "bold").setFontSize(15).setTextColor(...INK);
-  doc.text(DOC_TITLE[v.type], W / 2, 50, { align: "center" });
-
-  // Corps justifié
-  let y = 70;
-  doc.setFont("helvetica", "normal").setFontSize(11).setTextColor(...INK);
-  for (const p of bodyParagraphs(v)) {
-    const lines = doc.splitTextToSize(p, full) as string[];
-    doc.text(lines, M, y, { align: "justify", maxWidth: full, lineHeightFactor: 1.5 });
-    y += lines.length * 11 * 0.5 * 1.5 + 5;
-  }
-
-  // Fait à … le …
-  y = Math.max(y + 8, 150);
-  doc.setFont("helvetica", "normal").setFontSize(11).setTextColor(...INK);
-  const ville = (v.city ?? firm.city ?? PH).trim() || PH;
-  doc.text(`Fait à ${ville}, le ${dateFr(v.issueDate)}.`, W - M, y, { align: "right" });
-
-  // Bloc signature
-  y += 14;
-  const sigName = (v.signatoryName ?? firm.signatory_name ?? PH).trim() || PH;
-  const sigRole = (v.signatoryRole ?? firm.signatory_role ?? PH).trim() || PH;
-  doc.setFont("helvetica", "bold").text(sigName, W - M, y, { align: "right" });
-  doc.setFont("helvetica", "normal").setFontSize(10).setTextColor(90, 90, 90);
-  doc.text(sigRole, W - M, y + 5, { align: "right" });
-  doc.setFontSize(9).setTextColor(150, 150, 150);
-  doc.text("(Signature et cachet)", W - M, y + 12, { align: "right" });
-
-  // Pied de page légal
-  doc.setDrawColor(210, 214, 204).setLineWidth(0.3).line(M, H - 20, W - M, H - 20);
-  doc.setFont("helvetica", "italic").setFontSize(7).setTextColor(140, 140, 140);
-  doc.text(legalFooterLine(firm), W / 2, H - 15, { align: "center", maxWidth: full });
-  doc.setTextColor(...LIME);
-  doc.text("Document généré par Belkora Paie & RH — référentiel Maroc.", W / 2, H - 11, { align: "center" });
-
-  return doc;
+  return renderLegalPdf(v.firm, buildRhDoc(v));
 }
 
 export async function exportRhDocPdf(v: RhDocView) {
@@ -356,58 +281,12 @@ export async function exportRhDocPdf(v: RhDocView) {
 }
 
 /* -------------------------------------------------- HTML imprimable -------------------------------------------------- */
+/** Même moteur HTML que les contrats et les courriers : un seul gabarit pour toute l'application. */
 export function buildRhDocHtml(v: RhDocView): string {
-  const { firm } = v;
-  const pal = paletteForFirm(firm.brand_color); // couleurs dérivées de la société (défaut = vert Miya)
-  const ville = (v.city ?? firm.city ?? PH).trim() || PH;
-  const sigName = (v.signatoryName ?? firm.signatory_name ?? PH).trim() || PH;
-  const sigRole = (v.signatoryRole ?? firm.signatory_role ?? PH).trim() || PH;
-  const paras = bodyParagraphs(v)
-    .map((p) => `<p>${escapeHtml(p)}</p>`)
-    .join("\n");
-
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<title>${DOC_TITLE[v.type]} — ${escapeHtml(v.employee.first_name)} ${escapeHtml(v.employee.last_name)}</title>
-<style>
- :root{--lime:${pal.limeHex};--olive:${pal.oliveHex};--ink:${pal.inkHex}}
- *{box-sizing:border-box;font-family:"IBM Plex Sans",Arial,sans-serif}
- body{margin:0;padding:24px;background:#f4f5f2;color:var(--ink)}
- .sheet{max-width:800px;margin:auto;background:#fff;padding:40px 46px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,.08);min-height:1040px;position:relative}
- .top{display:flex;gap:16px;align-items:center;border-bottom:1.5px solid var(--olive);padding-bottom:14px}
- .top img{height:52px;object-fit:contain}
- .firm{font-weight:700;font-size:16px}
- .firm small{display:block;font-weight:400;color:#888;font-size:11px;margin-top:2px}
- .title{margin:34px auto;width:max-content;border:1.4px solid var(--olive);border-radius:4px;padding:10px 34px;font-size:19px;font-weight:700;letter-spacing:.06em}
- .body{font-size:15px;line-height:1.9;text-align:justify;margin-top:20px}
- .body p{margin:0 0 16px}
- .fait{margin-top:46px;text-align:right;font-size:15px}
- .sig{margin-top:16px;text-align:right}
- .sig b{font-size:15px}.sig span{display:block;color:#666;font-size:13px}.sig .cachet{color:#aaa;font-size:12px;margin-top:8px}
- .foot{position:absolute;left:46px;right:46px;bottom:26px;border-top:1px solid #e0e4da;padding-top:6px;color:#999;font-size:10px;font-style:italic;text-align:center}
- .foot .gen{color:var(--lime);font-style:normal}
- .noprint{max-width:800px;margin:0 auto 14px}
- button{background:var(--lime);color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer}
- @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;border-radius:0;min-height:auto}.noprint{display:none}}
-</style></head><body>
-<div class="noprint"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
-<div class="sheet">
- <div class="top">
-   <img src="${firm.logo_path || "/logo-miya.png"}" alt="logo">
-   <div class="firm">${escapeHtml(firm.name.toUpperCase())}<small>${[firm.address, firm.ice && "ICE : " + firm.ice, firm.if_fiscal && "IF : " + firm.if_fiscal].filter((x): x is string => Boolean(x)).map(escapeHtml).join(" · ")}</small></div>
- </div>
- <div class="title">${DOC_TITLE[v.type]}</div>
- <div class="body">${paras}</div>
- <div class="fait">Fait à ${escapeHtml(ville)}, le ${dateFr(v.issueDate)}.</div>
- <div class="sig"><b>${escapeHtml(sigName)}</b><span>${escapeHtml(sigRole)}</span><div class="cachet">(Signature et cachet)</div></div>
- <div class="foot">${escapeHtml(legalFooterLine(firm))}<br><span class="gen">Document généré par Belkora Paie &amp; RH — référentiel Maroc.</span></div>
-</div></body></html>`;
+  return renderLegalHtml(v.firm, buildRhDoc(v));
 }
 
 export function openRhDocHtml(v: RhDocView) {
   const w = window.open("", "_blank");
   if (w) { w.document.write(buildRhDocHtml(v)); w.document.close(); }
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

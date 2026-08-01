@@ -6,6 +6,23 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import type { Firm } from "@/data/types";
 import type { JournalEntry } from "./payroll-accounting";
+import type { RGB } from "./brand-color";
+import {
+  ALERT,
+  FONT,
+  FS,
+  M,
+  W,
+  afterTable,
+  asciiSpaces,
+  drawFullHeader,
+  drawTitleBox,
+  ensure,
+  firmPalette,
+  paintFooters,
+  tableStyles,
+  type Cursor,
+} from "./pdf-kit";
 
 const n2 = (v: number) => v.toFixed(2);
 const nFr = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/,/g, " ");
@@ -65,47 +82,62 @@ export function exportEntriesPdf(entries: JournalEntry[], firm: Firm, period: st
   buildEntriesDoc(entries, firm, period).save(`ecritures_paie_${period}.pdf`);
 }
 
-/** Construit le document PDF des écritures (sans le sauvegarder) — testable hors navigateur. */
+/**
+ * Construit le document PDF des écritures (sans le sauvegarder) — testable hors navigateur.
+ *
+ * Mise en page issue du socle commun `pdf-kit.ts` : mêmes marges, même en-tête société et même
+ * pied paginé que les bulletins et les documents RH. Les couleurs viennent de la société
+ * (`brand_color`) — elles étaient auparavant écrites en dur, ce qui donnait des écritures au vert
+ * Miya même pour une société ayant sa propre couleur de marque.
+ */
 export function buildEntriesDoc(entries: JournalEntry[], firm: Firm, period: string): jsPDF {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const green: [number, number, number] = [139, 162, 95];
-  const ink: [number, number, number] = [40, 52, 44];
-  const M = 14;
+  const pal = firmPalette(firm);
+  // En-tête sans logo : cette fonction reste synchrone (chargement du logo = asynchrone).
+  const cur: Cursor = { doc, firm, pal, y: drawFullHeader(doc, firm, null, pal), page: 1 };
 
-  doc.setFont("helvetica", "bold").setFontSize(14).setTextColor(...ink);
-  doc.text("Écritures comptables de paie", M, 18);
-  doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(100, 100, 100);
-  doc.text(`${firm.name} — Période ${period}`, M, 24);
+  cur.y = drawTitleBox(doc, pal, "Écritures comptables de paie", cur.y) + 7;
+  doc.setFont(FONT, "normal").setFontSize(FS.note).setTextColor(...pal.muted);
+  doc.text(asciiSpaces(`Période ${period}`), M, cur.y);
+  doc.text("PCGE/CGNC — à valider avant intégration comptable.", W - M, cur.y, { align: "right" });
+  cur.y += 7;
 
-  let y = 30;
   for (const e of entries) {
-    doc.setFont("helvetica", "bold").setFontSize(10).setTextColor(...ink);
-    doc.text(`Journal ${e.journal} · ${e.reference} · ${e.date}`, M, y);
-    doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(110, 110, 110);
-    doc.text(e.description, M, y + 4.5);
+    // Le titre de l'écriture, sa description et l'amorce du tableau sont réservés d'un bloc :
+    // un intitulé orphelin en bas de page rend le document illisible.
+    ensure(cur, 26);
+    doc.setFont("helvetica", "bold").setFontSize(FS.section).setTextColor(...pal.ink);
+    doc.text(asciiSpaces(`Journal ${e.journal} · ${e.reference} · ${e.date}`), M, cur.y);
+    doc.setFont("helvetica", "normal").setFontSize(FS.note).setTextColor(...pal.muted);
+    doc.text(asciiSpaces(e.description), M, cur.y + 4.5);
+    const styles = tableStyles(pal);
     autoTable(doc, {
-      startY: y + 7,
+      startY: cur.y + 7,
       head: [["Compte", "Libellé", "Débit", "Crédit"]],
       body: [
         ...e.lines.map((l) => [l.account, l.label, l.debit ? nFr(l.debit) : "", l.credit ? nFr(l.credit) : ""]),
         ["", "TOTAL", nFr(e.totalDebit), nFr(e.totalCredit)],
       ],
       theme: "grid",
-      styles: { fontSize: 8.3, lineColor: [214, 218, 208], cellPadding: 1.4 },
-      headStyles: { fillColor: green, textColor: 255, fontStyle: "bold", fontSize: 8 },
+      ...styles,
       columnStyles: { 0: { cellWidth: 24 }, 2: { halign: "right", cellWidth: 32 }, 3: { halign: "right", cellWidth: 32 } },
-      margin: { left: M, right: M },
       didParseCell: (d) => {
-        if (d.row.index === e.lines.length) { d.cell.styles.fontStyle = "bold"; d.cell.styles.fillColor = [236, 240, 226]; }
+        // Ligne de total : gras sur fond attenué de la société.
+        if (d.row.index === e.lines.length) {
+          d.cell.styles.fontStyle = "bold";
+          d.cell.styles.fillColor = [pal.tint[0], pal.tint[1], pal.tint[2]];
+        }
       },
     });
-    y = (doc as any).lastAutoTable.finalY + 6;
-    doc.setFontSize(7.5).setTextColor(e.balanced ? 80 : 200, e.balanced ? 130 : 40, 60);
-    doc.text(e.balanced ? "Écriture équilibrée (débit = crédit)." : "DÉSÉQUILIBRE — à vérifier.", M, y);
-    y += 8;
-    if (y > 260) { doc.addPage(); y = 20; }
+    afterTable(cur, 6);
+    ensure(cur, 8);
+    // Le déséquilibre reste en rouge : c'est un signal d'alerte, pas un élément de charte.
+    const flag: RGB = e.balanced ? pal.deep : ALERT;
+    doc.setFontSize(7.5).setTextColor(flag[0], flag[1], flag[2]);
+    doc.text(e.balanced ? "Écriture équilibrée (débit = crédit)." : "DÉSÉQUILIBRE — à vérifier.", M, cur.y);
+    cur.y += 8;
   }
-  doc.setFontSize(7).setTextColor(150, 150, 150);
-  doc.text("Genere par Belkora Paie - PCGE/CGNC. Ecritures a valider avant integration comptable.", M, 288);
+
+  paintFooters(doc, firm, pal);
   return doc;
 }

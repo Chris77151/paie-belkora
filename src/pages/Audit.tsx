@@ -82,7 +82,7 @@ export default function Audit() {
   /** « Corriger » : génère le RAPPORT PDF en 2 volets (auto / humain), sans écrire dans Odoo. */
   function correct(applied?: { outcomes: ReconcileOutcome[] }) {
     if (!report) return;
-    buildRemediationReportPdf(report, firm.name, period, applied).save(`${fileBase}.pdf`);
+    buildRemediationReportPdf(report, firm, period, applied).save(`${fileBase}.pdf`);
     // Traçabilité : le rapport de régularisation apparaît dans le Journal des documents.
     actions.recordDocGeneration({
       firm_id: firm.id,

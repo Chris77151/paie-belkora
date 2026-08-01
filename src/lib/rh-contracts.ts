@@ -13,19 +13,22 @@
 import type { Employee, Firm } from "@/data/types";
 import {
   employerParagraph,
+  fullName,
   legalFileName,
   PH,
   renderLegalHtml,
   renderLegalPdf,
   val,
   valDate,
+  type Civility,
   type LegalBlock,
   type LegalDoc,
 } from "./rh-legal";
 import { dateFr } from "./format";
 
 export type ContractModel = "cdd-chef" | "travail-determine";
-export type Civility = "M." | "Mme" | null;
+/** Civilité — définition unique dans `rh-legal.ts`, ré-exportée pour les pages. */
+export type { Civility };
 
 export const CONTRACT_MODELS: { value: ContractModel; label: string; hint: string }[] = [
   { value: "cdd-chef", label: "CDD chantier — chef de projet", hint: "Accroissement temporaire (art. 16-17) · 3 mois" },
@@ -75,10 +78,6 @@ export interface RhContractView {
   issueCity?: string;
   signatoryName?: string;
   signatoryRole?: string;
-}
-
-function fullName(e: Employee): string {
-  return `${e.first_name} ${e.last_name}`.trim().toUpperCase();
 }
 
 function civilityLabel(c: Civility): string {

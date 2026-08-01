@@ -12,12 +12,14 @@
  */
 import type { Employee, Firm } from "@/data/types";
 import {
+  fullName,
   legalFileName,
   PH,
   renderLegalHtml,
   renderLegalPdf,
   val,
   valDate,
+  type Civility,
   type LegalBlock,
   type LegalDoc,
 } from "./rh-legal";
@@ -36,7 +38,8 @@ export interface StcBreakdown {
 }
 
 export type RuptureType = "pv-fin-travaux" | "accord-amiable" | "recu-solde";
-export type Civility = "M." | "Mme" | null;
+/** Civilité — définition unique dans `rh-legal.ts`, ré-exportée pour les pages. */
+export type { Civility };
 
 export const RUPTURE_TYPES: { value: RuptureType; label: string; hint: string; article: string }[] = [
   { value: "pv-fin-travaux", label: "PV de fin de travaux", hint: "Terme du contrat « travail déterminé » — sans préavis", article: "Art. 33" },
@@ -93,9 +96,6 @@ export interface RhRuptureView {
   chefChantier?: string;
 }
 
-function fullName(e: Employee): string {
-  return `${e.first_name} ${e.last_name}`.trim().toUpperCase();
-}
 function politesse(c: Civility): string {
   return c === "Mme" ? "Madame" : c === "M." ? "Monsieur" : "M. / Mme";
 }

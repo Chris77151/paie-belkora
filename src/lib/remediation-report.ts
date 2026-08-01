@@ -12,47 +12,66 @@
 import { jsPDF } from "jspdf";
 import { buildRemediationPlan, type AuditReport, type AuditFinding } from "./audit-engine";
 import type { ReconcileOutcome } from "./odoo";
+import type { Firm } from "@/data/types";
+import type { RGB } from "./brand-color";
 import { pdfText, asciiSpaces } from "./format";
-
-const A4_W = 210;
-const A4_H = 297;
-const M = 14;
-const INK: [number, number, number] = [40, 46, 40];
-const OLIVE: [number, number, number] = [122, 138, 76];
-const GREY: [number, number, number] = [110, 110, 110];
-const RED: [number, number, number] = [176, 58, 46];
+import {
+  ALERT,
+  CW,
+  FOOT,
+  H as A4_H,
+  M,
+  W,
+  drawRunningHeader,
+  firmPalette,
+  lineHeight,
+  paintFooters,
+} from "./pdf-kit";
 
 /** Résumé chiffré du lettrage réellement appliqué dans Odoo (facultatif). */
 export interface AppliedReconcile {
   outcomes: ReconcileOutcome[];
 }
 
+/**
+ * Rapport de régularisation, à la mise en page commune (`pdf-kit.ts`) et aux couleurs de la
+ * société — elles étaient auparavant écrites en dur, donc identiques pour toutes les sociétés.
+ * L'avance verticale suit la conversion point → mm : l'ancien facteur `taille * 0,42` sur-espaçait
+ * le texte d'environ un quart et faisait dériver la fin du document sous le pied.
+ */
 export function buildRemediationReportPdf(
   report: AuditReport,
-  firmName: string,
+  firm: Firm,
   period: string,
   applied?: AppliedReconcile,
 ): jsPDF {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const W = A4_W;
+  const pal = firmPalette(firm);
+  const INK = pal.ink;
+  const OLIVE = pal.olive;
+  const GREY = pal.muted;
+  const RED = ALERT;
   let y = M;
 
-  const txt = (s: string, x: number, opts?: { size?: number; color?: [number, number, number]; bold?: boolean; italic?: boolean }) => {
+  const txt = (s: string, x: number, opts?: { size?: number; color?: RGB; bold?: boolean; italic?: boolean }) => {
+    const size = opts?.size ?? 9;
     doc.setFont("helvetica", opts?.bold ? "bold" : opts?.italic ? "italic" : "normal");
-    doc.setFontSize(opts?.size ?? 9);
+    doc.setFontSize(size);
     doc.setTextColor(...(opts?.color ?? INK));
-    const lines = doc.splitTextToSize(pdfText(s), W - 2 * M) as string[];
+    const lines = doc.splitTextToSize(pdfText(s), CW) as string[];
+    const lh = lineHeight(size);
     for (const ln of lines) {
-      if (y > A4_H - M) { doc.addPage(); y = M; }
+      // Le pied est réservé : sans cette borne, les dernières lignes s'écrivaient par-dessus.
+      if (y + lh > A4_H - FOOT) { doc.addPage(); y = drawRunningHeader(doc, firm, pal); }
       doc.text(ln, x, y);
-      y += (opts?.size ?? 9) * 0.42 + 1.4;
+      y += lh;
     }
   };
   const gap = (h = 2) => { y += h; };
   const rule = () => { doc.setDrawColor(...OLIVE).setLineWidth(0.3); doc.line(M, y, W - M, y); y += 3; };
 
   // En-tête
-  txt(firmName.toUpperCase(), M, { size: 13, bold: true });
+  txt(firm.name.toUpperCase(), M, { size: 13, bold: true });
   txt(`Dossier de régularisation comptable — ${period}`, M, { size: 10, bold: true, color: OLIVE });
   txt(`Périmètre : ${report.scope} · Indice de fiabilité : ${report.score_fiabilite}/100 · ${report.constats.length} constat(s)`, M, { size: 8, color: GREY });
   gap(1);
@@ -118,7 +137,7 @@ export function buildRemediationReportPdf(
   } else {
     const ordered = [...humain].sort((a, b) => RANK[a.gravite] - RANK[b.gravite]);
     ordered.forEach((c, i) => {
-      block(txt, gap, i + 1, c);
+      block(txt, gap, i + 1, c, GREY);
     });
   }
 
@@ -131,14 +150,8 @@ export function buildRemediationReportPdf(
     M, { size: 7.5, italic: true, color: GREY },
   );
 
-  // Pied de page paginé
-  const pages = doc.getNumberOfPages();
-  for (let p = 1; p <= pages; p++) {
-    doc.setPage(p);
-    doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(...GREY);
-    doc.text(`Belkora Paie & RH — dossier de régularisation ${firmName} · ${period}`, M, A4_H - 6);
-    doc.text(`${p}/${pages}`, W - M, A4_H - 6, { align: "right" });
-  }
+  // Pied de page paginé — identique à celui des autres documents de l'application
+  paintFooters(doc, firm, pal);
   return doc;
 }
 
@@ -148,15 +161,16 @@ function fmt(n: number): string {
   return asciiSpaces(n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 }
 
-/** Un bloc détaillé d'anomalie humaine. */
+/** Un bloc détaillé d'anomalie humaine. `grey` vient de la palette de la société (plus de couleur en dur). */
 function block(
-  txt: (s: string, x: number, o?: { size?: number; color?: [number, number, number]; bold?: boolean; italic?: boolean }) => void,
+  txt: (s: string, x: number, o?: { size?: number; color?: RGB; bold?: boolean; italic?: boolean }) => void,
   gap: (h?: number) => void,
   n: number,
   c: AuditFinding,
+  grey: RGB,
 ) {
   txt(`${n}. [${c.gravite.toUpperCase()}] ${c.titre}`, M, { size: 9.5, bold: true });
-  txt(`Cycle / assertion : ${c.cycle} · ${c.assertion} (${c.categorie_assertion})`, M + 2, { size: 7.5, color: GREY });
+  txt(`Cycle / assertion : ${c.cycle} · ${c.assertion} (${c.categorie_assertion})`, M + 2, { size: 7.5, color: grey });
   if (c.comptes.length) txt(`Comptes PCGE : ${c.comptes.join(", ")}`, M + 2, { size: 8 });
   txt(`Problème : ${c.detail}`, M + 2, { size: 8 });
   txt(`Correction : ${c.recommandation}`, M + 2, { size: 8 });

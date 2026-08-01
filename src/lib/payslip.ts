@@ -11,6 +11,7 @@ import { getParams } from "./params";
 import { amountToWordsFr, asciiSpaces, dateFr, periodLabel } from "./format";
 import { firmDescriptor, firmLegalLine } from "./firm-legal";
 import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
+import { firmLogoPath, loadLogo } from "./pdf-kit";
 
 export interface PayslipView {
   firm: Firm;
@@ -143,26 +144,8 @@ function denominations(net: number): number[] {
 }
 
 /* -------------------------------------------------- PDF -------------------------------------------------- */
-async function loadLogo(path?: string): Promise<{ data: string; fmt: string } | null> {
-  if (!path) return null;
-  try {
-    if (path.startsWith("data:")) {
-      const fmt = path.substring(5, path.indexOf("/")) === "image" ? path.substring(11, path.indexOf(";")).toUpperCase() : "PNG";
-      return { data: path, fmt: fmt === "JPEG" || fmt === "JPG" ? "JPEG" : "PNG" };
-    }
-    const res = await fetch(path);
-    const blob = await res.blob();
-    const data = await new Promise<string>((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result as string);
-      fr.onerror = reject;
-      fr.readAsDataURL(blob);
-    });
-    return { data, fmt: blob.type.includes("jpeg") ? "JPEG" : "PNG" };
-  } catch {
-    return null;
-  }
-}
+/* Le bulletin garde sa propre grille : c'est un FORMULAIRE (marge 12 mm, tableaux pleine largeur),
+ * pas un courrier. Il partage en revanche le chargement du logo avec le socle `pdf-kit.ts`. */
 
 export async function exportPayslipPdf(v: PayslipView) {
   const doc = await buildPayslipDoc(v);
@@ -180,7 +163,7 @@ export async function buildPayslipDoc(v: PayslipView): Promise<jsPDF> {
   const end = new Date(period.year, period.month, 0);
 
   // En-tête : logo + société
-  const logo = await loadLogo(firm.logo_path || "/logo-miya.png");
+  const logo = await loadLogo(firmLogoPath(firm));
   if (logo) {
     try { doc.addImage(logo.data, logo.fmt, M, 9, 38, 19); } catch { /* ignore */ }
   }

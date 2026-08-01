@@ -17,19 +17,45 @@
  */
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { Firm } from "@/data/types";
+import type { Employee, Firm } from "@/data/types";
 import { dateFr } from "./format";
-import { firmIdentityClause, firmLegalLine as firmLegalLineCanonical } from "./firm-legal";
+import { firmDescriptor, firmIdentityClause } from "./firm-legal";
 import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
+import {
+  CW,
+  FONT,
+  FS,
+  M,
+  W,
+  afterTable,
+  drawTitleBox,
+  drawFullHeader,
+  ensure as ensureSpace,
+  drawWordLine,
+  escapeHtml,
+  firmContactLine,
+  firmIdentifiersLine,
+  firmLogoPath,
+  layoutRuns,
+  lineHeight,
+  loadLogo,
+  parseRuns,
+  runsToHtml,
+  paintFooters,
+  asciiSpaces,
+  tableStyles,
+  type Cursor,
+  PH as PH_KIT,
+} from "./pdf-kit";
 
-/* Couleurs de marque — dérivées de la société (firm.brand_color) au début de chaque rendu,
- * comme payslip.ts. Sans couleur de marque définie, on garde EXACTEMENT le vert Miya d'origine.
+/* Couleurs de marque — dérivées de la société (firm.brand_color) au début de chaque rendu.
+ * Sans couleur de marque définie, on garde EXACTEMENT le vert Miya d'origine.
  * `usePalette(firm)` réassigne LIME/OLIVE/INK/VERT_FONCE/MUTED : les usages `...LIME` restent inchangés. */
-export let LIME: RGB = paletteForFirm(undefined).lime; // #8DB94E par défaut
-export let OLIVE: RGB = paletteForFirm(undefined).olive;
-export let INK: RGB = paletteForFirm(undefined).ink;
-export let VERT_FONCE: RGB = paletteForFirm(undefined).deep;
-export let MUTED: RGB = paletteForFirm(undefined).muted;
+let LIME: RGB = paletteForFirm(undefined).lime; // #8DB94E par défaut
+let OLIVE: RGB = paletteForFirm(undefined).olive;
+let INK: RGB = paletteForFirm(undefined).ink;
+let VERT_FONCE: RGB = paletteForFirm(undefined).deep;
+let MUTED: RGB = paletteForFirm(undefined).muted;
 function usePalette(firm: Firm): PayslipPalette {
   const pal = paletteForFirm(firm.brand_color);
   LIME = pal.lime;
@@ -41,12 +67,23 @@ function usePalette(firm: Firm): PayslipPalette {
 }
 
 /** Placeholder pointillé visible (à compléter à la main) — jamais une donnée inventée. */
-export const PH = "……………………";
+export const PH = PH_KIT;
 
 /** Valeur réelle ou placeholder — sans jamais inventer. */
 export function val(v: string | number | undefined | null): string {
   const s = (v ?? "").toString().trim();
   return s.length ? s : PH;
+}
+
+/**
+ * Civilité du salarié — définition unique, partagée par tous les documents RH.
+ * `null` = non précisée : les documents basculent alors sur des accords neutres, jamais devinés.
+ */
+export type Civility = "M." | "Mme" | null;
+
+/** Nom complet en capitales, tel qu'il apparaît dans tous les documents RH. */
+export function fullName(e: Employee): string {
+  return `${e.first_name} ${e.last_name}`.trim().toUpperCase();
 }
 
 /** Date réelle formatée FR, sinon placeholder. */
@@ -118,11 +155,6 @@ export interface LegalDoc {
 
 /* ------------------------------------------------------------------ en-tête / pied ------------------------------------------------------------------ */
 
-/** Pied de page légal — délègue à la source unique (firm-legal.ts). */
-export function firmLegalLine(firm: Firm): string {
-  return firmLegalLineCanonical(firm, { includeAddress: true });
-}
-
 /** Paragraphe d'identification de l'employeur (bloc « Entre les soussignés »). */
 export function employerParagraph(firm: Firm): string {
   const forme = firm.regime === "SMAG" ? "entreprise" : "société";
@@ -134,212 +166,153 @@ export function employerParagraph(firm: Firm): string {
   return `${body}, représentée par ${sig}, en sa qualité de ${role},`;
 }
 
-/* ------------------------------------------------------------------ logo ------------------------------------------------------------------ */
-async function loadLogo(path?: string): Promise<{ data: string; fmt: string } | null> {
-  if (!path) return null;
-  try {
-    if (path.startsWith("data:")) {
-      return { data: path, fmt: path.includes("jpeg") || path.includes("jpg") ? "JPEG" : "PNG" };
-    }
-    const res = await fetch(path);
-    const blob = await res.blob();
-    const data = await new Promise<string>((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result as string);
-      fr.onerror = reject;
-      fr.readAsDataURL(blob);
-    });
-    return { data, fmt: blob.type.includes("jpeg") ? "JPEG" : "PNG" };
-  } catch {
-    return null;
-  }
-}
-
 /* ------------------------------------------------------------------ rendu PDF (multi-pages) ------------------------------------------------------------------ */
-const W = 210;
-const H = 297;
-const M = 18;
-const CW = W - 2 * M;
-const FOOT = 20; // hauteur réservée au pied de page
-const PT2MM = 0.3528;
+/* Grille, en-tête, pied et pagination viennent du socle commun `pdf-kit.ts` : tous les
+ * documents de l'application partagent ainsi exactement la même mise en page. */
+type Ctx = Cursor;
 
-interface Ctx {
-  doc: jsPDF;
-  firm: Firm;
-  logo: { data: string; fmt: string } | null;
-  y: number;
-  page: number;
-}
+const ensure = ensureSpace;
 
-function lineHeight(fs: number, factor = 1.32): number {
-  return fs * PT2MM * factor;
-}
-
-function runningHeader(ctx: Ctx) {
-  const { doc, firm } = ctx;
-  doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(...MUTED);
-  doc.text(firm.name.toUpperCase(), M, 12);
-  doc.setDrawColor(...OLIVE).setLineWidth(0.3).line(M, 14, W - M, 14);
-  ctx.y = 20;
-}
-
-function fullHeader(ctx: Ctx) {
-  const { doc, firm, logo } = ctx;
-  if (logo) {
-    try {
-      doc.addImage(logo.data, logo.fmt, M, 11, 34, 17);
-    } catch {
-      /* ignore */
-    }
-  }
-  const hx = logo ? M + 40 : M;
-  doc.setFont("helvetica", "bold").setFontSize(12).setTextColor(...INK);
-  doc.text(firm.name.toUpperCase(), hx, 17);
-  doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(110, 110, 110);
-  if (firm.address) doc.text(firm.address, hx, 22);
-  doc.text(
-    [firm.ice && `ICE : ${firm.ice}`, firm.if_fiscal && `IF : ${firm.if_fiscal}`].filter(Boolean).join("   ·   "),
-    hx,
-    26,
-  );
-  doc.setDrawColor(...OLIVE).setLineWidth(0.5).line(M, 31, W - M, 31);
-  ctx.y = 38;
-}
-
-function footer(ctx: Ctx, totalPages: number) {
-  const { doc, firm } = ctx;
-  doc.setDrawColor(210, 214, 204).setLineWidth(0.3).line(M, H - 15, W - M, H - 15);
-  doc.setFont("helvetica", "italic").setFontSize(6.5).setTextColor(140, 140, 140);
-  doc.text(firmLegalLine(firm), W / 2, H - 11, { align: "center", maxWidth: CW });
-  doc.setFont("helvetica", "normal").setTextColor(...LIME).setFontSize(6.5);
-  doc.text("Document généré par Belkora Paie & RH — référentiel Maroc.", M, H - 7);
-  doc.setTextColor(150, 150, 150);
-  doc.text(`Page ${ctx.page} / ${totalPages}`, W - M, H - 7, { align: "right" });
-}
-
-function ensure(ctx: Ctx, need: number) {
-  if (ctx.y + need > H - FOOT) {
-    ctx.doc.addPage();
-    ctx.page += 1;
-    runningHeader(ctx);
-  }
-}
-
-function drawParagraph(ctx: Ctx, text: string, fs = 10, gap = 2.4) {
+/**
+ * Paragraphe justifié, avec mise en évidence `**gras**` / `*italique*` des données clés.
+ *
+ * La pagination se fait LIGNE PAR LIGNE. Réserver le bloc entier (`ensure(lignes × hauteur)`)
+ * était faux pour un paragraphe plus haut qu'une page : la réserve ne pouvant jamais être
+ * satisfaite, le texte débordait quand même sous le pied.
+ */
+function drawParagraph(ctx: Ctx, text: string, fs = FS.body, gap = 3.4) {
   const { doc } = ctx;
-  doc.setFont("helvetica", "normal").setFontSize(fs).setTextColor(...INK);
-  const lines = doc.splitTextToSize(text, CW) as string[];
-  const lh = lineHeight(fs);
-  ensure(ctx, lines.length * lh);
-  // justification manuelle ligne par ligne (jsPDF justifie mal les blocs multi-pages)
-  doc.text(lines, M, ctx.y, { align: "justify", maxWidth: CW, lineHeightFactor: 1.32 });
-  ctx.y += lines.length * lh + gap;
-}
-
-function drawList(ctx: Ctx, items: string[], marker: (i: number) => string, fs = 10) {
-  const { doc } = ctx;
-  doc.setFont("helvetica", "normal").setFontSize(fs).setTextColor(...INK);
-  const lh = lineHeight(fs);
-  const indent = 6;
-  items.forEach((it, idx) => {
-    const lines = doc.splitTextToSize(it, CW - indent) as string[];
-    ensure(ctx, lines.length * lh);
-    doc.text(marker(idx), M, ctx.y);
-    doc.text(lines, M + indent, ctx.y, { maxWidth: CW - indent, lineHeightFactor: 1.32 });
-    ctx.y += lines.length * lh + 1.2;
+  doc.setTextColor(...INK);
+  const lines = layoutRuns(doc, parseRuns(asciiSpaces(text)), CW, fs);
+  const lh = lineHeight(fs, 1.45); // interligne aéré, comme le gabarit de référence
+  lines.forEach((line, i) => {
+    ensure(ctx, lh);
+    doc.setTextColor(...INK);
+    drawWordLine(doc, line, M, ctx.y, CW, fs, i < lines.length - 1);
+    ctx.y += lh;
   });
-  ctx.y += 1.4;
+  ctx.y += gap;
 }
 
+function drawList(ctx: Ctx, items: string[], marker: (i: number) => string, fs = FS.body) {
+  const { doc } = ctx;
+  const lh = lineHeight(fs, 1.45);
+  const indent = 6.5;
+  items.forEach((it, idx) => {
+    const lines = layoutRuns(doc, parseRuns(asciiSpaces(it)), CW - indent, fs);
+    lines.forEach((line, i) => {
+      ensure(ctx, lh);
+      doc.setTextColor(...INK);
+      if (i === 0) {
+        doc.setFont(FONT, "normal").setFontSize(fs);
+        doc.text(marker(idx), M, ctx.y);
+      }
+      drawWordLine(doc, line, M + indent, ctx.y, CW - indent, fs, i < lines.length - 1);
+      ctx.y += lh;
+    });
+    ctx.y += 1.2;
+  });
+  ctx.y += 1.6;
+}
+
+/**
+ * Bloc(s) de signature. Le bloc est réservé d'un seul tenant (`ensure`) : une signature orpheline
+ * en haut de page suivante décrédibilise le document.
+ *
+ * Un seul signataire (attestations, certificats) → bloc ALIGNÉ À DROITE, avec le filet de
+ * réception SOUS l'identité, conformément au gabarit de référence. Deux signataires (contrats,
+ * accords) → deux colonnes de largeur égale, la signature de chaque partie sous son identité.
+ */
 function drawSignatures(ctx: Ctx, cols: SignatureCol[]) {
   const { doc } = ctx;
-  ensure(ctx, 44);
+  const BLOCK = 46;
+  ensure(ctx, BLOCK);
   const startY = ctx.y + 2;
-  const colW = cols.length === 2 ? (CW - 8) / 2 : CW * 0.55;
+  const solo = cols.length === 1;
+  const colW = solo ? CW * 0.45 : (CW - 10) / 2;
+
   cols.forEach((c, idx) => {
-    const x = idx === 0 ? M : M + colW + 8;
+    const x = solo ? W - M - colW : idx === 0 ? M : M + colW + 10;
+    const align = solo ? ("left" as const) : ("left" as const);
     let yy = startY;
-    doc.setFont("helvetica", "bold").setFontSize(10).setTextColor(...VERT_FONCE);
-    doc.text(c.title, x, yy);
-    yy += 5;
-    doc.setDrawColor(...LIME).setLineWidth(0.6).line(x, yy - 1.5, x + 22, yy - 1.5);
-    yy += 2;
-    doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(...INK);
+
+    doc.setFont(FONT, "bold").setFontSize(FS.body).setTextColor(...INK);
+    doc.text(asciiSpaces(c.title), x, yy, { align, maxWidth: colW });
+    yy += lineHeight(FS.body) + 1.4;
+
+    doc.setFont(FONT, "normal").setFontSize(FS.note).setTextColor(...INK);
     for (const l of c.lines) {
-      const wr = doc.splitTextToSize(l, colW) as string[];
-      doc.text(wr, x, yy, { lineHeightFactor: 1.3 });
-      yy += wr.length * lineHeight(9) + 1;
+      const wr = doc.splitTextToSize(asciiSpaces(l), colW) as string[];
+      doc.text(wr, x, yy, { align, lineHeightFactor: 1.3 });
+      yy += wr.length * lineHeight(FS.note) + 0.8;
     }
-    yy += 12;
-    doc.setDrawColor(...MUTED).setLineWidth(0.4).line(x, yy, x + colW * 0.9, yy);
-    yy += 3.5;
-    doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(...MUTED);
+
     if (c.caption) {
-      const cap = doc.splitTextToSize(c.caption, colW) as string[];
-      doc.text(cap, x, yy, { lineHeightFactor: 1.25 });
+      doc.setFont(FONT, "italic").setFontSize(FS.micro).setTextColor(...MUTED);
+      doc.text(asciiSpaces(c.caption), x, yy + 1.6, { align, maxWidth: colW });
     }
+
+    // Espace de signature manuscrite, puis filet de réception.
+    doc.setDrawColor(...MUTED).setLineWidth(0.4).line(x, startY + BLOCK - 8, x + colW, startY + BLOCK - 8);
   });
-  ctx.y = startY + 44;
+  ctx.y = startY + BLOCK;
 }
 
 export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
-  usePalette(firm); // couleurs dérivées de la société (défaut = vert Miya)
+  const pal = usePalette(firm); // couleurs dérivées de la société (défaut = vert Miya)
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   doc.setProperties({ title: d.fileTitle });
-  const logo = await loadLogo(firm.logo_path || "/logo-miya.png");
-  const ctx: Ctx = { doc, firm, logo, y: 0, page: 1 };
+  const logo = await loadLogo(firmLogoPath(firm));
+  const ctx: Ctx = { doc, firm, pal, y: 0, page: 1 };
 
-  fullHeader(ctx);
+  ctx.y = drawFullHeader(doc, firm, logo, pal);
 
   // « Ville, le … » à droite (courriers)
   if (d.rightHeader) {
-    doc.setFont("helvetica", "normal").setFontSize(9.5).setTextColor(...INK);
-    doc.text(d.rightHeader, W - M, ctx.y, { align: "right" });
+    doc.setFont(FONT, "normal").setFontSize(FS.body).setTextColor(...INK);
+    doc.text(asciiSpaces(d.rightHeader), W - M, ctx.y, { align: "right" });
     ctx.y += 7;
   }
 
   // Lignes méta (destinataire, chantier, mode de remise…)
   if (d.meta?.length) {
-    doc.setFontSize(9.5);
+    doc.setFontSize(FS.body);
     for (const m of d.meta) {
       ensure(ctx, 6);
-      doc.setFont("helvetica", "bold").setTextColor(...INK);
+      doc.setFont(FONT, "bold").setTextColor(...INK);
       const lbl = `${m.label} : `;
       doc.text(lbl, M, ctx.y);
       const lblW = doc.getTextWidth(lbl);
-      doc.setFont("helvetica", "normal");
-      const wr = doc.splitTextToSize(m.value, CW - lblW) as string[];
+      doc.setFont(FONT, "normal");
+      const wr = doc.splitTextToSize(asciiSpaces(m.value), CW - lblW) as string[];
       doc.text(wr, M + lblW, ctx.y, { lineHeightFactor: 1.3 });
-      ctx.y += Math.max(1, wr.length) * lineHeight(9.5) + 1.5;
+      ctx.y += Math.max(1, wr.length) * lineHeight(FS.body) + 1.5;
     }
     ctx.y += 2;
   }
 
-  // Titre encadré centré
-  ensure(ctx, 20);
-  ctx.y += 3;
-  doc.setFont("helvetica", "bold").setFontSize(16).setTextColor(...VERT_FONCE);
-  doc.text(d.heading, W / 2, ctx.y, { align: "center" });
-  ctx.y += 6;
+  // Titre du document, dans son cadre
+  ensure(ctx, 30);
+  ctx.y = drawTitleBox(doc, pal, d.heading, ctx.y + 5);
   if (d.subheading) {
-    doc.setFont("helvetica", "normal").setFontSize(9.5).setTextColor(...MUTED);
-    const sub = doc.splitTextToSize(d.subheading, CW) as string[];
+    ctx.y += 6;
+    doc.setFont(FONT, "italic").setFontSize(FS.note).setTextColor(...MUTED);
+    const sub = doc.splitTextToSize(asciiSpaces(d.subheading), CW) as string[];
     doc.text(sub, W / 2, ctx.y, { align: "center", lineHeightFactor: 1.25 });
-    ctx.y += sub.length * lineHeight(9.5);
+    ctx.y += sub.length * lineHeight(FS.note);
   }
-  doc.setDrawColor(...LIME).setLineWidth(1).line(W / 2 - 22, ctx.y, W / 2 + 22, ctx.y);
-  ctx.y += 7;
+  ctx.y += 12;
 
   // Corps
   for (const b of d.blocks) {
     switch (b.k) {
       case "h": {
-        ctx.y += 2;
-        ensure(ctx, 8);
-        doc.setFont("helvetica", "bold").setFontSize(10.5).setTextColor(...VERT_FONCE);
-        const hl = doc.splitTextToSize(b.t, CW) as string[];
+        ctx.y += 2.5;
+        ensure(ctx, 9);
+        doc.setFont(FONT, "bold").setFontSize(FS.section).setTextColor(...VERT_FONCE);
+        const hl = doc.splitTextToSize(asciiSpaces(b.t), CW) as string[];
         doc.text(hl, M, ctx.y, { lineHeightFactor: 1.25 });
-        ctx.y += hl.length * lineHeight(10.5) + 1.6;
+        ctx.y += hl.length * lineHeight(FS.section) + 2;
         break;
       }
       case "p":
@@ -353,7 +326,7 @@ export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
         break;
       case "center":
         ensure(ctx, 8);
-        doc.setFont("helvetica", b.strong ? "bold" : "normal").setFontSize(b.strong ? 11 : 10).setTextColor(...INK);
+        doc.setFont(FONT, b.strong ? "bold" : "normal").setFontSize(b.strong ? 11 : 10).setTextColor(...INK);
         doc.text(b.t, W / 2, ctx.y, { align: "center" });
         ctx.y += lineHeight(11) + 2;
         break;
@@ -366,16 +339,13 @@ export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
         (b.align ?? []).forEach((a, i) => { colStyles[i] = { halign: a }; });
         autoTable(doc, {
           startY: ctx.y,
-          margin: { left: M, right: M, top: 20 },
           head: b.head ? [b.head] : undefined,
           body: b.rows,
           theme: "grid",
-          styles: { font: "helvetica", fontSize: 8.2, cellPadding: 1.5, textColor: INK, lineColor: [210, 214, 204], lineWidth: 0.15, overflow: "linebreak" },
-          headStyles: { fillColor: VERT_FONCE, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.2 },
+          ...tableStyles(pal),
           columnStyles: colStyles,
         });
-        ctx.y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 3;
-        ctx.page = doc.getNumberOfPages(); // autoTable a pu ajouter des pages
+        afterTable(ctx); // resynchronise y ET la page (autoTable a pu en ajouter)
         break;
       }
     }
@@ -385,11 +355,11 @@ export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
   if (d.faitA) {
     ctx.y += 4;
     ensure(ctx, 14);
-    doc.setFont("helvetica", "bold").setFontSize(10.5).setTextColor(...INK);
+    doc.setFont(FONT, "bold").setFontSize(10.5).setTextColor(...INK);
     doc.text(d.faitA, W / 2, ctx.y, { align: "center" });
     ctx.y += 5;
     if (d.legalNote) {
-      doc.setFont("helvetica", "italic").setFontSize(8).setTextColor(...MUTED);
+      doc.setFont(FONT, "italic").setFontSize(8).setTextColor(...MUTED);
       const nl = doc.splitTextToSize(d.legalNote, CW) as string[];
       doc.text(nl, W / 2, ctx.y, { align: "center", lineHeightFactor: 1.25 });
       ctx.y += nl.length * lineHeight(8) + 2;
@@ -403,18 +373,12 @@ export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
   }
 
   // Pieds de page (numérotation a posteriori) — total réel (autoTable a pu ajouter des pages)
-  const total = doc.getNumberOfPages();
-  for (let p = 1; p <= total; p++) {
-    doc.setPage(p);
-    footer({ ...ctx, page: p }, total);
-  }
+  paintFooters(doc, firm, pal);
   return doc;
 }
 
 /* ------------------------------------------------------------------ rendu HTML imprimable ------------------------------------------------------------------ */
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+const esc = escapeHtml;
 
 export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr"): string {
   const pal = paletteForFirm(firm.brand_color); // couleurs dérivées de la société (défaut = vert Miya)
@@ -428,10 +392,10 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
         parts.push(`<h2>${esc(b.t)}</h2>`);
         break;
       case "p":
-        parts.push(`<p>${esc(b.t)}</p>`);
+        parts.push(`<p>${runsToHtml(b.t)}</p>`);
         break;
       case "ul":
-        parts.push(`<ul>${b.items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`);
+        parts.push(`<ul>${b.items.map((i) => `<li>${runsToHtml(i)}</li>`).join("")}</ul>`);
         break;
       case "check":
         parts.push(
@@ -494,19 +458,23 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
 <title>${esc(d.fileTitle)}</title>
 <style>
  :root{--lime:${pal.limeHex};--olive:${pal.oliveHex};--vf:${pal.deepHex};--ink:${pal.inkHex};--muted:${pal.mutedHex}}
- *{box-sizing:border-box;font-family:"IBM Plex Sans",Arial,sans-serif}
+ /* Empattements, comme le PDF : l'aperçu imprimable doit être fidèle au document exporté. */
+ *{box-sizing:border-box;font-family:"Libre Baskerville","Times New Roman",Times,serif}
  body{margin:0;padding:24px;background:#f4f5f2;color:var(--ink)}
  .sheet{max-width:820px;margin:auto;background:#fff;padding:40px 48px 64px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,.08);position:relative}
- .top{display:flex;gap:16px;align-items:center;border-bottom:1.5px solid var(--olive);padding-bottom:12px}
- .top img{height:50px;object-fit:contain}
- .firm{font-weight:700;font-size:15px}
- .firm small{display:block;font-weight:400;color:#888;font-size:11px;margin-top:2px}
- .rh{text-align:right;font-size:13px;margin-top:12px}
+ .top{display:flex;gap:18px;align-items:center;border-bottom:2.5px solid var(--vf);padding-bottom:14px}
+ .top img{width:74px;height:74px;object-fit:contain;flex:0 0 auto}
+ .firm{flex:1;text-align:center}
+ .firm .fname{display:block;font-weight:700;font-size:25px;letter-spacing:.01em}
+ .firm .fdesc{display:block;font-size:12.5px;margin-top:4px}
+ .firm .fids{display:block;font-weight:400;color:var(--muted);font-size:10.5px;margin-top:3px}
+ .rh{text-align:right;font-size:13px;margin-top:16px}
  .meta{font-size:13px;margin-top:10px;line-height:1.6}
  .meta b{color:var(--ink)}
- h1.title{margin:26px auto 4px;text-align:center;color:var(--vf);font-size:22px}
- .sub{text-align:center;color:var(--muted);font-size:13px;margin:0 auto}
- .divider{width:70px;height:2.5px;background:var(--lime);margin:10px auto 22px;border-radius:2px}
+ h1.title{margin:0;text-align:center;color:var(--vf);font-size:20px;font-weight:700;letter-spacing:.09em}
+ .titlebox{border:1px solid var(--vf);padding:12px 34px;margin:34px auto 0;width:max-content;max-width:100%}
+ .sub{text-align:center;color:var(--muted);font-size:12px;font-style:italic;margin:8px auto 0}
+ .divider{height:26px}
  h2{color:var(--vf);font-size:14px;margin:20px 0 6px}
  p{font-size:13.5px;line-height:1.75;text-align:justify;margin:0 0 12px}
  p.ctr{text-align:center}p.strong{font-weight:700}
@@ -517,15 +485,16 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
  table.dt td{padding:4px 7px;border:1px solid #dfe3d8}
  .faitA{text-align:center;font-weight:700;font-size:14px;margin:26px 0 4px}
  .note{text-align:center;font-style:italic;color:var(--muted);font-size:11px;margin-bottom:14px}
- .sigs{display:flex;gap:32px;margin-top:24px}
- .sigs.two .sig{flex:1}.sigs.one .sig{width:60%}
- .sig b{color:var(--vf);font-size:13px}
- .sig .rule{width:26px;height:2px;background:var(--lime);margin:4px 0 8px}
- .sig div{font-size:12.5px;line-height:1.5}
- .sig .sline{border-top:.5px solid var(--muted);margin-top:44px;width:90%}
- .sig small{color:var(--muted);font-size:10px}
- .foot{position:absolute;left:48px;right:48px;bottom:24px;border-top:1px solid #e0e4da;padding-top:6px;color:#999;font-size:10px;font-style:italic;text-align:center}
- .foot .gen{color:var(--lime);font-style:normal}
+ .sigs{display:flex;gap:32px;margin-top:30px}
+ .sigs.two .sig{flex:1}
+ /* Signataire unique : bloc aligné à droite, comme le gabarit de référence. */
+ .sigs.one{justify-content:flex-end}.sigs.one .sig{width:45%}
+ .sig b{font-size:13.5px}
+ .sig .rule{display:none}
+ .sig div{font-size:12.5px;line-height:1.55}
+ .sig .sline{border-top:.5px solid var(--muted);margin-top:42px;width:100%}
+ .sig small{color:var(--muted);font-size:10.5px;font-style:italic}
+ .foot{position:absolute;left:48px;right:48px;bottom:24px;border-top:1px solid var(--olive);padding-top:7px;color:var(--muted);font-size:10px;line-height:1.6;text-align:center}
  .noprint{max-width:820px;margin:0 auto 14px}
  button{background:var(--lime);color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer}
  @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;border-radius:0}.noprint{display:none}.foot{position:fixed}}${arCss}
@@ -533,19 +502,24 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
 <div class="noprint"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
 <div class="sheet">
  <div class="top">
-   <img src="${firm.logo_path || "/logo-miya.png"}" alt="logo">
-   <div class="firm">${esc(firm.name.toUpperCase())}<small>${[firm.address, firm.ice && "ICE : " + firm.ice, firm.if_fiscal && "IF : " + firm.if_fiscal].filter((x): x is string => Boolean(x)).map(esc).join(" · ")}</small></div>
+   <img src="${esc(firmLogoPath(firm))}" alt="logo">
+   <div class="firm">
+     <span class="fname">${esc(firm.name.toUpperCase())}</span>
+     ${firmDescriptor(firm) ? `<span class="fdesc">${esc(firmDescriptor(firm))}</span>` : ""}
+     ${firmIdentifiersLine(firm) ? `<span class="fids">${esc(firmIdentifiersLine(firm))}</span>` : ""}
+     ${firmContactLine(firm) ? `<span class="fids">${esc(firmContactLine(firm))}</span>` : ""}
+   </div>
  </div>
  ${!rtl && d.rightHeader ? `<div class="rh">${esc(d.rightHeader)}</div>` : ""}
  ${meta}
- <h1 class="title">${esc(c.heading)}</h1>
+ <div class="titlebox"><h1 class="title">${esc(c.heading.toUpperCase())}</h1></div>
  ${c.subheading ? `<p class="sub">${esc(c.subheading)}</p>` : ""}
  <div class="divider"></div>
  ${parts.join("\n ")}
  ${c.faitA ? `<div class="faitA">${esc(c.faitA)}</div>` : ""}
  ${c.legalNote ? `<div class="note">${esc(c.legalNote)}</div>` : ""}
  ${sig}
- <div class="foot">${esc(firmLegalLine(firm))}<br><span class="gen">Document généré par Belkora Paie &amp; RH — référentiel Maroc.</span></div>
+ <div class="foot">${esc(firmIdentifiersLine(firm))}<br>${esc(firmContactLine(firm))}</div>
 </div></body></html>`;
 }
 
