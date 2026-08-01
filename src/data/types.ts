@@ -4,6 +4,7 @@
  * un branchement Supabase ultérieur (mêmes colonnes).
  */
 import type { PayrollResult, CnssExemption } from "@/lib/payroll-engine";
+import type { DepartureReason } from "@/lib/stc-engine";
 import type { JournalEntry } from "@/lib/payroll-accounting";
 
 export type Regime = "SMIG" | "SMAG";
@@ -87,6 +88,15 @@ export interface Employee {
   hazardous_site?: boolean; // site BTP/dangereux -> contrôle mineur
   /** Exonération CNSS/AMO/AF/TFP (dispositif ANAPEC/stage). Défaut : droit commun. */
   cnss_exemption?: CnssExemption;
+  /**
+   * Date de sortie effective des effectifs (ISO). Distincte de `contract_end`, qui est le TERME
+   * PRÉVU d'un CDD : un CDD peut être rompu avant son terme, ou se prolonger de fait.
+   * C'est cette date — et elle seule — qui figure au certificat de travail (art. 24) et au
+   * registre des mouvements.
+   */
+  exit_date?: string;
+  /** Motif de la sortie — même nomenclature que le calcul de solde de tout compte. */
+  exit_reason?: DepartureReason;
 }
 
 export interface PayrollPeriod {

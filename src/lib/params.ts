@@ -86,6 +86,41 @@ export interface PayrollParams {
 
   /** Solde de tout compte — barèmes de rupture (Code du travail + CGI). */
   stc: StcParams;
+
+  /** Registre du personnel — délais et expositions de la déclaration CNSS. */
+  registre: RegistreParams;
+}
+
+/**
+ * Délais et sanctions encadrant la déclaration d'un salarié à la CNSS.
+ *
+ * Ces valeurs vivent ici — et NON dans le moteur du registre — parce qu'elles relèvent du décret
+ * et de la pratique CNSS, donc changent sans toucher au Code du travail.
+ *
+ * AVERTISSEMENT DE FIABILITÉ : les sources publiques divergent sur le délai d'immatriculation
+ * d'un NOUVEAU SALARIÉ (48 h selon certaines, 30 jours selon d'autres), alors qu'elles
+ * s'accordent sur les 30 jours d'AFFILIATION DE L'ENTREPRISE après l'embauche du premier
+ * salarié — deux obligations distinctes, souvent confondues. La valeur retenue ci-dessous est
+ * donc la plus prudente pour l'employeur (la plus courte), et `sourceNote` doit être affichée
+ * partout où l'échéance est présentée. À faire confirmer auprès de la CNSS ou du conseil
+ * juridique avant tout usage contentieux.
+ */
+export interface RegistreParams {
+  /** Délai d'immatriculation d'un nouveau salarié, en jours calendaires depuis l'embauche. */
+  declarationDeadlineDays: number;
+  /** Délai d'affiliation de l'entreprise après l'embauche du premier salarié (jours). */
+  affiliationDeadlineDays: number;
+  /**
+   * Ordre de grandeur de l'amende par salarié non immatriculé (DH). ORDRE DE GRANDEUR, jamais
+   * un calcul exact : le poste dominant reste le rappel de cotisations depuis l'embauche réelle.
+   */
+  amendeNonImmatriculationParSalarie: number;
+  /** Majoration mensuelle par salarié au-delà du seuil de retard (DH/mois). */
+  majorationRetardMensuelleParSalarie: number;
+  /** Seuil de retard (mois) à partir duquel la majoration mensuelle s'applique. */
+  seuilRetardMois: number;
+  /** Mention de source à afficher avec toute échéance ou exposition. */
+  sourceNote: string;
 }
 
 /** Barème de préavis : durée en mois OU en jours, par seuil d'ancienneté (années révolues). */
@@ -214,6 +249,20 @@ const PARAMS_2026: PayrollParams = {
     abusiveMonthsPerYear: 1.5, // art. 41
     abusiveMaxMonths: 36, // plafond art. 41
     cddEndRate: 0.07, // indemnité de fin de CDD
+  },
+
+  registre: {
+    // Valeur prudente (la plus courte des sources publiques) — cf. avertissement sur RegistreParams.
+    declarationDeadlineDays: 2,
+    affiliationDeadlineDays: 30,
+    amendeNonImmatriculationParSalarie: 1000,
+    majorationRetardMensuelleParSalarie: 50,
+    seuilRetardMois: 7,
+    sourceNote:
+      "Délais et montants indicatifs (sources publiques CNSS, vérifiées le 01/08/2026) — "
+      + "les sources divergent sur le délai d'immatriculation du salarié ; à confirmer auprès de "
+      + "la CNSS avant tout usage contentieux. Le poste dominant reste le rappel des cotisations "
+      + "depuis la date réelle d'embauche.",
   },
 };
 

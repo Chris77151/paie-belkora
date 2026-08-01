@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
 import Documents from "./pages/Documents";
 import DocumentsLog from "./pages/DocumentsLog";
+import Register from "./pages/Register";
 import Payroll from "./pages/Payroll";
 import Accounting from "./pages/Accounting";
 import Declarations from "./pages/Declarations";
@@ -45,6 +46,7 @@ const router = createHashRouter([
       { path: "employees", element: g(<Employees />) },
       { path: "documents", element: g(<Documents />) },
       { path: "documents-log", element: g(<DocumentsLog />) },
+      { path: "registre", element: g(<Register />) },
       { path: "payroll", element: g(<Payroll />) },
       { path: "accounting", element: g(<Accounting />) },
       { path: "declarations", element: g(<Declarations />) },

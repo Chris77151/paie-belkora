@@ -14,6 +14,7 @@ import {
 import type { SyncPlan } from "@/lib/odoo";
 import type { ContractType, Employee } from "@/data/types";
 import type { CnssExemption } from "@/lib/payroll-engine";
+import { DEPARTURE_REASONS, type DepartureReason } from "@/lib/stc-engine";
 import {
   Badge, Button, Card, CardContent, Field, Input, PageHeader, Select, Table, Td, Th,
 } from "@/components/ui/kit";
@@ -461,6 +462,26 @@ function EmployeeDrawer({ emp, onClose }: { emp: Employee; onClose: () => void }
           <Field label={t("emp.dependents")}><Input type="number" min={0} max={6} value={f.dependents} onChange={(e) => set({ dependents: +e.target.value })} /></Field>
           <Field label={t("emp.rib")}><Input value={f.bank_rib ?? ""} onChange={(e) => set({ bank_rib: e.target.value })} /></Field>
           <Field label={t("emp.phone")}><Input value={f.phone ?? ""} onChange={(e) => set({ phone: e.target.value })} /></Field>
+        </div>
+
+        {/* Sortie des effectifs — alimente le registre des mouvements et le certificat de travail
+            (art. 24 : date d'entrée, date de sortie, postes occupés). Distincte du terme prévu
+            d'un CDD : un CDD peut être rompu avant son terme. */}
+        <div className="mt-4 grid grid-cols-2 gap-4 rounded-lg border border-border/60 bg-muted/30 p-3">
+          <Field label="Date de sortie" hint="Sortie effective des effectifs — laisser vide si le salarié est présent.">
+            <Input type="date" value={f.exit_date ?? ""} onChange={(e) => set({ exit_date: e.target.value || undefined })} />
+          </Field>
+          <Field label="Motif de sortie" hint="Requis pour le certificat de travail et le solde de tout compte.">
+            <Select
+              value={f.exit_reason ?? ""}
+              onChange={(e) => set({ exit_reason: (e.target.value || undefined) as DepartureReason | undefined })}
+            >
+              <option value="">—</option>
+              {DEPARTURE_REASONS.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </Select>
+          </Field>
         </div>
 
         <label className="mt-4 flex items-center gap-2 text-sm">
