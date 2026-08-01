@@ -5,7 +5,8 @@
  */
 import type { Firm } from "@/data/types";
 import type { LegalDoc } from "@/lib/rh-legal";
-import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
+import { firmDescriptor } from "@/lib/firm-legal";
+import { firmContactLine, firmIdentifiersLine, firmLogoPath } from "@/lib/pdf-kit";
 import { paletteForFirm } from "@/lib/brand-color";
 
 export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: LegalDoc; lang?: "fr" | "ar" }) {
@@ -17,19 +18,18 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
     <div
       dir={rtl ? "rtl" : "ltr"}
       style={{ color: pal.inkHex }}
-      className={`mx-auto max-w-[720px] rounded-md border bg-white shadow-sm px-9 py-8 text-[12.5px] leading-[1.7] ${rtl ? "text-right [font-family:'Amiri','Arabic_Typesetting',Tahoma,Arial,sans-serif]" : ""}`}
+      /* Empattements hors arabe, comme le PDF : l'aperçu sert de source à l'export « Aperçu fidèle ». */
+      className={`mx-auto max-w-[720px] rounded-md border bg-white shadow-sm px-9 py-8 text-[12.5px] leading-[1.7] ${rtl ? "text-right [font-family:'Amiri','Arabic_Typesetting',Tahoma,Arial,sans-serif]" : "[font-family:'Libre_Baskerville','Times_New_Roman',Times,serif]"}`}
     >
-      {/* En-tête */}
-      <div className="flex items-center gap-4 border-b-[1.5px] pb-3" style={{ borderColor: pal.oliveHex }}>
-        <img src={firm.logo_path || "/logo-miya.png"} alt="logo" className="h-11 w-auto object-contain" />
-        <div>
-          <div className="font-bold text-[14px]">
-            {firm.name.toUpperCase()}
-            {firmDescriptor(firm) && <span className="font-normal text-neutral-500"> — {firmDescriptor(firm)}</span>}
-          </div>
-          <div className="text-[10px] text-neutral-500">
-            {firmLegalLine(firm, { includeAddress: true, sep: " · " })}
-          </div>
+      {/* En-tête — même composition que le PDF : logo carré à gauche, bloc d'identité CENTRÉ
+          sur la largeur restante, filet de marque. */}
+      <div className="flex items-center gap-4 border-b-2 pb-3" style={{ borderColor: pal.deepHex }}>
+        <img src={firmLogoPath(firm)} alt="logo" className="h-[62px] w-[62px] shrink-0 object-contain" />
+        <div className="flex-1 text-center">
+          <div className="font-bold text-[21px] leading-tight">{firm.name.toUpperCase()}</div>
+          {firmDescriptor(firm) && <div className="mt-0.5 text-[11px]">{firmDescriptor(firm)}</div>}
+          <div className="mt-0.5 text-[9px] text-neutral-500">{firmIdentifiersLine(firm)}</div>
+          <div className="text-[9px] text-neutral-500">{firmContactLine(firm)}</div>
         </div>
       </div>
 
@@ -152,9 +152,12 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
         </div>
       )}
 
-      <div className="mt-8 border-t border-neutral-200 pt-2 text-center text-[9px] italic text-neutral-400">
-        {firmLegalLine(firm)}
-        <div className="not-italic mt-0.5" style={{ color: pal.limeHex }}>Document généré par Belkora Paie & RH — référentiel Maroc.</div>
+      {/* Pied — STRICTEMENT celui du PDF et du HTML (deux lignes d'identité, sans mention de
+          l'outil). L'aperçu sert de source à l'export « Aperçu fidèle » (capture WYSIWYG) :
+          toute divergence ici réapparaîtrait dans le document remis au tiers. */}
+      <div className="mt-8 border-t pt-2 text-center text-[9px] text-neutral-500" style={{ borderColor: pal.oliveHex }}>
+        <div>{firmIdentifiersLine(firm)}</div>
+        <div className="mt-0.5">{firmContactLine(firm)}</div>
       </div>
     </div>
   );
