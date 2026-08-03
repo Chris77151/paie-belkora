@@ -202,10 +202,15 @@ export async function odooImportEmployees(
  * par le nom) bloque la création d'un doublon.
  * ========================================================================== */
 
-/** Champs hr.employee que la sync peut alimenter (jamais écraser). */
-const SYNC_FIELDS = [
+/**
+ * Champs hr.employee CANDIDATS à la synchronisation app → Odoo. Le nom identifie
+ * l'enregistrement (jamais réécrit). Les champs réellement poussés sont l'intersection de
+ * cette liste avec ceux qui EXISTENT sur l'instance (détectés par `fields_get`) : un champ
+ * absent (ex. module l10n_ma non installé) est ignoré au lieu de faire échouer tout le write.
+ */
+const SYNC_CANDIDATES = [
   "name", "registration_number", "identification_id", "l10n_ma_cnss_number",
-  "job_title", "birthday", "wage",
+  "job_title", "birthday", "wage", "children", "mobile_phone", "private_street",
 ] as const;
 
 type OdooEmp = {
@@ -218,6 +223,9 @@ type OdooEmp = {
   job_title?: string | false;
   birthday?: string | false;
   wage?: number | false;
+  children?: number | false;
+  mobile_phone?: string | false;
+  private_street?: string | false;
 };
 
 export type SyncOp = "create" | "update" | "unchanged" | "conflict";
@@ -227,6 +235,8 @@ export interface SyncFieldChange {
   label: string;
   odoo: string; // valeur Odoo actuelle, formatée ("(vide)" si absente)
   app: string;  // valeur qui sera écrite, formatée
+  /** « fill » = champ Odoo vide comblé ; « diff » = valeur Odoo divergente corrigée (l'app fait foi). */
+  kind: "fill" | "diff";
 }
 
 export interface SyncPlanItem {
@@ -251,6 +261,7 @@ export interface SyncPlan {
 const FIELD_LABEL: Record<string, string> = {
   name: "Nom", registration_number: "Matricule", identification_id: "CIN",
   l10n_ma_cnss_number: "N° CNSS", job_title: "Poste", birthday: "Naissance", wage: "Salaire mensuel",
+  children: "Personnes à charge", mobile_phone: "Téléphone", private_street: "Adresse",
 };
 
 const isEmpty = (v: unknown): boolean => v === false || v == null || v === "";
@@ -282,12 +293,39 @@ function appValue(emp: Employee, field: string): string | number | undefined {
       const w = round2((emp.base_hourly_rate || 0) * (emp.monthly_hours || 0));
       return w > 0 ? w : undefined;
     }
+    case "children": return typeof emp.dependents === "number" ? emp.dependents : undefined;
+    case "mobile_phone": return norm(emp.phone) || undefined;
+    case "private_street": return norm(emp.address) || undefined;
     default: return undefined;
   }
 }
 
 const fmt = (v: unknown): string =>
   isEmpty(v) ? "(vide)" : typeof v === "number" ? String(v) : String(v);
+
+/** Un champ Odoo est-il « vide » ? (le salaire et les personnes à charge à 0 comptent comme vides). */
+function fieldEmpty(field: string, current: unknown): boolean {
+  if (isEmpty(current)) return true;
+  if ((field === "wage" || field === "children") && current === 0) return true;
+  return false;
+}
+
+/**
+ * La valeur Odoo `current` DIVERGE-t-elle de la valeur app `app` ? (comparaison tolérante :
+ * nombres arrondis au centime, textes sans casse ni espaces superflus). PUR & testable.
+ * Sert à corriger une valeur Odoo obsolète (poste changé dans l'app, etc.) — l'app fait foi.
+ */
+export function syncDiffers(field: string, current: unknown, app: string | number): boolean {
+  if (typeof app === "number") {
+    if (isEmpty(current)) return true; // Odoo vide vs valeur app numérique → divergence
+    const c = typeof current === "number" ? current : Number(current);
+    if (!isFinite(c)) return true;
+    return round2(c) !== round2(app);
+  }
+  const c = norm(current as string | false).toLowerCase();
+  const a = String(app).trim().toLowerCase();
+  return c !== a;
+}
 
 /**
  * Construit le PLAN de synchronisation (DRY-RUN, aucune écriture).
@@ -300,14 +338,29 @@ export async function buildEmployeeSyncPlan(
   employees: Employee[],
 ): Promise<SyncPlan> {
   const userId = await odooAuthenticate(config);
+
+  // Robustesse : ne lire/écrire QUE des champs présents sur cette instance (évite qu'un champ
+  // absent — ex. module l10n_ma non installé, ou renommage de version — fasse échouer l'appel).
+  let available: Set<string>;
+  try {
+    const fg: Record<string, unknown> = await jsonRpc(config, "object", "execute_kw", [
+      config.db, userId, config.apiKey, "hr.employee", "fields_get", [], { attributes: ["type"] },
+    ]);
+    available = new Set(Object.keys(fg ?? {}));
+  } catch {
+    available = new Set(SYNC_CANDIDATES); // repli : on tente les champs standard
+  }
+  // Champs synchronisés = candidats réellement disponibles.
+  const syncFields = SYNC_CANDIDATES.filter((f) => available.has(f));
+  // Champs supplémentaires utiles à l'appariement (CIN alternatif l10n_ma), s'ils existent.
+  const readFields = Array.from(new Set([
+    "id", ...syncFields, ...(available.has("l10n_ma_cin_number") ? ["l10n_ma_cin_number"] : []),
+  ]));
+
   const existing: OdooEmp[] = await jsonRpc(config, "object", "execute_kw", [
     config.db, userId, config.apiKey, "hr.employee", "search_read",
     [[["company_id", "=", odooCompanyId]]],
-    {
-      fields: ["id", "name", "registration_number", "identification_id",
-        "l10n_ma_cin_number", "l10n_ma_cnss_number", "job_title", "birthday", "wage"],
-      limit: 2000,
-    },
+    { fields: readFields, limit: 2000 },
   ]);
 
   // Index d'appariement (clé -> id Odoo). Première occurrence gagnante.
@@ -346,11 +399,11 @@ export async function buildEmployeeSyncPlan(
     if (odooId == null) {
       const vals: Record<string, unknown> = { company_id: odooCompanyId };
       const changes: SyncFieldChange[] = [];
-      for (const f of SYNC_FIELDS) {
+      for (const f of syncFields) {
         const v = appValue(emp, f);
         if (v !== undefined) {
           vals[f] = v;
-          changes.push({ field: f, label: FIELD_LABEL[f], odoo: "(vide)", app: fmt(v) });
+          changes.push({ field: f, label: FIELD_LABEL[f], odoo: "(vide)", app: fmt(v), kind: "fill" });
         }
       }
       items.push({
@@ -372,29 +425,34 @@ export async function buildEmployeeSyncPlan(
     }
     claimed.add(odooId);
 
-    // --- UPDATE (gap-fill) : ne combler que les champs VIDES côté Odoo.
+    // --- UPDATE : combler les champs VIDES côté Odoo, ET corriger les DIVERGENCES (l'app fait
+    //     foi). Le nom identifie l'enregistrement : jamais réécrit. Jamais d'écrasement par une
+    //     valeur app vide (appValue renvoie undefined).
     const target = byId.get(odooId)!;
     const vals: Record<string, unknown> = {};
     const changes: SyncFieldChange[] = [];
-    for (const f of SYNC_FIELDS) {
-      if (f === "name") continue; // le nom identifie l'enregistrement : jamais réécrit
+    for (const f of syncFields) {
+      if (f === "name") continue;
+      const v = appValue(emp, f);
+      if (v === undefined) continue; // rien de saisi dans l'app → on ne touche pas
       const current = (target as Record<string, unknown>)[f];
-      const wageEmpty = f === "wage" && (current === false || current == null || current === 0);
-      if (isEmpty(current) || wageEmpty) {
-        const v = appValue(emp, f);
-        if (v !== undefined) {
-          vals[f] = v;
-          changes.push({ field: f, label: FIELD_LABEL[f], odoo: fmt(current), app: fmt(v) });
-        }
+      if (fieldEmpty(f, current)) {
+        vals[f] = v;
+        changes.push({ field: f, label: FIELD_LABEL[f], odoo: fmt(current), app: fmt(v), kind: "fill" });
+      } else if (syncDiffers(f, current, v)) {
+        vals[f] = v;
+        changes.push({ field: f, label: FIELD_LABEL[f], odoo: fmt(current), app: fmt(v), kind: "diff" });
       }
     }
 
+    const nFill = changes.filter((c) => c.kind === "fill").length;
+    const nDiff = changes.filter((c) => c.kind === "diff").length;
     items.push({
       employee_id: emp.id, name: displayName,
       op: changes.length ? "update" : "unchanged",
       odooId, matchKey, matchConfidence: confidence, changes, vals,
       note: changes.length
-        ? `Apparié par ${matchKey} (#${odooId}) — ${changes.length} champ(s) à compléter.`
+        ? `Apparié par ${matchKey} (#${odooId}) — ${nFill} à compléter, ${nDiff} à corriger.`
         : `Apparié par ${matchKey} (#${odooId}) — déjà à jour.`,
     });
   }

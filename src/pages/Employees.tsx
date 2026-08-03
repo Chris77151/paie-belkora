@@ -206,7 +206,7 @@ export default function Employees() {
 /* ---------------- Dialogue de synchronisation app -> Odoo ---------------- */
 const OP_META: Record<string, { label: string; tone: Parameters<typeof Badge>[0]["tone"] }> = {
   create: { label: "À créer", tone: "sage" },
-  update: { label: "À compléter", tone: "warning" },
+  update: { label: "À mettre à jour", tone: "warning" },
   unchanged: { label: "À jour", tone: "muted" },
   conflict: { label: "Conflit", tone: "destructive" },
 };
@@ -252,7 +252,9 @@ function OdooSyncDialog({
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Société « {firmName} » · {plan.odooCount} salarié(s) lus dans Odoo (company_id {plan.companyId}).
-              Odoo fait foi : aucune valeur existante n'est écrasée, on ne comble que les champs vides.
+              L'app fait foi : les champs vides d'Odoo sont <b>complétés</b> et les valeurs divergentes
+              (dont le poste) sont <b>corrigées</b>. Le nom n'est jamais réécrit ; un champ absent de
+              l'instance Odoo est ignoré. Rien n'est écrit avant confirmation.
             </p>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}><X size={18} /></Button>
@@ -269,7 +271,7 @@ function OdooSyncDialog({
         {done ? (
           <div className="rounded-md border bg-muted/30 p-4">
             <p className="flex items-center gap-2 text-sm font-medium text-success">
-              <CheckCircle2 size={16} /> Synchronisation terminée : {done.created} créé(s), {done.updated} complété(s).
+              <CheckCircle2 size={16} /> Synchronisation terminée : {done.created} créé(s), {done.updated} mis à jour.
             </p>
             {done.errors.length > 0 && (
               <div className="mt-3">
@@ -314,6 +316,9 @@ function OdooSyncDialog({
                           <ul className="space-y-0.5">
                             {it.changes.map((c) => (
                               <li key={c.field} className="flex items-center gap-1.5">
+                                <Badge tone={c.kind === "diff" ? "warning" : "muted"} className="shrink-0">
+                                  {c.kind === "diff" ? "corrigé" : "complété"}
+                                </Badge>
                                 <span className="font-medium">{c.label} :</span>
                                 <span className="text-muted-foreground line-through">{c.odoo}</span>
                                 <ArrowRight size={11} className="text-muted-foreground" />
