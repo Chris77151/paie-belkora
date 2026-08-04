@@ -18,9 +18,10 @@ import {
 } from "@/components/ui/kit";
 import { mad, periodLabel, MONTHS_FR } from "@/lib/format";
 import { computeFor, defaultInput } from "@/lib/payroll-helpers";
+import { SELECTABLE_YEARS } from "@/lib/params";
 
 const CNSS_CEILING = 6000;
-const YEAR_OPTIONS = [2025, 2026];
+const YEAR_OPTIONS = SELECTABLE_YEARS;
 
 export default function Declarations() {
   const s = useStore();

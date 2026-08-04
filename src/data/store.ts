@@ -147,15 +147,42 @@ export const getSyncStatus = () => syncStatus;
 export const getSyncError = () => syncError;
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingSave = false;
+
+/** Envoie effectivement l'état courant à Supabase (annule le timer en attente). */
+async function doRemoteSave() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  pendingSave = false;
+  const res = await saveRemoteState(state);
+  setSync(res.ok ? "saved" : "error", res.error);
+}
+
 /** Pousse l'état vers Supabase, débouncé (évite un appel par frappe). No-op si non configuré. */
 function scheduleRemoteSave() {
   if (!isSupabaseConfigured()) return;
   if (saveTimer) clearTimeout(saveTimer);
   setSync("syncing");
-  saveTimer = setTimeout(async () => {
-    const res = await saveRemoteState(state);
-    setSync(res.ok ? "saved" : "error", res.error);
-  }, 800);
+  pendingSave = true;
+  saveTimer = setTimeout(() => { void doRemoteSave(); }, 800);
+}
+
+/**
+ * Force la sauvegarde cloud IMMÉDIATE si une écriture est en attente. Appelé quand l'onglet
+ * se ferme ou passe en arrière-plan : sans cela, une modification faite juste avant un
+ * rechargement resterait dans le navigateur (débounce non écoulé) et paraîtrait « non
+ * enregistrée en ligne ». Idempotent et sans effet si rien n'est en attente.
+ */
+export function flushRemoteSave(): void {
+  if (pendingSave && isSupabaseConfigured()) void doRemoteSave();
+}
+
+// Filet de sécurité : pousse les modifications en attente avant que la page ne disparaisse.
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", flushRemoteSave);
+  window.addEventListener("pagehide", flushRemoteSave);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushRemoteSave();
+  });
 }
 
 /**

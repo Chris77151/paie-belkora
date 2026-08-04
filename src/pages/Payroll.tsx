@@ -14,8 +14,9 @@ import {
 } from "@/components/ui/kit";
 import { MONTHS_FR, mad, num, periodLabel } from "@/lib/format";
 import { exportPayslipPdf, downloadTex, openHtmlPayslip, type PayslipView } from "@/lib/payslip";
+import { SELECTABLE_YEARS } from "@/lib/params";
 
-const YEARS = [2026, 2025];
+const YEARS = SELECTABLE_YEARS;
 
 export default function Payroll() {
   const s = useStore();

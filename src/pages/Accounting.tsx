@@ -12,8 +12,9 @@ import { DEFAULT_ACCOUNTS } from "@/lib/accounting-accounts";
 import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml } from "@/lib/accounting-export";
 import { Badge, Button, Card, CardContent, Field, PageHeader, Select, Table, Td, Th } from "@/components/ui/kit";
 import { MONTHS_FR, dateFr, mad, num, periodLabel } from "@/lib/format";
+import { SELECTABLE_YEARS } from "@/lib/params";
 
-const YEARS = [2026, 2025];
+const YEARS = SELECTABLE_YEARS;
 
 export default function Accounting() {
   const s = useStore();

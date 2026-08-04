@@ -20,8 +20,9 @@ import {
   type ReconcileOutcome,
 } from "@/lib/odoo";
 import { cn } from "@/lib/cn";
+import { SELECTABLE_YEARS } from "@/lib/params";
 
-const YEARS = [2026, 2025];
+const YEARS = SELECTABLE_YEARS;
 
 const CAT = {
   flux: { label: "Flux — Compte de résultat", icon: ScrollText },
