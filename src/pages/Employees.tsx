@@ -89,18 +89,27 @@ export default function Employees() {
     }
   }
 
-  const rows = all.filter((e) => {
+  // Prédicat de filtrage (recherche + site + contrat + statut). « Actifs » = présents (actif ET
+  // sans date de sortie) ; « Sortis » = date de sortie renseignée ; « Inactifs » = désactivés
+  // sans date de sortie ; « Tous » = aucun filtre de statut.
+  const matches = (e: Employee) => {
     if (q && !`${e.first_name} ${e.last_name} ${e.matricule ?? ""}`.toLowerCase().includes(q.toLowerCase())) return false;
     if (site !== "all" && e.site !== site) return false;
     if (contract !== "all" && e.contract_type !== contract) return false;
-    // « Actifs » = présents (pas de date de sortie ET actif) ; « Sortis » = date de sortie
-    // renseignée ; « Inactifs » = désactivés sans date de sortie ; « Tous » = aucun filtre.
     if (status === "active" && (!e.is_active || !!e.exit_date)) return false;
     if (status === "exited" && !e.exit_date) return false;
     if (status === "inactive" && (e.is_active || !!e.exit_date)) return false;
     return true;
-  });
+  };
+  const rows = all.filter(matches);
   const exitedCount = all.filter((e) => e.exit_date).length;
+
+  /** Après enregistrement d'un salarié : s'il n'est plus visible sous le filtre courant (ex.
+   *  il vient d'être marqué « sorti » alors qu'on est sur « Actifs »), on bascule sur « Tous »
+   *  pour qu'il RESTE visible et modifiable — au lieu de disparaître silencieusement. */
+  function ensureVisible(saved: Employee) {
+    if (!matches(saved)) setStatus("all");
+  }
 
   function newEmployee() {
     const hours = getParams(new Date().getFullYear()).legalMonthlyHours;
@@ -211,7 +220,7 @@ export default function Employees() {
         </Table>
       </Card>
 
-      {editing && <EmployeeDrawer emp={editing} onClose={() => setEditing(null)} />}
+      {editing && <EmployeeDrawer emp={editing} onSaved={ensureVisible} onClose={() => setEditing(null)} />}
       {syncPlan && s.odoo && (
         <OdooSyncDialog
           plan={syncPlan}
@@ -394,7 +403,7 @@ function SummaryCell({ label, value, tone }: { label: string; value: number; ton
   );
 }
 
-function EmployeeDrawer({ emp, onClose }: { emp: Employee; onClose: () => void }) {
+function EmployeeDrawer({ emp, onClose, onSaved }: { emp: Employee; onClose: () => void; onSaved?: (e: Employee) => void }) {
   const t = useT();
   const [f, setF] = useState<Employee>(emp);
   const set = (patch: Partial<Employee>) => setF((prev) => ({ ...prev, ...patch }));
@@ -421,7 +430,9 @@ function EmployeeDrawer({ emp, onClose }: { emp: Employee; onClose: () => void }
     // Une sortie DÉJÀ effective (date passée) implique un salarié non actif : on aligne le drapeau
     // pour que l'effectif « actif » et les vues qui s'appuient sur is_active restent cohérents.
     const left = !!f.exit_date && Date.parse(f.exit_date) <= Date.now();
-    actions.upsertEmployee(left ? { ...f, is_active: false } : f);
+    const saved = left ? { ...f, is_active: false } : f;
+    actions.upsertEmployee(saved);
+    onSaved?.(saved); // garde le salarié visible même s'il vient d'être marqué « sorti »
     onClose();
   }
   function remove() {
