@@ -7,8 +7,10 @@ import { computePayslip, type PayrollInput, type PayrollResult } from "./payroll
  *
  * Règle (pour la cohérence des périodes, notamment historiques / DAMANCOM) :
  *  - embauché au plus tard le dernier jour du mois (jamais de paie avant l'embauche) ;
- *  - contrat non terminé avant le premier jour du mois (jamais de paie après la sortie) ;
- *  - un salarié aujourd'hui INACTIF et SANS date de fin de contrat n'est pas plaçable dans le
+ *  - non SORTI avant le premier jour du mois (jamais de paie après la sortie). La borne de
+ *    sortie est la DATE DE SORTIE EFFECTIVE (`exit_date`) si elle est renseignée — elle fait
+ *    foi (art. 24) — sinon, à défaut, le terme prévu du CDD (`contract_end`) ;
+ *  - un salarié aujourd'hui INACTIF et SANS aucune date de sortie n'est pas plaçable dans le
  *    temps → exclu (on ne sait pas quand il a quitté).
  * Sans date d'embauche renseignée, on ne bloque pas sur l'embauche (donnée absente ≠ preuve).
  */
@@ -17,9 +19,11 @@ export function isEmployedInPeriod(emp: Employee, year: number, month: number): 
   const periodEnd = Date.UTC(year, month, 0); // dernier jour du mois
   const hire = emp.hire_date ? Date.parse(emp.hire_date) : NaN;
   if (Number.isFinite(hire) && hire > periodEnd) return false; // pas encore embauché
-  const end = emp.contract_end ? Date.parse(emp.contract_end) : NaN;
-  if (Number.isFinite(end) && end < periodStart) return false; // déjà sorti
-  if (!emp.is_active && !Number.isFinite(end)) return false; // inactif sans date de fin : non plaçable
+  // Sortie effective (exit_date) prioritaire sur le terme prévu du CDD (contract_end).
+  const exitStr = emp.exit_date || emp.contract_end;
+  const exit = exitStr ? Date.parse(exitStr) : NaN;
+  if (Number.isFinite(exit) && exit < periodStart) return false; // déjà sorti avant la période
+  if (!emp.is_active && !Number.isFinite(exit)) return false; // inactif sans date de sortie : non plaçable
   return true;
 }
 

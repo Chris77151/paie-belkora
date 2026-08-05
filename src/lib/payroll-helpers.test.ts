@@ -64,8 +64,22 @@ describe("isEmployedInPeriod — cohérence des périodes (historique / DAMANCOM
     expect(isEmployedInPeriod(e, 2020, 8)).toBe(true); // en cours de contrat
   });
 
-  it("exclut un salarié aujourd'hui INACTIF sans date de fin (non plaçable dans le temps)", () => {
-    expect(isEmployedInPeriod(emp({ is_active: false, contract_end: undefined }), 2022, 6)).toBe(false);
+  it("exclut un salarié aujourd'hui INACTIF sans aucune date de sortie (non plaçable)", () => {
+    expect(isEmployedInPeriod(emp({ is_active: false, contract_end: undefined, exit_date: undefined }), 2022, 6)).toBe(false);
+  });
+
+  it("prend en compte la DATE DE SORTIE (exit_date) : exclu après la sortie, inclus avant", () => {
+    const e = emp({ hire_date: "2018-01-01", exit_date: "2021-04-30", is_active: false });
+    expect(isEmployedInPeriod(e, 2021, 5)).toBe(false); // mois après la sortie
+    expect(isEmployedInPeriod(e, 2021, 4)).toBe(true); // mois de la sortie
+    expect(isEmployedInPeriod(e, 2019, 9)).toBe(true); // avant la sortie
+  });
+
+  it("la date de sortie effective PRIME sur le terme prévu du CDD (rupture avant terme)", () => {
+    // CDD prévu jusqu'à fin 2021, mais rompu (sorti) le 30/06/2021.
+    const e = emp({ hire_date: "2021-01-01", contract_type: "CDD", contract_end: "2021-12-31", exit_date: "2021-06-30", is_active: false });
+    expect(isEmployedInPeriod(e, 2021, 9)).toBe(false); // après la sortie réelle, malgré contract_end plus tardif
+    expect(isEmployedInPeriod(e, 2021, 6)).toBe(true); // dernier mois travaillé
   });
 
   it("sans date d'embauche renseignée, ne bloque pas sur l'embauche", () => {
