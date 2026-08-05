@@ -16,11 +16,10 @@ import {
   Td,
   PageHeader,
 } from "@/components/ui/kit";
-import { mad, periodLabel, MONTHS_FR } from "@/lib/format";
+import { mad, num, pct, periodLabel, MONTHS_FR } from "@/lib/format";
 import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
-import { SELECTABLE_YEARS } from "@/lib/params";
+import { SELECTABLE_YEARS, getParams } from "@/lib/params";
 
-const CNSS_CEILING = 6000;
 const YEAR_OPTIONS = SELECTABLE_YEARS;
 
 export default function Declarations() {
@@ -47,11 +46,13 @@ export default function Declarations() {
     [s, firm.id, year, month],
   );
 
+  // Plafond CNSS de la PÉRIODE (source unique params.ts) — 5 000 avant 2002, 6 000 ensuite.
+  const p = getParams(year);
   const rows = useMemo(
     () =>
       employees.map((e) => {
         const r = computeFor(e, firm, year, month, defaultInput(e));
-        const plafonne = Math.min(r.sbi, CNSS_CEILING);
+        const plafonne = Math.min(r.sbi, p.cnssCeiling);
         return { emp: e, r, plafonne };
       }),
     [employees, firm, year, month],
@@ -146,10 +147,10 @@ export default function Declarations() {
                 <Th>{t("doc.employee")}</Th>
                 <Th>{t("doc.cnss")}</Th>
                 <Th className="text-right">SBI</Th>
-                <Th className="text-right">{t("decl.col.plafonne")}</Th>
-                <Th className="text-right">{t("decl.col.cnssSal")}</Th>
-                <Th className="text-right">{t("decl.col.cnssPat")}</Th>
-                <Th className="text-right">{t("decl.col.amoSal")}</Th>
+                <Th className="text-right">{t("decl.col.plafonne")} ({num(p.cnssCeiling)})</Th>
+                <Th className="text-right">{t("decl.col.cnssSal")} {pct(p.cnssEmployeeRate)}</Th>
+                <Th className="text-right">{t("decl.col.cnssPat")} {pct(p.cnssEmployerRate)}</Th>
+                <Th className="text-right">{t("decl.col.amoSal")} {pct(p.amoEmployeeRate)}</Th>
                 <Th className="text-right">AF</Th>
               </tr>
             </thead>

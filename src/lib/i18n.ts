@@ -536,9 +536,9 @@ export const DICT = {
 
   // Page Déclarations
   "decl.cnss.title": { fr: "Bordereau CNSS mensuel —", ar: "كشف CNSS الشهري —" },
-  "decl.col.plafonne": { fr: "Plafonné (6 000)", ar: "المسقوف (6 000)" },
-  "decl.col.cnssSal": { fr: "CNSS sal. 4,48 %", ar: "CNSS الأجير 4,48 %" },
-  "decl.col.cnssPat": { fr: "CNSS patr. 8,98 %", ar: "CNSS المشغِّل 8,98 %" },
+  "decl.col.plafonne": { fr: "Plafonné", ar: "المسقوف" },
+  "decl.col.cnssSal": { fr: "CNSS sal.", ar: "CNSS الأجير" },
+  "decl.col.cnssPat": { fr: "CNSS patr.", ar: "CNSS المشغِّل" },
   "decl.col.amoSal": { fr: "AMO sal.", ar: "AMO الأجير" },
   "decl.notReg": { fr: "Non immatriculé", ar: "غير مسجَّل" },
   "decl.total": { fr: "Total", ar: "المجموع" },
