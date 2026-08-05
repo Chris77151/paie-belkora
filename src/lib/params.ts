@@ -266,16 +266,128 @@ const PARAMS_2026: PayrollParams = {
   },
 };
 
+/* ==================================================================================
+ * HISTORIQUE DES BARÈMES — modèle « date d'effet » (cohérence DAMANCOM / CNSS)
+ *
+ * Chaque barème hérite du précédent et n'exprime que ce qui CHANGE cette année-là.
+ * `getParams(year)` applique le barème dont l'année d'effet est la plus récente ≤ `year`.
+ *
+ * FIABILITÉ (source : recherche expert-comptable, 08/2026) :
+ *  - HAUTE CONFIANCE (cœur DAMANCOM) : plafond CNSS 5 000→6 000 (01/04/2002) ; taux
+ *    prestations sociales salarial 3,26→4,29 (2002) →4,48 (IPE, 01/12/2014, plein en 2015) ;
+ *    patronal 8,60 (2002) →8,98 (2015) ; AMO créée 01/03/2006 ; part solidarité 1,85 % dès
+ *    l'origine ; TFP 1,60 % stable ; 191 h dès le Code du travail (2004) ; frais pro 35/25 %
+ *    (LF 2023) ; barème IR LF 2010 puis LF 2025.
+ *  - À CONFIRMER (Bulletin Officiel / décrets) — marqués ci-dessous : SMIG pré-2014 et SMAG
+ *    historiques (paliers/dates), taux AMO 2006→≈2018 (valeur actuelle 2,26/4,11 appliquée
+ *    faute de source), patronal CNSS pré-2002 (≈6,60 %), barèmes IR 2007-2009.
+ *  => Pour un usage DÉCLARATIF/CONTENTIEUX d'une période ancienne (2000-2014), faire valider
+ *     les valeurs sur pièces (décrets BO, bordereaux CNSS d'époque) par l'expert-comptable.
+ * ================================================================================== */
+
+/** Barème IR/IGR antérieur à la réforme LF 2010 (≈2000-2009) — confiance moyenne. */
+const IR_PRE2010: IrBracket[] = [
+  { upTo: 20000, rate: 0, deduct: 0 },
+  { upTo: 24000, rate: 0.13, deduct: 2600 },
+  { upTo: 36000, rate: 0.21, deduct: 4520 },
+  { upTo: 60000, rate: 0.35, deduct: 9560 },
+  { upTo: Infinity, rate: 0.44, deduct: 14960 },
+];
+
+/** Barème IR LF 2010 — en vigueur 2010-2024 (confiance forte). */
+const IR_2010: IrBracket[] = [
+  { upTo: 30000, rate: 0, deduct: 0 },
+  { upTo: 50000, rate: 0.1, deduct: 3000 },
+  { upTo: 60000, rate: 0.2, deduct: 8000 },
+  { upTo: 80000, rate: 0.3, deduct: 14000 },
+  { upTo: 180000, rate: 0.34, deduct: 17200 },
+  { upTo: Infinity, rate: 0.38, deduct: 24400 },
+];
+
+/** Frais professionnels avant la réforme LF 2023 : 20 % plafonnés à 30 000 DH/an (flat). */
+const FP_PRE2023 = {
+  fraisProLowRate: 0.2, fraisProLowThresholdAnnual: 0,
+  fraisProHighRate: 0.2, fraisProHighCapAnnual: 30000,
+} as const;
+
+/** AMO inexistante avant le 01/03/2006. */
+const AMO_OFF = {
+  amoEmployeeRate: 0, amoEmployerRate: 0, amoEmployerBaseRate: 0, amoEmployerSolidariteRate: 0,
+} as const;
+
+/** Clone un barème de base et n'y applique QUE les champs modifiés cette année-là. */
+function derive(base: PayrollParams, year: number, over: Partial<PayrollParams>): PayrollParams {
+  return { ...structuredClone(base), year, ...over };
+}
+
+// Chaîne de barèmes par date d'effet (chacun hérite du précédent).
+const P2000 = derive(PARAMS_2026, 2000, {
+  smigHourly: 8.78,        // approximatif — à confirmer BO
+  legalMonthlyHours: 208,  // 48 h/sem avant le Code du travail 2004
+  cnssCeiling: 5000,
+  cnssEmployeeRate: 0.0326,
+  cnssEmployerRate: 0.066,
+  cnssEmployerCourtTermeRate: 0.0067, cnssEmployerIpeRate: 0, cnssEmployerLongTermeRate: 0.0593,
+  ...AMO_OFF, ...FP_PRE2023,
+  irBrackets: IR_PRE2010,
+});
+const P2002 = derive(P2000, 2002, { // 01/04/2002 : plafond 6 000 + nouveaux taux
+  cnssCeiling: 6000,
+  cnssEmployeeRate: 0.0429,
+  cnssEmployerRate: 0.086,
+  cnssEmployerLongTermeRate: 0.0793, // 0,67 + 0 + 7,93 = 8,60
+});
+const P2004 = derive(P2002, 2004, { legalMonthlyHours: 191 }); // Code du travail (44 h/sem)
+const P2006 = derive(P2004, 2006, { // 01/03/2006 : création AMO (taux 2006-≈2018 à confirmer, valeur actuelle appliquée)
+  amoEmployeeRate: 0.0226,
+  amoEmployerRate: 0.0411,
+  amoEmployerBaseRate: 0.0226,
+  amoEmployerSolidariteRate: 0.0185,
+});
+const P2010 = derive(P2006, 2010, { irBrackets: IR_2010 }); // réforme IR LF 2010
+const P2011 = derive(P2010, 2011, { smigHourly: 11.7 });
+const P2014 = derive(P2011, 2014, { smigHourly: 12.85 });
+const P2015 = derive(P2014, 2015, { // IPE (Loi 03-14, 01/12/2014) : 1er exercice plein
+  smigHourly: 13.46,
+  cnssEmployeeRate: 0.0448,
+  cnssEmployerRate: 0.0898,
+  cnssEmployerIpeRate: 0.0038, // 0,67 + 0,38 + 7,93 = 8,98
+});
+const P2019 = derive(P2015, 2019, { smigHourly: 14.13 });
+const P2020 = derive(P2019, 2020, { smigHourly: 14.81 });
+const P2022 = derive(P2020, 2022, { smigHourly: 15.55 });
+const P2023 = derive(P2022, 2023, { // réforme frais professionnels LF 2023
+  smigHourly: 16.29,
+  fraisProLowRate: 0.35, fraisProLowThresholdAnnual: 78000,
+  fraisProHighRate: 0.25, fraisProHighCapAnnual: 35000,
+});
+const P2025 = derive(P2023, 2025, { // barème IR LF 2025 (CNSS/AMO identiques à 2026)
+  smigHourly: 17.1, // sources : 17,07-17,10
+  irBrackets: PARAMS_2026.irBrackets,
+});
+
 const REGISTRY: Record<number, PayrollParams> = {
-  2025: PARAMS_2026, // barèmes 2025-2026 identiques pour V1
-  2026: PARAMS_2026,
+  2000: P2000, 2002: P2002, 2004: P2004, 2006: P2006, 2010: P2010, 2011: P2011,
+  2014: P2014, 2015: P2015, 2019: P2019, 2020: P2020, 2022: P2022, 2023: P2023,
+  2025: P2025, 2026: PARAMS_2026,
 };
 
-/** Renvoie les paramètres applicables à l'année demandée (fallback : année la plus récente). */
+/** Années d'effet des barèmes, ordre croissant (pour la sélection « date d'effet »). */
+const EFFECTIVE_YEARS = Object.keys(REGISTRY).map(Number).sort((a, b) => a - b);
+
+/**
+ * Renvoie le barème applicable à l'année demandée : celui dont l'ANNÉE D'EFFET est la plus
+ * récente ≤ `year` (modèle « date d'effet »). Une année antérieure au plus ancien barème
+ * connu retombe sur ce dernier.
+ */
 export function getParams(year: number): PayrollParams {
   if (REGISTRY[year]) return REGISTRY[year];
-  const years = Object.keys(REGISTRY).map(Number).sort((a, b) => b - a);
-  return REGISTRY[years[0]];
+  let chosen = EFFECTIVE_YEARS[0];
+  for (const y of EFFECTIVE_YEARS) {
+    if (y <= year) chosen = y;
+    else break;
+  }
+  return REGISTRY[chosen];
 }
 
 export const AVAILABLE_YEARS = Object.keys(REGISTRY).map(Number).sort((a, b) => b - a);

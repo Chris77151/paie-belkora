@@ -67,19 +67,25 @@ function checkParams(year: number, p: PayrollParams, out: StabilityFinding[]) {
     });
   }
 
-  // Taux dans (0,1].
+  // Taux dans ]0 ; 1].
   const rates: [string, number][] = [
     ["cnssEmployeeRate", p.cnssEmployeeRate],
-    ["amoEmployeeRate", p.amoEmployeeRate],
     ["cnssEmployerRate", p.cnssEmployerRate],
     ["familyAllocRate", p.familyAllocRate],
-    ["amoEmployerRate", p.amoEmployerRate],
     ["tfpRate", p.tfpRate],
     ["fraisProLowRate", p.fraisProLowRate],
     ["fraisProHighRate", p.fraisProHighRate],
     ["stc.cddEndRate", p.stc.cddEndRate],
   ];
-  const badRates = rates.filter(([, r]) => !inUnitRange(r));
+  // AMO : un taux de 0 est LICITE avant la création de l'AMO (01/03/2006) → borne [0 ; 1].
+  const amoRates: [string, number][] = [
+    ["amoEmployeeRate", p.amoEmployeeRate],
+    ["amoEmployerRate", p.amoEmployerRate],
+  ];
+  const badRates = [
+    ...rates.filter(([, r]) => !inUnitRange(r)),
+    ...amoRates.filter(([, r]) => !(finite(r) && r >= 0 && r <= 1)),
+  ];
   if (badRates.length) {
     out.push({
       id: `${tag}-rates`,
