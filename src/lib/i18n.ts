@@ -251,6 +251,7 @@ export const DICT = {
   "emp.allContracts": { fr: "Tous contrats", ar: "كل العقود" },
   "emp.active": { fr: "Actifs", ar: "نشطون" },
   "emp.inactive": { fr: "Inactifs", ar: "غير نشطين" },
+  "emp.filterEntered": { fr: "Entrées (12 mois)", ar: "الملتحقون (12 شهراً)" },
   "emp.filterExited": { fr: "Sortis", ar: "المغادرون" },
   "emp.all": { fr: "Tous", ar: "الكل" },
   "emp.status": { fr: "Statut", ar: "الحالة" },

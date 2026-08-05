@@ -92,16 +92,25 @@ export default function Employees() {
   // Prédicat de filtrage (recherche + site + contrat + statut). « Actifs » = présents (actif ET
   // sans date de sortie) ; « Sortis » = date de sortie renseignée ; « Inactifs » = désactivés
   // sans date de sortie ; « Tous » = aucun filtre de statut.
+  // Seuil « entrée récente » : embauché dans les 12 derniers mois (mouvements de main-d'œuvre).
+  const entryThreshold = useMemo(() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.getTime(); }, []);
+  const enteredRecently = (e: Employee) => {
+    const h = e.hire_date ? Date.parse(e.hire_date) : NaN;
+    return Number.isFinite(h) && h >= entryThreshold;
+  };
+
   const matches = (e: Employee) => {
     if (q && !`${e.first_name} ${e.last_name} ${e.matricule ?? ""}`.toLowerCase().includes(q.toLowerCase())) return false;
     if (site !== "all" && e.site !== site) return false;
     if (contract !== "all" && e.contract_type !== contract) return false;
     if (status === "active" && (!e.is_active || !!e.exit_date)) return false;
+    if (status === "entered" && !enteredRecently(e)) return false;
     if (status === "exited" && !e.exit_date) return false;
     if (status === "inactive" && (e.is_active || !!e.exit_date)) return false;
     return true;
   };
   const rows = all.filter(matches);
+  const enteredCount = all.filter(enteredRecently).length;
   const exitedCount = all.filter((e) => e.exit_date).length;
 
   /** Après enregistrement d'un salarié : s'il n'est plus visible sous le filtre courant (ex.
@@ -149,8 +158,9 @@ export default function Employees() {
             <option value="all">{t("emp.allContracts")}</option>
             {CONTRACTS.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
+          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-44">
             <option value="active">{t("emp.active")}</option>
+            <option value="entered">{t("emp.filterEntered")}{enteredCount ? ` (${enteredCount})` : ""}</option>
             <option value="exited">{t("emp.filterExited")}{exitedCount ? ` (${exitedCount})` : ""}</option>
             <option value="inactive">{t("emp.inactive")}</option>
             <option value="all">{t("emp.all")}</option>
