@@ -282,13 +282,13 @@ export const AVAILABLE_YEARS = Object.keys(REGISTRY).map(Number).sort((a, b) => 
 
 /**
  * Années SÉLECTIONNABLES dans les volets Paie / Comptabilité / Déclarations / Audit — source
- * UNIQUE (fini les listes `[2026, 2025]` en dur, divergentes d'une page à l'autre). Va de 2023
+ * UNIQUE (fini les listes `[2026, 2025]` en dur, divergentes d'une page à l'autre). Va de 2000
  * à l'année suivante (glissant : inclut automatiquement l'an prochain chaque année), ordre
  * décroissant. Pour une année sans barème dédié, `getParams` retombe sur le barème le plus
  * récent — au moins aussi juste que l'ancien comportement (2025 utilise déjà le barème 2026).
  */
 export const SELECTABLE_YEARS: number[] = (() => {
-  const FIRST = 2023;
+  const FIRST = 2000;
   const last = Math.max(new Date().getFullYear() + 1, 2027);
   const out: number[] = [];
   for (let y = last; y >= FIRST; y--) out.push(y);
