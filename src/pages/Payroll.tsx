@@ -3,10 +3,10 @@ import {
   Calculator, FileDown, FileText, Printer, Lock, Unlock, CheckCircle2, X, SlidersHorizontal, Info,
 } from "lucide-react";
 import {
-  actions, currentFirm, employeesOfFirm, payslipsOfPeriod, uid, useStore,
+  actions, currentFirm, employeesOfFirm, getState, payslipsOfPeriod, uid, useStore,
 } from "@/data/store";
 import { useT } from "@/lib/i18n";
-import type { DocFormat, Employee, PayslipInput } from "@/data/types";
+import type { DocFormat, Employee, Payslip, PayslipInput } from "@/data/types";
 import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
 import type { PayrollResult } from "@/lib/payroll-engine";
 import {
@@ -35,10 +35,16 @@ export default function Payroll() {
   const period = s.periods.find((p) => p.firm_id === firm.id && p.year === year && p.month === month);
   const locked = period?.status !== "draft" && period != null;
 
-  // Ouvre la période et crée les bulletins manquants (saisie par défaut).
+  // Clé stable de l'effectif de la période : change dès qu'un salarié entre/sort (ajout,
+  // suppression, embauche/sortie), même à effectif constant — ce que `length` ne détecte pas.
+  const rosterKey = emps.map((e) => e.id).sort().join(",");
+
+  // Ouvre la période et crée les bulletins manquants (saisie par défaut). Ne touche JAMAIS une
+  // période verrouillée (instantané figé).
   useEffect(() => {
     const per = actions.ensurePeriod(firm.id, year, month);
-    const existing = new Set(payslipsOfPeriod(s, per.id).map((p) => p.employee_id));
+    if (locked) return;
+    const existing = new Set(payslipsOfPeriod(getState(), per.id).map((p) => p.employee_id));
     const missing = emps.filter((e) => !existing.has(e.id));
     if (missing.length) {
       actions.bulkUpsertPayslips(
@@ -46,20 +52,30 @@ export default function Payroll() {
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firm.id, year, month, emps.length]);
+  }, [firm.id, year, month, rosterKey, locked]);
 
   const slips = period ? payslipsOfPeriod(s, period.id) : [];
 
-  const rows = slips
-    .map((slip) => {
-      // Recherche sur la liste COMPLÈTE : un bulletin déjà saisi/validé reste affiché même si
-      // le salarié n'est plus dans le roster de la période (ex. sorti depuis).
-      const emp = firmEmps.find((e) => e.id === slip.employee_id);
-      if (!emp) return null;
-      const result: PayrollResult = slip.result ?? computeFor(emp, firm, year, month, slip.input);
-      return { emp, slip, result };
-    })
-    .filter(Boolean) as { emp: Employee; slip: (typeof slips)[number]; result: PayrollResult }[];
+  const rows: { emp: Employee; slip: Payslip; result: PayrollResult }[] = locked
+    ? // Période VERROUILLÉE : on affiche l'instantané figé (recherche sur la liste complète pour
+      // qu'un salarié sorti depuis reste visible sur son bulletin déjà validé).
+      (slips
+        .map((slip) => {
+          const emp = firmEmps.find((e) => e.id === slip.employee_id);
+          if (!emp) return null;
+          const result: PayrollResult = slip.result ?? computeFor(emp, firm, year, month, slip.input);
+          return { emp, slip, result };
+        })
+        .filter(Boolean) as { emp: Employee; slip: Payslip; result: PayrollResult }[])
+    : // Période BROUILLON : l'affichage suit l'EFFECTIF RÉEL de la période (roster), pas les
+      // bulletins déjà créés — un salarié saisi apparaît immédiatement, un salarié sorti disparaît.
+      emps.map((emp) => {
+        const slip: Payslip =
+          slips.find((sl) => sl.employee_id === emp.id) ??
+          { id: `tmp_${emp.id}`, period_id: period?.id ?? "", employee_id: emp.id, input: defaultInput(emp), result: null };
+        const result: PayrollResult = slip.result ?? computeFor(emp, firm, year, month, slip.input);
+        return { emp, slip, result };
+      });
 
   const totals = rows.reduce(
     (a, r) => ({
@@ -74,9 +90,19 @@ export default function Payroll() {
   function validate() {
     if (!period) return;
     if (!confirm(`${t("pay.validate.confirm1")} ${periodLabel(year, month)}${t("pay.validate.confirm2")}`)) return;
-    actions.bulkUpsertPayslips(
-      rows.map((r) => ({ ...r.slip, result: computeFor(r.emp, firm, year, month, r.slip.input) })),
-    );
+    // Fige l'effectif RÉEL de la période (roster), avec un id stable (jamais l'id temporaire d'affichage).
+    const rosterIds = new Set(emps.map((e) => e.id));
+    const validated = rows.map((r) => ({
+      ...r.slip,
+      id: r.slip.id.startsWith("tmp_") ? uid("slip") : r.slip.id,
+      result: computeFor(r.emp, firm, year, month, r.slip.input),
+    }));
+    // Neutralise les bulletins de la période dont le salarié n'est PLUS dans l'effectif (sorti,
+    // supprimé) : résultat écarté → l'écriture comptable n'agrège que l'effectif réel.
+    const orphans = slips
+      .filter((sl) => !rosterIds.has(sl.employee_id) && sl.result != null)
+      .map((sl) => ({ ...sl, result: null }));
+    actions.bulkUpsertPayslips([...validated, ...orphans]);
     actions.setPeriodStatus(period.id, "validated");
   }
 
@@ -245,7 +271,7 @@ export default function Payroll() {
         </div>
       </Card>
 
-      {editing && period && (
+      {editing && period && slips.some((sl) => sl.employee_id === editing.id) && (
         <InputEditor
           emp={editing}
           slip={slips.find((sl) => sl.employee_id === editing.id)!}
