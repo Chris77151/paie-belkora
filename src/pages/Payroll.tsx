@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Calculator, FileDown, FileText, Printer, Lock, Unlock, CheckCircle2, X, SlidersHorizontal,
+  Calculator, FileDown, FileText, Printer, Lock, Unlock, CheckCircle2, X, SlidersHorizontal, Info,
 } from "lucide-react";
 import {
   actions, currentFirm, employeesOfFirm, payslipsOfPeriod, uid, useStore,
 } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import type { DocFormat, Employee, PayslipInput } from "@/data/types";
-import { computeFor, defaultInput } from "@/lib/payroll-helpers";
+import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
 import type { PayrollResult } from "@/lib/payroll-engine";
 import {
   Badge, Button, Card, CardContent, Field, Input, PageHeader, Select, StatusBadge, Table, Td, Th,
@@ -22,9 +22,12 @@ export default function Payroll() {
   const s = useStore();
   const t = useT();
   const firm = currentFirm(s);
-  const emps = useMemo(() => employeesOfFirm(s, firm.id).filter((e) => e.is_active), [s, firm]);
+  // Liste complète de la société (recherche/affichage des bulletins existants) ...
+  const firmEmps = useMemo(() => employeesOfFirm(s, firm.id), [s, firm]);
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(6);
+  // ... et ceux RÉELLEMENT employés pendant la période (roster à auto-créer / à totaliser).
+  const emps = useMemo(() => employeesForPeriod(firmEmps, year, month), [firmEmps, year, month]);
   const [editing, setEditing] = useState<Employee | null>(null);
   // Affichage de la « Partie réservée à l'employeur » (charges patronales) sur les bulletins exportés.
   const [showEmployer, setShowEmployer] = useState(true);
@@ -49,7 +52,9 @@ export default function Payroll() {
 
   const rows = slips
     .map((slip) => {
-      const emp = emps.find((e) => e.id === slip.employee_id);
+      // Recherche sur la liste COMPLÈTE : un bulletin déjà saisi/validé reste affiché même si
+      // le salarié n'est plus dans le roster de la période (ex. sorti depuis).
+      const emp = firmEmps.find((e) => e.id === slip.employee_id);
       if (!emp) return null;
       const result: PayrollResult = slip.result ?? computeFor(emp, firm, year, month, slip.input);
       return { emp, slip, result };
@@ -164,6 +169,21 @@ export default function Payroll() {
           )}
         </CardContent>
       </Card>
+
+      {!locked && (
+        <Card className="mb-4 border-warning/40">
+          <CardContent className="pt-4 flex items-start gap-2 text-sm">
+            <Info size={16} className="mt-0.5 shrink-0 text-warning" />
+            <span className="text-muted-foreground">
+              <b className="text-foreground">Période reconstituée.</b> Les bulletins sont calculés à partir
+              des salariés <b>actuellement employés sur {periodLabel(year, month)}</b> (embauche/fin de contrat
+              pris en compte) et de leurs <b>salaires actuels</b>, avec le <b>barème {year}</b>. Ce n'est pas
+              forcément la paie réellement déclarée à l'époque : pour une cohérence stricte avec la CNSS/DAMANCOM
+              d'une période passée, saisissez les données réelles (effectif, salaires, primes) puis <b>validez</b>.
+            </span>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-4 mb-4">
         <Mini label={t("pay.kpi.slips")} value={String(rows.length)} />

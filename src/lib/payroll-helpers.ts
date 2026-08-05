@@ -2,6 +2,32 @@
 import type { Employee, Firm, PayslipInput } from "@/data/types";
 import { computePayslip, type PayrollInput, type PayrollResult } from "./payroll-engine";
 
+/**
+ * Le salarié était-il EMPLOYÉ pendant le mois (année, mois) ? PUR & testable.
+ *
+ * Règle (pour la cohérence des périodes, notamment historiques / DAMANCOM) :
+ *  - embauché au plus tard le dernier jour du mois (jamais de paie avant l'embauche) ;
+ *  - contrat non terminé avant le premier jour du mois (jamais de paie après la sortie) ;
+ *  - un salarié aujourd'hui INACTIF et SANS date de fin de contrat n'est pas plaçable dans le
+ *    temps → exclu (on ne sait pas quand il a quitté).
+ * Sans date d'embauche renseignée, on ne bloque pas sur l'embauche (donnée absente ≠ preuve).
+ */
+export function isEmployedInPeriod(emp: Employee, year: number, month: number): boolean {
+  const periodStart = Date.UTC(year, month - 1, 1);
+  const periodEnd = Date.UTC(year, month, 0); // dernier jour du mois
+  const hire = emp.hire_date ? Date.parse(emp.hire_date) : NaN;
+  if (Number.isFinite(hire) && hire > periodEnd) return false; // pas encore embauché
+  const end = emp.contract_end ? Date.parse(emp.contract_end) : NaN;
+  if (Number.isFinite(end) && end < periodStart) return false; // déjà sorti
+  if (!emp.is_active && !Number.isFinite(end)) return false; // inactif sans date de fin : non plaçable
+  return true;
+}
+
+/** Sous-ensemble des salariés réellement employés pendant le mois (année, mois). */
+export function employeesForPeriod(list: Employee[], year: number, month: number): Employee[] {
+  return list.filter((e) => isEmployedInPeriod(e, year, month));
+}
+
 export function defaultInput(emp: Employee): PayslipInput {
   return {
     days_worked: 26,

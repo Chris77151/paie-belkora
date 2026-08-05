@@ -14,7 +14,7 @@
 import { currentFirm, employeesOfFirm, getState, payslipsOfPeriod } from "@/data/store";
 import type { Employee } from "@/data/types";
 import type { PayrollResult } from "@/lib/payroll-engine";
-import { computeFor, defaultInput } from "@/lib/payroll-helpers";
+import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
 import {
   buildPayrollEntry, buildSettlementEntry, sumResults, type JournalEntry,
 } from "@/lib/payroll-accounting";
@@ -63,11 +63,12 @@ function resultsFor(year: number, month: number): PayrollResult[] {
   const s = getState();
   const firm = currentFirm(s);
   const period = s.periods.find((p) => p.firm_id === firm.id && p.year === year && p.month === month);
-  const active = employeesOfFirm(s, firm.id).filter((e) => e.is_active);
   if (period) {
     const frozen = payslipsOfPeriod(s, period.id).filter((sl) => sl.result).map((sl) => sl.result as PayrollResult);
     if (frozen.length) return frozen;
   }
+  // Reconstitution : uniquement les salariés employés pendant la période (embauche/fin de contrat).
+  const active = employeesForPeriod(employeesOfFirm(s, firm.id), year, month);
   return active.map((e) => computeFor(e, firm, year, month, defaultInput(e)));
 }
 

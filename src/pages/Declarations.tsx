@@ -17,7 +17,7 @@ import {
   PageHeader,
 } from "@/components/ui/kit";
 import { mad, periodLabel, MONTHS_FR } from "@/lib/format";
-import { computeFor, defaultInput } from "@/lib/payroll-helpers";
+import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
 import { SELECTABLE_YEARS } from "@/lib/params";
 
 const CNSS_CEILING = 6000;
@@ -40,9 +40,11 @@ export default function Declarations() {
   const [year, setYear] = useState<number>(lastValidated?.year ?? 2026);
   const [month, setMonth] = useState<number>(lastValidated?.month ?? 6);
 
+  // Assiette du mois : uniquement les salariés RÉELLEMENT employés sur la période déclarée
+  // (embauche/fin de contrat) — sinon la masse diverge de la BDS/DAMANCOM réelle.
   const employees = useMemo(
-    () => employeesOfFirm(s, firm.id).filter((e) => e.is_active),
-    [s, firm.id],
+    () => employeesForPeriod(employeesOfFirm(s, firm.id), year, month),
+    [s, firm.id, year, month],
   );
 
   const rows = useMemo(
