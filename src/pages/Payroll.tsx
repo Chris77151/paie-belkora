@@ -57,14 +57,15 @@ export default function Payroll() {
   const slips = period ? payslipsOfPeriod(s, period.id) : [];
 
   const rows: { emp: Employee; slip: Payslip; result: PayrollResult }[] = locked
-    ? // Période VERROUILLÉE : on affiche l'instantané figé (recherche sur la liste complète pour
-      // qu'un salarié sorti depuis reste visible sur son bulletin déjà validé).
+    ? // Période VERROUILLÉE : instantané FIGÉ uniquement — les bulletins RÉELLEMENT calculés
+      // (result != null). On ne recalcule jamais un bulletin neutralisé (result null) : sinon un
+      // bulletin « hors effectif » neutralisé réapparaîtrait avec des montants recalculés.
       (slips
+        .filter((slip) => slip.result != null)
         .map((slip) => {
           const emp = firmEmps.find((e) => e.id === slip.employee_id);
           if (!emp) return null;
-          const result: PayrollResult = slip.result ?? computeFor(emp, firm, year, month, slip.input);
-          return { emp, slip, result };
+          return { emp, slip, result: slip.result as PayrollResult };
         })
         .filter(Boolean) as { emp: Employee; slip: Payslip; result: PayrollResult }[])
     : // Période BROUILLON : l'affichage suit l'EFFECTIF RÉEL de la période (roster), pas les
@@ -97,12 +98,14 @@ export default function Payroll() {
       id: r.slip.id.startsWith("tmp_") ? uid("slip") : r.slip.id,
       result: computeFor(r.emp, firm, year, month, r.slip.input),
     }));
-    // Neutralise les bulletins de la période dont le salarié n'est PLUS dans l'effectif (sorti,
-    // supprimé) : résultat écarté → l'écriture comptable n'agrège que l'effectif réel.
-    const orphans = slips
+    // Neutralise TOUT bulletin de la période hors de l'effectif affiché (sorti, embauché après,
+    // fantôme) — qu'il ait déjà un résultat ou non → l'instantané figé, l'affichage verrouillé,
+    // l'écriture comptable et la déclaration ne portent QUE sur les salariés réellement présents.
+    const nonRoster = slips
       .filter((sl) => !rosterIds.has(sl.employee_id) && sl.result != null)
       .map((sl) => ({ ...sl, result: null }));
-    actions.bulkUpsertPayslips([...validated, ...orphans]);
+    // (les non-roster déjà à result=null sont laissés tels quels : inertes, rien à écrire.)
+    actions.bulkUpsertPayslips([...validated, ...nonRoster]);
     actions.setPeriodStatus(period.id, "validated");
   }
 
