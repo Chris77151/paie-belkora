@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getParams, AVAILABLE_YEARS } from "./params";
+import { computePayslip, amoActiveAt } from "./payroll-engine";
 
 const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
 
@@ -39,6 +40,28 @@ describe("getParams — modèle « date d'effet » (cohérence DAMANCOM)", () =>
     expect(getParams(2005).amoEmployerRate).toBe(0);
     expect(getParams(2006).amoEmployeeRate).toBe(0.0226);
     expect(getParams(2006).amoEmployerRate).toBe(0.0411);
+  });
+
+  it("date d'effet AMO au MOIS près (01/03/2006) — DAMANCOM ne comptait pas l'AMO avant", () => {
+    const p2006 = getParams(2006);
+    expect(amoActiveAt(p2006, 2006, 1)).toBe(false); // janvier 2006 : pas d'AMO
+    expect(amoActiveAt(p2006, 2006, 2)).toBe(false); // février 2006 : pas d'AMO
+    expect(amoActiveAt(p2006, 2006, 3)).toBe(true); // mars 2006 : AMO en vigueur
+    expect(amoActiveAt(getParams(2026), 2026, 6)).toBe(true); // sans date d'effet : AMO active
+  });
+
+  it("le moteur neutralise réellement l'AMO en janvier-février 2006", () => {
+    const base = {
+      regime: "SMIG" as const, hireDate: "2005-01-01", dependents: 0,
+      hourlyRate: 30, daysWorked: 26, hoursNormal: 191, hoursOt25: 0, hoursOt50: 0, hoursOt100: 0,
+      panier: 0, transport: 0, salissure: 0, otherGross: 0,
+    };
+    const fev = computePayslip({ ...base, year: 2006, month: 2 });
+    const mars = computePayslip({ ...base, year: 2006, month: 3 });
+    expect(fev.amoSalarie).toBe(0);
+    expect(fev.amoPatronal).toBe(0);
+    expect(mars.amoSalarie).toBeGreaterThan(0);
+    expect(mars.amoPatronal).toBeGreaterThan(0);
   });
 
   it("heures légales : 208 h avant le Code du travail (2004), 191 h ensuite", () => {

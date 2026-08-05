@@ -45,6 +45,13 @@ export interface PayrollParams {
   cnssEmployeeRate: number; // 4,48 %
   cnssCeiling: number; // 6 000 DH/mois
   amoEmployeeRate: number; // 2,26 % déplafonné
+  /**
+   * Mois d'ENTRÉE EN VIGUEUR de l'AMO (« AAAA-MM »). Avant ce mois, l'AMO n'existait pas :
+   * aucune cotisation AMO (ni salariale ni patronale) — DAMANCOM ne la comptait pas. Le moteur
+   * neutralise donc l'AMO pour toute période antérieure, au MOIS près (l'AMO a démarré le
+   * 01/03/2006, pas au 1er janvier). Absent = AMO applicable sans restriction de date.
+   */
+  amoEffectiveFrom?: string;
 
   /** Charges patronales — agrégats. */
   cnssEmployerRate: number; // 8,98 %
@@ -339,6 +346,7 @@ const P2002 = derive(P2000, 2002, { // 01/04/2002 : plafond 6 000 + nouveaux tau
 });
 const P2004 = derive(P2002, 2004, { legalMonthlyHours: 191 }); // Code du travail (44 h/sem)
 const P2006 = derive(P2004, 2006, { // 01/03/2006 : création AMO (taux 2006-≈2018 à confirmer, valeur actuelle appliquée)
+  amoEffectiveFrom: "2006-03", // aucune AMO avant mars 2006 (janvier-février 2006 exclus, au mois près)
   amoEmployeeRate: 0.0226,
   amoEmployerRate: 0.0411,
   amoEmployerBaseRate: 0.0226,

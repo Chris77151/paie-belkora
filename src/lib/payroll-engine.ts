@@ -140,6 +140,17 @@ export function irAnnuel(sniAnnual: number, p: PayrollParams): number {
   return Math.max(0, sniAnnual * bracket.rate - bracket.deduct);
 }
 
+/**
+ * L'AMO est-elle en vigueur pour la période (année, mois) ? PURE & testable.
+ * Faux avant `p.amoEffectiveFrom` (« AAAA-MM ») — l'AMO n'existait pas (créée le 01/03/2006) et
+ * DAMANCOM ne la comptait pas. Sans date d'effet, l'AMO s'applique sans restriction.
+ */
+export function amoActiveAt(p: PayrollParams, year: number, month: number): boolean {
+  if (!p.amoEffectiveFrom) return true;
+  const ym = `${year}-${String(month).padStart(2, "0")}`;
+  return ym >= p.amoEffectiveFrom; // comparaison lexicographique sûre sur « AAAA-MM » zéro-paddé
+}
+
 /** Taux marginal IR de la tranche où tombe le SNI annuel. */
 export function irMarginalRate(sniAnnual: number, p: PayrollParams): number {
   if (sniAnnual <= 0) return 0;
@@ -198,10 +209,14 @@ export function computePayslip(input: PayrollInput): PayrollResult {
   const exoSalarial = exemption === "totale"; // stage : aucune retenue salariale
   const exoPatronal = exemption === "totale" || exemption === "patronale"; // stage OU TAHFIZ/IDMAJ
 
+  // AMO : inexistante avant sa date d'effet (01/03/2006) → aucune cotisation, au MOIS près.
+  // DAMANCOM ne comptait pas l'AMO sur ces périodes : le moteur la neutralise automatiquement.
+  const amoInactive = !amoActiveAt(p, input.year, input.month);
+
   // 3bis. Cotisations salariales (assiette = SBI, CNSS plafonnée)
   const cnssBase = Math.min(sbi, p.cnssCeiling);
   const cnssSalarie = exoSalarial ? 0 : round2(cnssBase * p.cnssEmployeeRate);
-  const amoSalarie = exoSalarial ? 0 : round2(sbi * p.amoEmployeeRate);
+  const amoSalarie = (exoSalarial || amoInactive) ? 0 : round2(sbi * p.amoEmployeeRate);
 
   // 3. Frais professionnels (CGI art. 59-I-A)
   const sbiAnnual = sbi * 12;
@@ -232,8 +247,8 @@ export function computePayslip(input: PayrollInput): PayrollResult {
   const cnssIpe = exoPatronal ? 0 : round2(cnssBase * p.cnssEmployerIpeRate);
   const cnssLongTerme = exoPatronal ? 0 : round2(cnssBase * p.cnssEmployerLongTermeRate);
   const af = exoPatronal ? 0 : round2(sbi * p.familyAllocRate);
-  const amoBase = exoPatronal ? 0 : round2(sbi * p.amoEmployerBaseRate);
-  const amoSolidarite = exoPatronal ? 0 : round2(sbi * p.amoEmployerSolidariteRate);
+  const amoBase = (exoPatronal || amoInactive) ? 0 : round2(sbi * p.amoEmployerBaseRate);
+  const amoSolidarite = (exoPatronal || amoInactive) ? 0 : round2(sbi * p.amoEmployerSolidariteRate);
   const tfp = exoPatronal ? 0 : round2(sbi * p.tfpRate);
 
   const cnssPatronal = round2(cnssCourtTerme + cnssIpe + cnssLongTerme);
