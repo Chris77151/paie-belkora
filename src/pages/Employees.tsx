@@ -93,10 +93,14 @@ export default function Employees() {
     if (q && !`${e.first_name} ${e.last_name} ${e.matricule ?? ""}`.toLowerCase().includes(q.toLowerCase())) return false;
     if (site !== "all" && e.site !== site) return false;
     if (contract !== "all" && e.contract_type !== contract) return false;
-    if (status === "active" && !e.is_active) return false;
-    if (status === "inactive" && e.is_active) return false;
+    // « Actifs » = présents (pas de date de sortie ET actif) ; « Sortis » = date de sortie
+    // renseignée ; « Inactifs » = désactivés sans date de sortie ; « Tous » = aucun filtre.
+    if (status === "active" && (!e.is_active || !!e.exit_date)) return false;
+    if (status === "exited" && !e.exit_date) return false;
+    if (status === "inactive" && (e.is_active || !!e.exit_date)) return false;
     return true;
   });
+  const exitedCount = all.filter((e) => e.exit_date).length;
 
   function newEmployee() {
     const hours = getParams(new Date().getFullYear()).legalMonthlyHours;
@@ -136,8 +140,9 @@ export default function Employees() {
             <option value="all">{t("emp.allContracts")}</option>
             {CONTRACTS.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-36">
+          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
             <option value="active">{t("emp.active")}</option>
+            <option value="exited">{t("emp.filterExited")}{exitedCount ? ` (${exitedCount})` : ""}</option>
             <option value="inactive">{t("emp.inactive")}</option>
             <option value="all">{t("emp.all")}</option>
           </Select>
@@ -149,7 +154,7 @@ export default function Employees() {
           <thead>
             <tr>
               <Th>{t("doc.employee")}</Th><Th>{t("emp.matricule")}</Th><Th>{t("emp.contract")}</Th><Th>{t("emp.site")}</Th>
-              <Th className="text-right">{t("emp.hourlyRate")}</Th><Th>{t("emp.hire")}</Th><Th>{t("emp.compliance")}</Th><Th></Th>
+              <Th className="text-right">{t("emp.hourlyRate")}</Th><Th>{t("emp.hire")}</Th><Th>{t("emp.status")}</Th><Th>{t("emp.compliance")}</Th><Th></Th>
             </tr>
           </thead>
           <tbody>
@@ -163,10 +168,9 @@ export default function Employees() {
                     <div>
                       <div className="font-medium">{e.first_name} {e.last_name}</div>
                       <div className="text-xs text-muted-foreground">{e.position ?? "—"}</div>
-                      {e.exit_date && (
-                        <div className="text-[11px] text-destructive">
-                          Sorti le {dateFr(e.exit_date)}
-                          {e.exit_reason && ` · ${DEPARTURE_REASONS.find((r) => r.value === e.exit_reason)?.label ?? e.exit_reason}`}
+                      {e.exit_date && e.exit_reason && (
+                        <div className="text-[11px] text-muted-foreground">
+                          {DEPARTURE_REASONS.find((r) => r.value === e.exit_reason)?.label ?? e.exit_reason}
                         </div>
                       )}
                     </div>
@@ -177,6 +181,17 @@ export default function Employees() {
                 <Td className="text-muted-foreground">{e.site ?? "—"}</Td>
                 <Td className="text-right num">{mad(e.base_hourly_rate)}</Td>
                 <Td className="text-muted-foreground">{dateFr(e.hire_date)}</Td>
+                <Td>
+                  {e.exit_date ? (
+                    <Badge tone="muted" title={`${t("emp.status.exited")} ${dateFr(e.exit_date)}`}>
+                      {t("emp.status.exited")} · {dateFr(e.exit_date)}
+                    </Badge>
+                  ) : e.is_active ? (
+                    <Badge tone="success">{t("emp.status.active")}</Badge>
+                  ) : (
+                    <Badge tone="muted">{t("emp.status.inactive")}</Badge>
+                  )}
+                </Td>
                 <Td>
                   <div className="flex gap-1">
                     {!e.cnss_number && <Badge tone="destructive">CNSS</Badge>}
@@ -496,6 +511,17 @@ function EmployeeDrawer({ emp, onClose }: { emp: Employee; onClose: () => void }
               ))}
             </Select>
           </Field>
+          {(f.exit_date || f.exit_reason) && (
+            <div className="col-span-2">
+              <Button
+                type="button" variant="outline" size="sm"
+                title={t("emp.reinstate.hint")}
+                onClick={() => set({ exit_date: undefined, exit_reason: undefined, is_active: true })}
+              >
+                <ArrowRight size={15} /> {t("emp.reinstate")}
+              </Button>
+            </div>
+          )}
         </div>
 
         <label className="mt-4 flex items-center gap-2 text-sm">
