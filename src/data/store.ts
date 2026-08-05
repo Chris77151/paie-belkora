@@ -21,6 +21,7 @@ import type {
 } from "./types";
 import { capLoginEvents } from "@/lib/login-audit";
 import { capDocEvents } from "@/lib/doc-log";
+import { findGhostPayslips } from "@/lib/stability-engine";
 import { seed, SUPER_ADMIN } from "./seed";
 import { isSupabaseConfigured, loadRemoteState, saveRemoteState } from "@/lib/supabase";
 
@@ -512,7 +513,7 @@ export const actions = {
    * ni au code ; ne supprime aucune donnée réelle rattachée à des entités existantes.
    * Renvoie le détail de ce qui a été réparé.
    */
-  repairIntegrity(): { payslips: number; leaves: number; accidents: number; currentFirm: boolean } {
+  repairIntegrity(): { payslips: number; leaves: number; accidents: number; currentFirm: boolean; ghosts: number; periodsReset: number } {
     const empIds = new Set(state.employees.map((e) => e.id));
     const firmIds = new Set(state.firms.map((f) => f.id));
     const periodIds = new Set(state.periods.map((p) => p.id));
@@ -520,13 +521,35 @@ export const actions = {
     const badLeaves = (state.leaves ?? []).filter((l) => !empIds.has(l.employee_id)).length;
     const badAcc = (state.workAccidents ?? []).filter((a) => !empIds.has(a.employee_id)).length;
     const badFirm = !firmIds.has(state.currentFirmId);
+
+    // Bulletins « fantômes » : salarié EXISTANT mais non employé sur la période, avec résultat
+    // figé (compté à tort). On NEUTRALISE (result=null) sans supprimer — réversible : corriger
+    // les dates du salarié puis re-valider restaure le résultat. Les périodes VERROUILLÉES
+    // touchées repassent en brouillon (leur clôture comptable est écartée) pour re-validation.
+    const ghosts = findGhostPayslips(state);
+    const ghostIds = new Set(ghosts.map((g) => g.id));
+    const touchedPeriodIds = new Set(ghosts.map((g) => g.period_id));
+    const periodById = new Map(state.periods.map((p) => [p.id, p]));
+    const lockedTouched = [...touchedPeriodIds]
+      .map((pid) => periodById.get(pid))
+      .filter((p): p is NonNullable<typeof p> => !!p && p.status !== "draft");
+    const closureIdsToDrop = new Set(lockedTouched.map((p) => `${p.firm_id}_${p.year}_${p.month}`));
+
     set((s) => {
+      // 1) Purge des orphelins (salarié/période inexistants).
       s.payslips = s.payslips.filter((p) => empIds.has(p.employee_id) && periodIds.has(p.period_id));
       s.leaves = (s.leaves ?? []).filter((l) => empIds.has(l.employee_id));
       s.workAccidents = (s.workAccidents ?? []).filter((a) => empIds.has(a.employee_id));
       if (!firmIds.has(s.currentFirmId) && s.firms.length) s.currentFirmId = s.firms[0].id;
+      // 2) Neutralisation des fantômes (résultat écarté, bulletin conservé).
+      for (const sl of s.payslips) if (ghostIds.has(sl.id)) sl.result = null;
+      // 3) Périodes verrouillées touchées → brouillon + clôture comptable écartée.
+      for (const p of s.periods) {
+        if (closureIdsToDrop.has(`${p.firm_id}_${p.year}_${p.month}`)) p.status = "draft";
+      }
+      s.accountingClosures = (s.accountingClosures ?? []).filter((c) => !closureIdsToDrop.has(c.id));
     });
-    return { payslips: badSlips, leaves: badLeaves, accidents: badAcc, currentFirm: badFirm };
+    return { payslips: badSlips, leaves: badLeaves, accidents: badAcc, currentFirm: badFirm, ghosts: ghostIds.size, periodsReset: closureIdsToDrop.size };
   },
 };
 

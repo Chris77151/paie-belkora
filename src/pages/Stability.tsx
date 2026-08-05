@@ -62,7 +62,9 @@ export default function Stability() {
     const r = actions.repairIntegrity();
     setNonce((n) => n + 1);
     window.alert(
-      `Corrections appliquées : ${r.payslips} bulletin(s), ${r.leaves} congé(s), ${r.accidents} accident(s) orphelin(s) purgé(s)` +
+      `Corrections appliquées : ${r.payslips} bulletin(s) orphelin(s) purgé(s), ${r.leaves} congé(s), ${r.accidents} accident(s)` +
+        (r.ghosts ? `, ${r.ghosts} bulletin(s) hors effectif neutralisé(s)` : "") +
+        (r.periodsReset ? `, ${r.periodsReset} période(s) verrouillée(s) remise(s) en brouillon (à re-valider)` : "") +
         (r.currentFirm ? ", société active recalée" : "") + ".",
     );
   }

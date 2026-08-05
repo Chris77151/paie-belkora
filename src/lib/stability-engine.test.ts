@@ -1,7 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { runStabilityChecks, buildReport } from "./stability-engine";
+import { runStabilityChecks, buildReport, findGhostPayslips } from "./stability-engine";
 import { seed } from "@/data/seed";
 import type { AppState, Payslip } from "@/data/types";
+
+const R = (over: Partial<NonNullable<Payslip["result"]>> = {}): Payslip["result"] => ({
+  salaireBase: 3000, overtime: 0, overtimeDetail: { ot25: 0, ot50: 0, ot100: 0 },
+  seniorityYears: 0, seniorityRate: 0, primeAnciennete: 0,
+  panierExonere: 0, transportExonere: 0, salissureExoneree: 0, indemnitesExonerees: 0, indemnitesImposables: 0,
+  salaireBrut: 3000, sbi: 3000, cnssSalarie: 134.4, amoSalarie: 67.8, fraisPro: 1050, fraisProRate: 0.35,
+  sni: 1747.8, irBrut: 0, chargesFamille: 0, ir: 0, netAPayer: 2797.8,
+  cnssPatronal: 269.4, amoPatronal: 123.3, tfp: 48, af: 192,
+  ...over,
+}) as Payslip["result"];
+
+const inp = { days_worked: 26, hours_normal: 191, hours_ot_25: 0, hours_ot_50: 0, hours_ot_100: 0, panier: 0, transport: 0, salissure: 0, other_gross: 0 };
 
 /** État de base propre (seed) : 2 sociétés, 0 salarié, 0 bulletin. */
 function clean(): AppState {
@@ -39,6 +51,31 @@ describe("stability-engine — intégrité des données", () => {
     expect(f).toBeDefined();
     expect(f!.repairable).toBe(true);
     expect(f!.axis).toBe("integrite");
+  });
+
+  it("détecte les bulletins hors effectif (fantômes) figés, et pas les inertes/employés", () => {
+    const s = clean();
+    const firmId = s.firms[0].id;
+    // Salarié sorti fin 2016.
+    s.employees.push({
+      id: "emp_g", firm_id: firmId, first_name: "Sorti", last_name: "En2016",
+      hire_date: "2016-01-01", exit_date: "2016-12-31", contract_type: "CDI",
+      base_hourly_rate: 20, monthly_hours: 191, dependents: 0, is_active: false,
+    });
+    s.periods.push({ id: "per_2018", firm_id: firmId, year: 2018, month: 6, status: "validated" });
+    s.periods.push({ id: "per_2016", firm_id: firmId, year: 2016, month: 6, status: "validated" });
+    // Fantôme : bulletin FIGÉ en 2018 alors que le salarié est sorti fin 2016.
+    s.payslips.push({ id: "ghost", period_id: "per_2018", employee_id: "emp_g", input: inp, result: R() });
+    // Non-fantôme : même salarié, période où il ÉTAIT employé (2016).
+    s.payslips.push({ id: "ok", period_id: "per_2016", employee_id: "emp_g", input: inp, result: R() });
+    // Inerte : fantôme mais sans résultat figé (result null) → n'entre dans aucun total.
+    s.payslips.push({ id: "inert", period_id: "per_2018", employee_id: "emp_g", input: inp, result: null });
+
+    const ghosts = findGhostPayslips(s);
+    expect(ghosts.map((g) => g.id)).toEqual(["ghost"]);
+    const f = runStabilityChecks(s).find((x) => x.id === "ghost-payslips");
+    expect(f).toBeDefined();
+    expect(f!.repairable).toBe(true);
   });
 
   it("détecte une société active invalide (réparable)", () => {

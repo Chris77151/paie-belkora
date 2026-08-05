@@ -11,10 +11,29 @@
  * données ou le référentiel. Les corrections de CODE relèvent du skill `audit-stabilisation-app`
  * (agent) ; seules les anomalies de DONNÉES marquées `repairable` sont réparables in-app.
  */
-import type { AppState } from "@/data/types";
+import type { AppState, Payslip } from "@/data/types";
 import { getParams, AVAILABLE_YEARS, type PayrollParams } from "./params";
 import { sumResults, buildPayrollEntry } from "./payroll-accounting";
 import { DEFAULT_ACCOUNTS } from "./accounting-accounts";
+import { isEmployedInPeriod } from "./payroll-helpers";
+
+/**
+ * Bulletins « fantômes » qui FAUSSENT réellement les totaux : le salarié EXISTE mais n'était
+ * pas employé sur la période (embauche/sortie), ET le bulletin porte un résultat figé
+ * (result != null) — donc compté dans l'écriture comptable / la déclaration. PUR & testable.
+ * (Les bulletins d'un salarié SUPPRIMÉ sont traités à part comme « orphelins ».)
+ */
+export function findGhostPayslips(s: AppState): Payslip[] {
+  const empById = new Map(s.employees.map((e) => [e.id, e]));
+  const perById = new Map(s.periods.map((p) => [p.id, p]));
+  return s.payslips.filter((sl) => {
+    if (sl.result == null) return false; // sans résultat figé : inerte (n'entre dans aucun total)
+    const per = perById.get(sl.period_id);
+    const emp = empById.get(sl.employee_id);
+    if (!per || !emp) return false; // cas orphelin, traité ailleurs
+    return !isEmployedInPeriod(emp, per.year, per.month);
+  });
+}
 
 export type StabilityAxis = "calcul" | "integrite";
 export type StabilitySeverity = "critique" | "eleve" | "moyen" | "info";
@@ -257,6 +276,18 @@ function checkIntegrity(s: AppState, out: StabilityFinding[]) {
       detail: `Bulletins rattachés à un salarié ou une période inexistants : ils faussent les totaux et l'audit.`,
       repairable: true,
       recommendation: "« Corriger » supprime ces bulletins orphelins (idempotent).",
+    });
+  }
+
+  const ghosts = findGhostPayslips(s);
+  if (ghosts.length) {
+    const periodsTouched = new Set(ghosts.map((g) => g.period_id));
+    out.push({
+      id: "ghost-payslips", axis: "integrite", severity: "eleve",
+      title: `${ghosts.length} bulletin(s) hors effectif de période`,
+      detail: `Bulletins figés pour un salarié qui n'était pas employé sur la période (embauché après / déjà sorti) — hérités d'un ancien comportement. Ils gonflent la masse salariale, l'écriture comptable et la déclaration CNSS de ${periodsTouched.size} période(s).`,
+      repairable: true,
+      recommendation: "« Corriger » neutralise ces bulletins (résultat écarté, données conservées) et remet les périodes verrouillées concernées en brouillon pour re-validation.",
     });
   }
 
