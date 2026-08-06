@@ -42,11 +42,14 @@ export default function Accounting() {
 
   const { paie, reglement, totals, invariants } = useMemo(() => {
     const t = sumResults(results);
-    const paieEntry = buildPayrollEntry(t, DEFAULT_ACCOUNTS, year, month); // TFP incluse dans 4441 (défaut)
+    // Ventilation « à la Sage » : la TFP (taxe) est ISOLÉE en 4457 (État), le compte 4441 ne
+    // porte que le vrai bordereau CNSS (CNSS + AMO + AF, parts sal.+patr.). L'IR reste en 44525.
+    const opts = { tfpInCnss: false } as const;
+    const paieEntry = buildPayrollEntry(t, DEFAULT_ACCOUNTS, year, month, opts);
     return {
       totals: t,
       paie: paieEntry,
-      reglement: buildSettlementEntry(t, DEFAULT_ACCOUNTS, year, month),
+      reglement: buildSettlementEntry(t, DEFAULT_ACCOUNTS, year, month, opts),
       invariants: checkPayrollEntryInvariants(paieEntry, t, DEFAULT_ACCOUNTS),
     };
   }, [results, year, month]);
