@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/kit";
 import { mad, num, pct, periodLabel, MONTHS_FR } from "@/lib/format";
 import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
+import type { PayrollResult } from "@/lib/payroll-engine";
 import { SELECTABLE_YEARS, getParams } from "@/lib/params";
 
 const YEAR_OPTIONS = SELECTABLE_YEARS;
@@ -46,25 +47,43 @@ export default function Declarations() {
     [s, firm.id, year, month],
   );
 
-  // Cohérence avec la comptabilité : une période VALIDÉE fige un instantané de bulletins. Si cet
-  // instantané ne couvre pas tout l'effectif employé (période validée avant l'ajout de salariés),
-  // le montant à déclarer (calculé ici en direct sur l'effectif réel) diverge de l'écriture
-  // comptable (figée sur moins de salariés). On le signale au lieu de laisser l'écart silencieux.
+  // Une période VALIDÉE fige un instantané de bulletins : on DÉCLARE cet instantané (mêmes chiffres
+  // que l'écriture comptable et la BDS réellement déposée), pas un recalcul en direct — sinon un
+  // salaire modifié APRÈS la validation ferait diverger la déclaration de la comptabilité.
   const declPeriod = s.periods.find((pd) => pd.firm_id === firm.id && pd.year === year && pd.month === month);
-  const validatedCount = declPeriod ? payslipsOfPeriod(s, declPeriod.id).filter((sl) => sl.result != null).length : 0;
+  const frozen = declPeriod ? payslipsOfPeriod(s, declPeriod.id).filter((sl) => sl.result != null) : [];
   const isValidated = !!declPeriod && declPeriod.status !== "draft";
-  const incompleteValidation = isValidated && validatedCount !== employees.length;
+  const useFrozen = isValidated && frozen.length > 0;
+  // Alerte si l'instantané validé ne couvre pas tout l'effectif employé (validation incomplète).
+  const incompleteValidation = isValidated && frozen.length !== employees.length;
 
   // Plafond CNSS de la PÉRIODE (source unique params.ts) — 5 000 avant 2002, 6 000 ensuite.
   const p = getParams(year);
-  const rows = useMemo(
-    () =>
-      employees.map((e) => {
+  const rows = useMemo<{ key: string; name: string; matricule?: string; cnss?: string; r: PayrollResult; plafonne: number }[]>(
+    () => {
+      const ceiling = p.cnssCeiling;
+      if (useFrozen) {
+        const empById = new Map(employeesOfFirm(s, firm.id).map((e) => [e.id, e]));
+        return frozen.map((sl) => {
+          const e = empById.get(sl.employee_id);
+          const r = sl.result as PayrollResult;
+          return {
+            key: sl.id,
+            name: e ? `${e.first_name} ${e.last_name}` : "(salarié supprimé)",
+            matricule: e?.matricule ?? sl.employee_id,
+            cnss: e?.cnss_number,
+            r,
+            plafonne: Math.min(r.sbi, ceiling),
+          };
+        });
+      }
+      return employees.map((e) => {
         const r = computeFor(e, firm, year, month, defaultInput(e));
-        const plafonne = Math.min(r.sbi, p.cnssCeiling);
-        return { emp: e, r, plafonne };
-      }),
-    [employees, firm, year, month],
+        return { key: e.id, name: `${e.first_name} ${e.last_name}`, matricule: e.matricule ?? e.id, cnss: e.cnss_number, r, plafonne: Math.min(r.sbi, ceiling) };
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [employees, useFrozen, frozen, firm, year, month, p.cnssCeiling, s],
   );
 
   const totals = useMemo(() => {
@@ -100,8 +119,8 @@ export default function Declarations() {
   function downloadBds() {
     trackDecl("bds");
     const lines = rows.map(
-      ({ emp, r, plafonne }) =>
-        `${emp.matricule ?? emp.id};${emp.cnss_number ?? ""};${plafonne.toFixed(2)};${(
+      ({ matricule, cnss, r, plafonne }) =>
+        `${matricule ?? ""};${cnss ?? ""};${plafonne.toFixed(2)};${(
           r.cnssSalarie + r.cnssPatronal
         ).toFixed(2)}`,
     );
@@ -151,9 +170,9 @@ export default function Declarations() {
             <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
             <span className="text-muted-foreground">
               <b className="text-foreground">Écart avec la comptabilité.</b> Cette période est validée avec
-              seulement <b>{validatedCount}</b> bulletin(s), alors que <b>{employees.length}</b> salarié(s) sont
+              seulement <b>{frozen.length}</b> bulletin(s), alors que <b>{employees.length}</b> salarié(s) sont
               employés sur {periodLabel(year, month)}. Le montant ci-dessous est calculé sur l'effectif <b>réel
-              ({employees.length})</b> ; l'<b>écriture comptable</b> reste figée sur les {validatedCount} bulletins
+              ({employees.length})</b> ; l'<b>écriture comptable</b> reste figée sur les {frozen.length} bulletins
               validés — d'où la différence. Pour aligner les deux : <b>Paie → {periodLabel(year, month)} → Remettre
               en brouillon</b>, puis <b>re-valider</b> (l'effectif complet sera figé).
             </span>
@@ -180,17 +199,11 @@ export default function Declarations() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ emp, r, plafonne }) => (
-                <tr key={emp.id}>
+              {rows.map(({ key, name, cnss, r, plafonne }) => (
+                <tr key={key}>
+                  <Td>{name}</Td>
                   <Td>
-                    {emp.first_name} {emp.last_name}
-                  </Td>
-                  <Td>
-                    {emp.cnss_number ? (
-                      emp.cnss_number
-                    ) : (
-                      <Badge tone="destructive">{t("decl.notReg")}</Badge>
-                    )}
+                    {cnss ? cnss : <Badge tone="destructive">{t("decl.notReg")}</Badge>}
                   </Td>
                   <Td className="text-right num">{mad(r.sbi)}</Td>
                   <Td className="text-right num">{mad(plafonne)}</Td>
@@ -271,12 +284,10 @@ export default function Declarations() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ emp, r }) => (
-                <tr key={emp.id}>
-                  <Td>
-                    {emp.first_name} {emp.last_name}
-                  </Td>
-                  <Td>{emp.cnss_number ?? "—"}</Td>
+              {rows.map(({ key, name, cnss, r }) => (
+                <tr key={key}>
+                  <Td>{name}</Td>
+                  <Td>{cnss ?? "—"}</Td>
                   <Td className="text-right num">{mad(r.ir)}</Td>
                   <Td className="text-right num">{mad(r.ir * 12)}</Td>
                   <Td className="text-right num">{mad(r.netAPayer)}</Td>
