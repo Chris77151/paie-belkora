@@ -147,6 +147,29 @@ export function subscribeSync(cb: () => void): () => void {
 export const getSyncStatus = () => syncStatus;
 export const getSyncError = () => syncError;
 
+/* ---- État « hydraté » : la 1re lecture du cloud est-elle terminée ? ----
+ * Avant l'hydratation, l'état ne contient que le cache local / le seed. Un compte créé sur un
+ * autre poste n'y figure donc pas encore : il faut ATTENDRE l'hydratation avant d'autoriser la
+ * connexion, sinon l'utilisateur nouvellement ajouté paraît « absent / non enregistré en ligne ».
+ * Si Supabase n'est pas configuré, il n'y a rien à attendre → hydraté d'emblée. */
+let hydrated = !isSupabaseConfigured();
+const hydrationListeners = new Set<() => void>();
+function markHydrated() {
+  if (hydrated) return;
+  hydrated = true;
+  hydrationListeners.forEach((l) => l());
+}
+export function isHydrated(): boolean {
+  return hydrated;
+}
+export function useHydrated(): boolean {
+  return useSyncExternalStore(
+    (cb) => { hydrationListeners.add(cb); return () => hydrationListeners.delete(cb); },
+    isHydrated,
+    isHydrated,
+  );
+}
+
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingSave = false;
 
@@ -194,18 +217,25 @@ if (typeof window !== "undefined") {
 export async function hydrateFromRemote(): Promise<void> {
   if (!isSupabaseConfigured()) {
     setSync("off");
+    markHydrated();
     return;
   }
   setSync("syncing");
-  const remote = await loadRemoteState();
-  if (remote) {
-    state = migrate(remote.data);
-    persistLocal(); // cache local du snapshot distant
-    listeners.forEach((l) => l());
-    setSync("saved");
-  } else {
-    const res = await saveRemoteState(state); // première initialisation du cloud
-    setSync(res.ok ? "saved" : "error", res.error);
+  try {
+    const remote = await loadRemoteState();
+    if (remote) {
+      state = migrate(remote.data);
+      persistLocal(); // cache local du snapshot distant
+      listeners.forEach((l) => l());
+      setSync("saved");
+    } else {
+      const res = await saveRemoteState(state); // première initialisation du cloud
+      setSync(res.ok ? "saved" : "error", res.error);
+    }
+  } finally {
+    // Hydratation TERMINÉE (succès OU échec) : on débloque l'app. En cas d'échec réseau, on
+    // retombe sur le cache local plutôt que de bloquer indéfiniment la connexion.
+    markHydrated();
   }
 }
 

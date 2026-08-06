@@ -3,6 +3,8 @@ import { createHashRouter, Navigate, RouterProvider, useLocation } from "react-r
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import { canAccess, useSession } from "./lib/auth";
+import { useHydrated } from "./data/store";
+import { isSupabaseConfigured } from "./lib/supabase";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
 import Documents from "./pages/Documents";
@@ -64,6 +66,25 @@ const router = createHashRouter([
 
 export default function App() {
   const user = useSession();
-  if (!user) return <Login />;
+  const hydrated = useHydrated();
+  // Avant toute connexion, on ATTEND l'hydratation depuis Supabase : sinon la liste des comptes
+  // n'est que le cache local (un utilisateur créé sur un autre poste manquerait, et sa connexion
+  // échouerait « identifiant inconnu »). Une session déjà ouverte, elle, entre directement.
+  if (!user) {
+    if (isSupabaseConfigured() && !hydrated) return <BootLoading />;
+    return <Login />;
+  }
   return <RouterProvider router={router} />;
+}
+
+/** Écran d'attente pendant la 1re synchronisation cloud (avant l'écran de connexion). */
+function BootLoading() {
+  return (
+    <div className="min-h-screen grid place-items-center bg-background">
+      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+        <div className="h-9 w-9 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" />
+        <p className="text-sm">Synchronisation des comptes…</p>
+      </div>
+    </div>
+  );
 }
