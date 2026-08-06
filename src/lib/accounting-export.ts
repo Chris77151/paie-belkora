@@ -58,6 +58,57 @@ export function exportEntriesXml(entries: JournalEntry[], firm: Firm, period: st
   download(lines.join("\n"), `ecritures_paie_${period}.xml`, "application/xml;charset=utf-8");
 }
 
+/* ------------------------------ CSV (Sage / logiciels comptables) ------------------------------ */
+
+/** Date ISO (aaaa-mm-jj) → jj/mm/aaaa (format attendu par Sage / Ciel / EBP). */
+function toDmy(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
+/** Montant à la française pour l'import (virgule décimale) ; vide si nul (colonne D/C non concernée). */
+function frAmount(v: number): string {
+  return v ? v.toFixed(2).replace(".", ",") : "";
+}
+/** Nettoie un champ CSV : pas de séparateur ni de retour ligne (sinon colonnes décalées), pas de
+ *  caractère spécial d'espace. Guillemets doublés par sécurité si le champ en contient. */
+function csvField(s: string): string {
+  const clean = asciiSpaces(s).replace(/[\r\n;]+/g, " ").trim();
+  return clean.includes('"') ? clean.replace(/"/g, '""') : clean;
+}
+
+/**
+ * Construit le CSV d'import des écritures — UNE LIGNE PAR LIGNE D'ÉCRITURE. PUR & testable.
+ * Colonnes : Journal;Date;Pièce;Compte;Libellé;Débit;Crédit. Séparateur « ; », décimales à
+ * virgule, dates jj/mm/aaaa. Importable dans Sage (import paramétrable), Ciel, EBP, etc. — les
+ * montants proviennent du modèle (aucun recalcul). Le débit et le crédit sont en colonnes
+ * distinctes (vide si nul), jamais un montant signé.
+ */
+export function buildEntriesCsvSage(entries: JournalEntry[], _firm: Firm, _period: string): string {
+  const SEP = ";";
+  const header = ["Journal", "Date", "Piece", "Compte", "Libelle", "Debit", "Credit"].join(SEP);
+  const rows = [header];
+  for (const e of entries) {
+    for (const l of e.lines) {
+      rows.push([
+        csvField(e.journal),
+        toDmy(e.date),
+        csvField(e.reference),
+        csvField(l.account),
+        csvField(l.label),
+        frAmount(l.debit),
+        frAmount(l.credit),
+      ].join(SEP));
+    }
+  }
+  return rows.join("\r\n") + "\r\n";
+}
+
+/** Télécharge le CSV d'import (BOM UTF-8 pour les accents dans Sage/Excel). */
+export function exportEntriesCsvSage(entries: JournalEntry[], firm: Firm, period: string) {
+  const BOM = "﻿";
+  download(BOM + buildEntriesCsvSage(entries, firm, period), `ecritures_paie_${period}_sage.csv`, "text/csv;charset=utf-8");
+}
+
 /* ------------------------------ Excel ------------------------------ */
 export function exportEntriesXlsx(entries: JournalEntry[], firm: Firm, period: string) {
   const rows: (string | number)[][] = [];

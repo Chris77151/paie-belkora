@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Calculator, FileCode2, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, Sparkles, Lock, Unlock } from "lucide-react";
+import { Calculator, FileCode2, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, Sparkles, Lock, Unlock, Table2 } from "lucide-react";
 import { actions, currentFirm, payslipsOfPeriod, useStore } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import { useSession } from "@/lib/auth";
@@ -9,7 +9,7 @@ import {
   type JournalEntry, type InvariantCheck,
 } from "@/lib/payroll-accounting";
 import { DEFAULT_ACCOUNTS } from "@/lib/accounting-accounts";
-import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml } from "@/lib/accounting-export";
+import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml, exportEntriesCsvSage } from "@/lib/accounting-export";
 import { Badge, Button, Card, CardContent, Field, PageHeader, Select, Table, Td, Th } from "@/components/ui/kit";
 import { MONTHS_FR, dateFr, mad, num, periodLabel } from "@/lib/format";
 import { SELECTABLE_YEARS } from "@/lib/params";
@@ -176,6 +176,13 @@ export default function Accounting() {
             </Button>
             <Button variant="outline" onClick={() => exportEntriesXlsx(entries, firm, period.replace(" ", "-"))}>
               <FileSpreadsheet size={16} /> Excel
+            </Button>
+            <Button
+              variant="sage"
+              onClick={() => exportEntriesCsvSage(entries, firm, period.replace(" ", "-"))}
+              title="CSV importable dans Sage / Ciel / EBP (une ligne par ligne d'écriture ; ; / virgule / jj-mm-aaaa)"
+            >
+              <Table2 size={16} /> Sage (CSV)
             </Button>
             <Button variant="outline" onClick={() => exportEntriesPdf(entries, firm, period.replace(" ", "-"))}>
               <FileDown size={16} /> PDF

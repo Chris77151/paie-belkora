@@ -64,6 +64,13 @@ function finalize(entry: Omit<JournalEntry, "totalDebit" | "totalCredit" | "bala
   return { ...entry, lines, totalDebit, totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 };
 }
 
+/** Dernier jour du mois au format ISO « aaaa-mm-jj », SANS décalage de fuseau (jamais via
+ *  toISOString, qui reculerait d'un jour en UTC+ et daterait l'écriture au 30 au lieu du 31). */
+function endOfMonthIso(year: number, month: number): string {
+  const last = new Date(year, month, 0).getDate(); // month 1-12 → dernier jour du mois
+  return `${year}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
+}
+
 const D = (account: string, label: string, debit: number): JournalLine => ({ account, label, debit: round2(debit), credit: 0 });
 const C = (account: string, label: string, credit: number): JournalLine => ({ account, label, debit: 0, credit: round2(credit) });
 
@@ -89,7 +96,7 @@ export function buildPayrollEntry(
   opts: PayrollEntryOptions = {},
 ): JournalEntry {
   const tfpInCnss = opts.tfpInCnss ?? true;
-  const date = new Date(year, month, 0).toISOString().slice(0, 10); // fin de mois
+  const date = endOfMonthIso(year, month); // fin de mois (sans décalage de fuseau)
   const ref = `PAIE-${year}-${String(month).padStart(2, "0")}`;
   const L = ACCOUNT_LABELS;
   // 4441 = CNSS + AMO + AF (sal. + patr.) ; + TFP par défaut (recouvrement CNSS/OFPPT).
@@ -123,7 +130,7 @@ export function buildSettlementEntry(
   opts: PayrollEntryOptions = {},
 ): JournalEntry {
   const tfpInCnss = opts.tfpInCnss ?? true;
-  const date = new Date(year, month, 0).toISOString().slice(0, 10);
+  const date = endOfMonthIso(year, month);
   const ref = `REGL-${year}-${String(month).padStart(2, "0")}`;
   const L = ACCOUNT_LABELS;
   const organismesBase = totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af;
