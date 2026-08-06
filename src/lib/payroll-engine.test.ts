@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { computePayslip, seniorityRate, irAnnuel, round2, type PayrollInput } from "./payroll-engine";
+import {
+  computePayslip, seniorityRate, irAnnuel, round2,
+  seniorityMilestones, nextSeniorityMilestone, type PayrollInput,
+} from "./payroll-engine";
 import { getParams } from "./params";
 
 const base = (over: Partial<PayrollInput> = {}): PayrollInput => ({
@@ -26,6 +29,42 @@ describe("round2", () => {
     expect(round2(161.004928)).toBe(161.0);
     expect(round2(230.00704)).toBe(230.01);
     expect(round2(2916.6666)).toBe(2916.67);
+  });
+});
+
+describe("prime d'ancienneté — activation/désactivation par salarié", () => {
+  it("appliquée par défaut (applySeniority absent) : prime > 0 pour 3 ans d'ancienneté", () => {
+    const r = computePayslip(base({ hireDate: "2023-01-01" }));
+    expect(r.seniorityRate).toBe(0.05);
+    expect(r.primeAnciennete).toBeGreaterThan(0);
+  });
+  it("désactivée (applySeniority = false) : prime = 0 et taux affiché 0", () => {
+    const r = computePayslip(base({ hireDate: "2023-01-01", applySeniority: false }));
+    expect(r.primeAnciennete).toBe(0);
+    expect(r.seniorityRate).toBe(0);
+  });
+  it("désactivée : le net augmente (aucune prime dans le brut)", () => {
+    const on = computePayslip(base({ hireDate: "2020-01-01", applySeniority: true }));
+    const off = computePayslip(base({ hireDate: "2020-01-01", applySeniority: false }));
+    expect(on.salaireBrut).toBeGreaterThan(off.salaireBrut);
+  });
+});
+
+describe("suivi des échéances de la prime d'ancienneté (redressements)", () => {
+  const p = getParams(2026);
+  it("seniorityMilestones : une date par palier = embauche + N ans", () => {
+    const ms = seniorityMilestones("2020-03-15", p);
+    expect(ms.map((m) => m.years)).toEqual([2, 5, 12, 20, 25]);
+    expect(ms[0]).toMatchObject({ years: 2, rate: 0.05, date: "2022-03-15" });
+    expect(ms[1]).toMatchObject({ years: 5, rate: 0.1, date: "2025-03-15" });
+  });
+  it("nextSeniorityMilestone : prochaine revalorisation strictement après asOf", () => {
+    // À la date du 01/01/2026, embauché 2020-03-15 : prochain palier = 12 ans (2032-03-15).
+    const next = nextSeniorityMilestone("2020-03-15", new Date("2026-01-01"), p);
+    expect(next).toMatchObject({ years: 12, rate: 0.15, date: "2032-03-15" });
+  });
+  it("nextSeniorityMilestone : null quand le palier maximal (25 ans) est dépassé", () => {
+    expect(nextSeniorityMilestone("1990-01-01", new Date("2026-01-01"), p)).toBeNull();
   });
 });
 

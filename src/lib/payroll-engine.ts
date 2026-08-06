@@ -44,6 +44,8 @@ export interface PayrollInput {
 
   /** Ancienneté saisie manuellement (override). Sinon calculée depuis hireDate. */
   primeAncienneteOverride?: number | null;
+  /** La prime d'ancienneté s'applique-t-elle ? Défaut (absent/true) : OUI. `false` → prime = 0. */
+  applySeniority?: boolean;
 
   panier: number;
   transport: number;
@@ -133,6 +135,45 @@ export function seniorityRate(years: number, p: PayrollParams): number {
   return rate;
 }
 
+/** Une échéance de revalorisation de la prime d'ancienneté (franchissement de palier). */
+export interface SeniorityMilestone {
+  /** Palier en années (2, 5, 12, 20, 25). */
+  years: number;
+  /** Taux atteint à ce palier. */
+  rate: number;
+  /** Date (ISO aaaa-mm-jj) à laquelle le palier est atteint = date d'embauche + `years` ans. */
+  date: string;
+}
+
+/**
+ * Échéances de revalorisation de la prime d'ancienneté pour un salarié, à partir de sa date
+ * d'embauche et des paliers de `params`. PUR & testable. Renvoie une entrée par palier (triée),
+ * avec la date exacte du franchissement. Suivi AUTOMATIQUE des redressements de la prime.
+ */
+export function seniorityMilestones(hireDate: string, p: PayrollParams): SeniorityMilestone[] {
+  const hire = new Date(hireDate);
+  if (isNaN(hire.getTime())) return [];
+  return [...p.seniority]
+    .sort((a, b) => a.years - b.years)
+    .map((step) => {
+      const d = new Date(hire.getFullYear() + step.years, hire.getMonth(), hire.getDate());
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return { years: step.years, rate: step.rate, date: iso };
+    });
+}
+
+/**
+ * Prochaine revalorisation STRICTEMENT postérieure à `asOf` (ou null si le palier maximal est
+ * déjà atteint). `asOf` injecté pour rester déterministe/testable.
+ */
+export function nextSeniorityMilestone(hireDate: string, asOf: Date, p: PayrollParams): SeniorityMilestone | null {
+  const at = asOf.getTime();
+  for (const m of seniorityMilestones(hireDate, p)) {
+    if (new Date(m.date).getTime() > at) return m;
+  }
+  return null;
+}
+
 /** IR annuel via le barème rapide (tranche × taux − somme à déduire). */
 export function irAnnuel(sniAnnual: number, p: PayrollParams): number {
   if (sniAnnual <= 0) return 0;
@@ -177,11 +218,14 @@ export function computePayslip(input: PayrollInput): PayrollResult {
   const ot100 = round2(input.hoursOt100 * rate * (1 + p.overtime.restNight));
   const overtime = round2(ot25 + ot50 + ot100);
 
-  // Prime d'ancienneté : assiette = salaire + accessoires y compris majorations HS (art. 350-352)
+  // Prime d'ancienneté : assiette = salaire + accessoires y compris majorations HS (art. 350-352).
+  // Désactivable par salarié (applySeniority = false → prime nulle, taux affiché 0).
+  const applySeniority = input.applySeniority ?? true;
   const sYears = seniorityYears(input.hireDate, input.year, input.month);
-  const sRate = seniorityRate(sYears, p);
-  const primeAnciennete =
-    input.primeAncienneteOverride != null
+  const sRate = applySeniority ? seniorityRate(sYears, p) : 0;
+  const primeAnciennete = !applySeniority
+    ? 0
+    : input.primeAncienneteOverride != null
       ? round2(input.primeAncienneteOverride)
       : round2((salaireBase + overtime) * sRate);
 

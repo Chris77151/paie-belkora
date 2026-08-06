@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/kit";
 import { dateFr, mad } from "@/lib/format";
 import { getParams } from "@/lib/params";
+import { seniorityYears, seniorityRate, nextSeniorityMilestone } from "@/lib/payroll-engine";
 
 const CONTRACTS: ContractType[] = ["CDI", "CDD", "ANAPEC", "Interim", "Stagiaire"];
 
@@ -113,6 +114,22 @@ export default function Employees() {
   const enteredCount = all.filter(enteredRecently).length;
   const exitedCount = all.filter((e) => e.exit_date).length;
 
+  // Suivi AUTOMATIQUE des redressements de la prime d'ancienneté : salariés présents dont la prime
+  // s'applique et qui franchissent un palier (revalorisation du taux) dans les 12 prochains mois.
+  const seniorityWatch = useMemo(() => {
+    const now = new Date();
+    const p = getParams(now.getFullYear());
+    const horizon = new Date(); horizon.setFullYear(horizon.getFullYear() + 1);
+    return all
+      .filter((e) => e.is_active && !e.exit_date && (e.seniority_bonus ?? true) && e.hire_date)
+      .map((e) => {
+        const years = seniorityYears(e.hire_date, now.getFullYear(), now.getMonth() + 1);
+        return { e, currentRate: seniorityRate(years, p), next: nextSeniorityMilestone(e.hire_date, now, p) };
+      })
+      .filter((x) => x.next && new Date(x.next.date) <= horizon)
+      .sort((a, b) => a.next!.date.localeCompare(b.next!.date));
+  }, [all]);
+
   /** Après enregistrement d'un salarié : s'il n'est plus visible sous le filtre courant (ex.
    *  il vient d'être marqué « sorti » alors qu'on est sur « Actifs »), on bascule sur « Tous »
    *  pour qu'il RESTE visible et modifiable — au lieu de disparaître silencieusement. */
@@ -167,6 +184,40 @@ export default function Employees() {
           </Select>
         </CardContent>
       </Card>
+
+      {seniorityWatch.length > 0 && (
+        <Card className="mb-4 border-warning/40">
+          <CardContent className="pt-5">
+            <p className="text-sm font-semibold">{t("emp.senioTrack.title")}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t("emp.senioTrack.sub")}</p>
+            <Table className="mt-3">
+              <thead>
+                <tr>
+                  <Th>{t("doc.employee")}</Th>
+                  <Th className="text-right">{t("emp.senioTrack.current")}</Th>
+                  <Th>{t("emp.senioTrack.next")}</Th>
+                  <Th className="text-right">{t("emp.senioTrack.newRate")}</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {seniorityWatch.map(({ e, currentRate, next }) => (
+                  <tr key={e.id} className="hover:bg-muted/40">
+                    <Td className="font-medium">{e.first_name} {e.last_name}</Td>
+                    <Td className="text-right num text-muted-foreground">{(currentRate * 100).toFixed(0)} %</Td>
+                    <Td>
+                      <span className="inline-flex items-center gap-1.5">
+                        {dateFr(next!.date)}
+                        <Badge tone="warning">{next!.years} {t("emp.senioTrack.soon")}</Badge>
+                      </span>
+                    </Td>
+                    <Td className="text-right num font-semibold text-primary">{(next!.rate * 100).toFixed(0)} %</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <Table>
@@ -545,7 +596,14 @@ function EmployeeDrawer({ emp, onClose, onSaved }: { emp: Employee; onClose: () 
           )}
         </div>
 
-        <label className="mt-4 flex items-center gap-2 text-sm">
+        <label className="mt-4 flex items-center gap-2 text-sm" title={t("emp.seniorityBonus.hint")}>
+          <input
+            type="checkbox"
+            checked={f.seniority_bonus ?? true}
+            onChange={(e) => set({ seniority_bonus: e.target.checked })}
+          /> {t("emp.seniorityBonus")}
+        </label>
+        <label className="mt-2 flex items-center gap-2 text-sm">
           <input type="checkbox" checked={f.is_active} onChange={(e) => set({ is_active: e.target.checked })} /> {t("emp.activeCheck")}
         </label>
         <label className="mt-2 flex items-center gap-2 text-sm">

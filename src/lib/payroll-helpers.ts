@@ -68,6 +68,7 @@ export function toEngineInput(
     hoursOt50: input.hours_ot_50,
     hoursOt100: input.hours_ot_100,
     primeAncienneteOverride: input.prime_anciennete_override,
+    applySeniority: emp.seniority_bonus ?? true, // droit légal par défaut ; désactivable par salarié
     panier: input.panier,
     transport: input.transport,
     salissure: input.salissure,

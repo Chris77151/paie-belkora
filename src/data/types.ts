@@ -89,6 +89,12 @@ export interface Employee {
   /** Exonération CNSS/AMO/AF/TFP (dispositif ANAPEC/stage). Défaut : droit commun. */
   cnss_exemption?: CnssExemption;
   /**
+   * La prime d'ancienneté (art. 350-352) s'applique-t-elle ? Défaut (absent/true) : OUI — c'est
+   * un droit légal. `false` = non appliquée (cas conventionnel particulier, à documenter par
+   * l'employeur) → la prime est mise à 0 dans le calcul.
+   */
+  seniority_bonus?: boolean;
+  /**
    * Date de sortie effective des effectifs (ISO). Distincte de `contract_end`, qui est le TERME
    * PRÉVU d'un CDD : un CDD peut être rompu avant son terme, ou se prolonger de fait.
    * C'est cette date — et elle seule — qui figure au certificat de travail (art. 24) et au
