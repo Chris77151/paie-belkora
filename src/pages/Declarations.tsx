@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { FileDown, FileText, CalendarClock, Landmark } from "lucide-react";
-import { useStore, currentFirm, employeesOfFirm, periodsOfFirm, actions } from "@/data/store";
+import { FileDown, FileText, CalendarClock, Landmark, AlertTriangle } from "lucide-react";
+import { useStore, currentFirm, employeesOfFirm, periodsOfFirm, payslipsOfPeriod, actions } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import {
   Card,
@@ -45,6 +45,15 @@ export default function Declarations() {
     () => employeesForPeriod(employeesOfFirm(s, firm.id), year, month),
     [s, firm.id, year, month],
   );
+
+  // Cohérence avec la comptabilité : une période VALIDÉE fige un instantané de bulletins. Si cet
+  // instantané ne couvre pas tout l'effectif employé (période validée avant l'ajout de salariés),
+  // le montant à déclarer (calculé ici en direct sur l'effectif réel) diverge de l'écriture
+  // comptable (figée sur moins de salariés). On le signale au lieu de laisser l'écart silencieux.
+  const declPeriod = s.periods.find((pd) => pd.firm_id === firm.id && pd.year === year && pd.month === month);
+  const validatedCount = declPeriod ? payslipsOfPeriod(s, declPeriod.id).filter((sl) => sl.result != null).length : 0;
+  const isValidated = !!declPeriod && declPeriod.status !== "draft";
+  const incompleteValidation = isValidated && validatedCount !== employees.length;
 
   // Plafond CNSS de la PÉRIODE (source unique params.ts) — 5 000 avant 2002, 6 000 ensuite.
   const p = getParams(year);
@@ -135,6 +144,22 @@ export default function Declarations() {
           </Select>
         </Field>
       </PageHeader>
+
+      {incompleteValidation && (
+        <Card className="mb-4 border-warning/50">
+          <CardContent className="pt-4 flex items-start gap-2 text-sm">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
+            <span className="text-muted-foreground">
+              <b className="text-foreground">Écart avec la comptabilité.</b> Cette période est validée avec
+              seulement <b>{validatedCount}</b> bulletin(s), alors que <b>{employees.length}</b> salarié(s) sont
+              employés sur {periodLabel(year, month)}. Le montant ci-dessous est calculé sur l'effectif <b>réel
+              ({employees.length})</b> ; l'<b>écriture comptable</b> reste figée sur les {validatedCount} bulletins
+              validés — d'où la différence. Pour aligner les deux : <b>Paie → {periodLabel(year, month)} → Remettre
+              en brouillon</b>, puis <b>re-valider</b> (l'effectif complet sera figé).
+            </span>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="mb-6">
         <CardHeader>
