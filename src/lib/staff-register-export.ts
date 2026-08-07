@@ -128,6 +128,48 @@ export interface RegisterPdfOptions {
   signatoryRole?: string;
 }
 
+/**
+ * Bande d'indicateurs en CARTES (au lieu d'une ligne dense de « métrique : valeur · … »).
+ * L'écart effectif réel / effectif déclaré — objet même du registre — est mis en exergue :
+ * cadre et valeur en rouge dès qu'il est non nul, pour qu'un lecteur pressé le voie d'un coup d'œil.
+ * N'invente aucune donnée : reprend `r.kpis` tel quel. Fait avancer le curseur.
+ */
+function drawKpiCards(
+  doc: jsPDF,
+  pal: ReturnType<typeof firmPalette>,
+  cur: Cursor,
+  k: StaffRegister["kpis"],
+): void {
+  const cards: { label: string; value: string; gap?: boolean }[] = [
+    { label: "Effectif présent", value: String(k.headcount) },
+    { label: "Déclarés CNSS", value: String(k.declared) },
+    { label: "Écart réel/décl.", value: `${k.gap > 0 ? "+" : ""}${k.gap}`, gap: true },
+    { label: "Entrées", value: String(k.entries) },
+    { label: "Sorties", value: String(k.exits) },
+    { label: "Turnover", value: `${(k.turnover * 100).toFixed(1)} %` },
+    { label: "Ancienneté moy.", value: `${k.avgSeniorityYears.toFixed(1)} ans` },
+  ];
+  const pw = doc.internal.pageSize.getWidth();
+  const gap = 3;
+  const n = cards.length;
+  const cardW = (pw - 2 * M - gap * (n - 1)) / n;
+  const cardH = 14;
+  const y = cur.y;
+  cards.forEach((c, i) => {
+    const x = M + i * (cardW + gap);
+    const alert = !!c.gap && k.gap > 0;
+    doc.setFillColor(...pal.tint);
+    doc.setDrawColor(...(alert ? ALERT : pal.olive)).setLineWidth(alert ? 0.5 : 0.3);
+    doc.roundedRect(x, y, cardW, cardH, 1.4, 1.4, "FD");
+    doc.setFont(FONT, "normal").setFontSize(FS.micro - 0.6).setTextColor(...pal.muted);
+    doc.text(asciiSpaces(c.label), x + cardW / 2, y + 5, { align: "center", maxWidth: cardW - 3 });
+    const vColor = alert ? ALERT : c.gap ? pal.deep : pal.ink;
+    doc.setFont(FONT, "bold").setFontSize(FS.section).setTextColor(...vColor);
+    doc.text(asciiSpaces(c.value), x + cardW / 2, y + 11.2, { align: "center", maxWidth: cardW - 3 });
+  });
+  cur.y = y + cardH;
+}
+
 /** Construit le PDF du registre (sans le sauvegarder) — testable hors navigateur. */
 export async function buildRegisterPdf(
   firm: Firm,
@@ -152,22 +194,11 @@ export async function buildRegisterPdf(
   );
   cur.y += 6;
 
-  // Indicateurs — l'écart effectif réel / effectif déclaré passe en premier : c'est l'objet même
-  // du registre, et un lecteur pressé ne doit pas avoir à le chercher.
+  // Indicateurs en cartes — l'écart effectif réel / effectif déclaré est mis en exergue : c'est
+  // l'objet même du registre, un lecteur pressé ne doit pas avoir à le chercher dans une ligne dense.
   const k = r.kpis;
-  const kpiLine = [
-    `Effectif présent : ${k.headcount}`,
-    `Déclarés CNSS : ${k.declared}`,
-    `Écart : ${k.gap}`,
-    `Entrées : ${k.entries}`,
-    `Sorties : ${k.exits}`,
-    `Turnover : ${(k.turnover * 100).toFixed(1)} %`,
-    `Ancienneté moyenne : ${k.avgSeniorityYears.toFixed(1)} an(s)`,
-  ].join("     ·     ");
-  doc.setFont(FONT, "bold").setFontSize(FS.note);
-  doc.setTextColor(...(k.gap > 0 ? ALERT : pal.deep));
-  doc.text(asciiSpaces(kpiLine), M, cur.y, { maxWidth: doc.internal.pageSize.getWidth() - 2 * M });
-  cur.y += 5;
+  drawKpiCards(doc, pal, cur, k);
+  cur.y += 4.5;
   doc.setFont(FONT, "italic").setFontSize(FS.micro).setTextColor(...pal.muted);
   doc.text(asciiSpaces(`Turnover = ${k.turnoverFormula}.`), M, cur.y);
   cur.y += 6;
@@ -179,6 +210,12 @@ export async function buildRegisterPdf(
     ? body(r).map((line, i) => [String(i + 1), ...line])
     : body(r);
   const declCol = head.length - 1;
+  // Alignements : matricule, dates et ancienneté centrés (colonnes courtes, lecture en colonne) ;
+  // décalage de +1 en version officielle où la 1re colonne est le numéro de ligne.
+  const off = opts.official ? 1 : 0;
+  const columnStyles: Record<number, { cellWidth?: number; halign?: "left" | "center" | "right" }> = {};
+  if (opts.official) columnStyles[0] = { cellWidth: 9, halign: "right" };
+  for (const c of [0, 6, 7, 9]) columnStyles[off + c] = { halign: "center" };
 
   autoTable(doc, {
     startY: cur.y,
@@ -187,8 +224,10 @@ export async function buildRegisterPdf(
     theme: "grid",
     ...styles,
     styles: { ...styles.styles, fontSize: 7.6 },
-    headStyles: { ...styles.headStyles, fontSize: 7.6 },
-    columnStyles: opts.official ? { 0: { cellWidth: 9, halign: "right" } } : undefined,
+    headStyles: { ...styles.headStyles, fontSize: 7.6, halign: "center" },
+    // Alternance de fond (zébrure) : sur onze colonnes denses, l'œil ne saute plus d'une ligne à l'autre.
+    alternateRowStyles: { fillColor: [...pal.tint] },
+    columnStyles,
     didParseCell: (d) => {
       // Un « hors délai » doit sauter aux yeux : c'est un constat, pas une ligne comme une autre.
       if (d.section === "body" && d.column.index === declCol) {
@@ -251,7 +290,15 @@ export async function buildRegisterPdf(
       ...styles,
       styles: { ...styles.styles, fontSize: 7 },
       headStyles: { ...styles.headStyles, fontSize: 7 },
-      columnStyles: { 6: { halign: "right" } },
+      columnStyles: { 0: { halign: "center" }, 6: { halign: "right" } },
+      didParseCell: (d) => {
+        // La gravité « CRITIQUE » ressort en rouge gras : un constat bloquant n'est pas une ligne
+        // comme une autre (même signal que le « hors délai » du registre).
+        if (d.section === "body" && d.column.index === 0 && r.findings[d.row.index]?.severity === "critical") {
+          d.cell.styles.textColor = [ALERT[0], ALERT[1], ALERT[2]];
+          d.cell.styles.fontStyle = "bold";
+        }
+      },
     });
     afterTable(cur, 6);
   }
