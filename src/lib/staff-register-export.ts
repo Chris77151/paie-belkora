@@ -12,7 +12,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import type { Firm } from "@/data/types";
-import { dateFr } from "./format";
+import { dateFr, pdfText } from "./format";
 import {
   CATEGORY_LABEL,
   DECLARATION_LABEL,
@@ -303,15 +303,22 @@ export async function buildRegisterPdf(
     afterTable(cur, 6);
   }
 
-  // Réserves — jamais optionnelles.
+  // Réserves — jamais optionnelles. `pdfText` (et non `asciiSpaces`) : ces notes techniques
+  // contiennent « ≥ », hors encodage WinAnsi des polices standard → sinon glyphe parasite (« "e »).
+  // Rendu LIGNE PAR LIGNE au fer à gauche : un `doc.text(tableau)` étirait la dernière ligne d'un
+  // paragraphe sur toute la largeur (justification parasite), défaut visible sur l'export.
   ensure(cur, 24);
   doc.setFont(FONT, "italic").setFontSize(FS.micro).setTextColor(...pal.muted);
   const pw = doc.internal.pageSize.getWidth();
+  const lh = lineHeight(FS.micro, 1.3);
   for (const note of [REGISTER_DISCLAIMER, r.sourceNote]) {
-    const lines = doc.splitTextToSize(asciiSpaces(note), pw - 2 * M) as string[];
-    ensure(cur, lines.length * lineHeight(FS.micro, 1.3));
-    doc.text(lines, M, cur.y, { lineHeightFactor: 1.3 });
-    cur.y += lines.length * lineHeight(FS.micro, 1.3) + 2;
+    const lines = doc.splitTextToSize(pdfText(note), pw - 2 * M) as string[];
+    for (const line of lines) {
+      ensure(cur, lh);
+      doc.text(line, M, cur.y);
+      cur.y += lh;
+    }
+    cur.y += 2;
   }
 
   paintFooters(doc, firm, pal);

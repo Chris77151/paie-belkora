@@ -349,10 +349,13 @@ export function drawFullHeader(doc: jsPDF, firm: Firm, logo: LoadedLogo | null, 
       /* un logo illisible ne casse pas l'export */
     }
   }
+  // Largeur réelle de la page (portrait 210, paysage 297) : le registre est en paysage, le reste
+  // en portrait. Dériver du document évite un en-tête décalé à gauche sur une page paysage.
+  const pw = doc.internal.pageSize.getWidth();
   // Le bloc d'identité se centre sur l'espace restant à droite du logo.
   const left = logo ? M + LOGO + 6 : M;
-  const cx = (left + (W - M)) / 2;
-  const inner = W - M - left;
+  const cx = (left + (pw - M)) / 2;
+  const inner = pw - M - left;
 
   let y = 21;
   doc.setFont(FONT, "bold").setFontSize(FS.firm).setTextColor(...pal.ink);
@@ -368,7 +371,7 @@ export function drawFullHeader(doc: jsPDF, firm: Firm, logo: LoadedLogo | null, 
   sub(firmIdentifiersLine(firm), FS.micro, pal.muted, 4.8);
   sub(firmContactLine(firm), FS.micro, pal.muted, 4.4);
 
-  doc.setDrawColor(...pal.deep).setLineWidth(0.9).line(M, HEAD - 8, W - M, HEAD - 8);
+  doc.setDrawColor(...pal.deep).setLineWidth(0.9).line(M, HEAD - 8, pw - M, HEAD - 8);
   return HEAD;
 }
 
@@ -377,9 +380,10 @@ export function drawFullHeader(doc: jsPDF, firm: Firm, logo: LoadedLogo | null, 
  * Répéter le logo et le bloc légal à chaque page alourdit le document sans rien apporter.
  */
 export function drawRunningHeader(doc: jsPDF, firm: Firm, pal: PayslipPalette): number {
+  const pw = doc.internal.pageSize.getWidth();
   doc.setFont(FONT, "bold").setFontSize(FS.micro).setTextColor(...pal.muted);
   doc.text(asciiSpaces(firm.name.toUpperCase()), M, 13);
-  doc.setDrawColor(...pal.olive).setLineWidth(0.3).line(M, 15.5, W - M, 15.5);
+  doc.setDrawColor(...pal.olive).setLineWidth(0.3).line(M, 15.5, pw - M, 15.5);
   return HEAD_RUN;
 }
 
@@ -388,16 +392,19 @@ export function drawRunningHeader(doc: jsPDF, firm: Firm, pal: PayslipPalette): 
  * espacées. Retourne l'ordonnée sous le cadre.
  */
 export function drawTitleBox(doc: jsPDF, pal: PayslipPalette, title: string, y: number): number {
+  const pw = doc.internal.pageSize.getWidth();
   const t = asciiSpaces(title.toUpperCase());
   const CHAR = 0.6; // interlettrage (mm) — le titre respire sans se disloquer
   doc.setFont(FONT, "bold").setFontSize(FS.title);
   const tw = doc.getTextWidth(t) + CHAR * Math.max(0, t.length - 1);
-  const boxW = Math.min(CW, tw + 34);
+  // Cadre plafonné à la largeur de composition RÉELLE de la page : en paysage (registre), le
+  // plafond portrait (166 mm) tronquait un titre long, dont la fin débordait hors du cadre.
+  const boxW = Math.min(pw - 2 * M, tw + 34);
   const boxH = 14;
-  const x = (W - boxW) / 2;
+  const x = (pw - boxW) / 2;
   doc.setDrawColor(...pal.deep).setLineWidth(0.5).rect(x, y, boxW, boxH);
   doc.setTextColor(...pal.deep);
-  doc.text(t, W / 2, y + boxH / 2 + 1.9, { align: "center", charSpace: CHAR });
+  doc.text(t, pw / 2, y + boxH / 2 + 1.9, { align: "center", charSpace: CHAR });
   return y + boxH;
 }
 
@@ -409,15 +416,20 @@ export function drawTitleBox(doc: jsPDF, pal: PayslipPalette, title: string, y: 
  * n'informe de rien et alourdit le pied. Au-delà, elle prouve au destinataire qu'aucune page ne manque.
  */
 export function drawFooter(doc: jsPDF, firm: Firm, pal: PayslipPalette, page: number, total: number): void {
-  doc.setDrawColor(...pal.olive).setLineWidth(0.4).line(M, H - 18, W - M, H - 18);
+  // Dimensions RÉELLES de la page : en paysage (registre), la hauteur est 210 mm et non 297 —
+  // un pied placé à `H - …` (portrait) tombait SOUS la page et n'apparaissait pas.
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
+  const cw = pw - 2 * M;
+  doc.setDrawColor(...pal.olive).setLineWidth(0.4).line(M, ph - 18, pw - M, ph - 18);
   doc.setFont(FONT, "normal").setFontSize(FS.micro).setTextColor(...pal.muted);
   const ids = firmIdentifiersLine(firm);
   const contact = firmContactLine(firm);
-  if (ids) doc.text(ids, W / 2, H - 13, { align: "center", maxWidth: CW });
-  if (contact) doc.text(contact, W / 2, H - 8.8, { align: "center", maxWidth: CW });
+  if (ids) doc.text(ids, pw / 2, ph - 13, { align: "center", maxWidth: cw });
+  if (contact) doc.text(contact, pw / 2, ph - 8.8, { align: "center", maxWidth: cw });
   if (total > 1) {
     doc.setFontSize(FS.micro - 0.5).setTextColor(150, 150, 150);
-    doc.text(`${page} / ${total}`, W - M, H - 4.6, { align: "right" });
+    doc.text(`${page} / ${total}`, pw - M, ph - 4.6, { align: "right" });
   }
 }
 
@@ -454,7 +466,10 @@ export interface Cursor {
  * Sans cet appel avant chaque bloc, un document long est SILENCIEUSEMENT tronqué.
  */
 export function ensure(c: Cursor, need: number): void {
-  if (c.y + need > H - FOOT) {
+  // Hauteur réelle de la page (paysage 210 / portrait 297) : en paysage, se fier à H (297)
+  // laisserait poser du contenu SOUS le bord de la page, silencieusement tronqué.
+  const ph = c.doc.internal.pageSize.getHeight();
+  if (c.y + need > ph - FOOT) {
     c.doc.addPage();
     c.page += 1;
     c.y = drawRunningHeader(c.doc, c.firm, c.pal);
