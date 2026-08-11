@@ -20,6 +20,7 @@ import { mad, num, pct, periodLabel, MONTHS_FR } from "@/lib/format";
 import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
 import type { PayrollResult } from "@/lib/payroll-engine";
 import { SELECTABLE_YEARS, getParams } from "@/lib/params";
+import { exportDeclarationPdf } from "@/lib/declaration-export";
 
 const YEAR_OPTIONS = SELECTABLE_YEARS;
 
@@ -113,6 +114,37 @@ export default function Declarations() {
       subject: `${firm.name} · ${periodLabel(year, month)}`,
       period_year: year,
       period_month: month,
+    });
+  }
+
+  /** Bordereau de déclaration CNSS en PDF propre (socle pdf-kit), et non l'impression de la page. */
+  function downloadPdf() {
+    trackDecl("print");
+    void exportDeclarationPdf(firm, {
+      year,
+      month,
+      ceiling: p.cnssCeiling,
+      rates: {
+        cnssEmployee: p.cnssEmployeeRate,
+        cnssEmployer: p.cnssEmployerRate,
+        amoEmployee: p.amoEmployeeRate,
+      },
+      rows: rows.map(({ name, cnss, r, plafonne }) => ({
+        name,
+        cnss,
+        sbi: r.sbi,
+        plafonne,
+        cnssSal: r.cnssSalarie,
+        cnssPat: r.cnssPatronal,
+        amo: r.amoSalarie,
+        af: r.af,
+      })),
+      totals,
+      validated: isValidated,
+      incomplete: incompleteValidation
+        ? { validatedCount: frozen.length, realCount: employees.length }
+        : undefined,
+      issuedOn: new Date().toISOString().slice(0, 10),
     });
   }
 
@@ -248,7 +280,7 @@ export default function Declarations() {
           </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => { trackDecl("print"); window.print(); }}>
+            <Button variant="outline" onClick={downloadPdf}>
               <FileDown size={16} />
               {t("decl.export")}
             </Button>
