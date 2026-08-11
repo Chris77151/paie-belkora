@@ -14,6 +14,7 @@ import type {
   DocGenEvent,
   Employee,
   Firm,
+  Leave,
   LoginEvent,
   Payslip,
   PayrollPeriod,
@@ -513,6 +514,20 @@ export const actions = {
   removeWorkAccident(id: string) {
     set((s) => {
       s.workAccidents = (s.workAccidents ?? []).filter((x) => x.id !== id);
+    });
+  },
+  /* ---- Congés & absences (saisie) ---- */
+  upsertLeave(leave: Leave) {
+    set((s) => {
+      s.leaves = s.leaves ?? [];
+      const i = s.leaves.findIndex((x) => x.id === leave.id);
+      if (i >= 0) s.leaves[i] = leave;
+      else s.leaves.push(leave);
+    });
+  },
+  removeLeave(id: string) {
+    set((s) => {
+      s.leaves = (s.leaves ?? []).filter((x) => x.id !== id);
     });
   },
   /* ---- Clôture comptable (validation/verrou d'une période) ---- */

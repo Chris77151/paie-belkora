@@ -1,6 +1,6 @@
-import { useMemo } from "react";
-import { CalendarDays, Stethoscope, Hourglass, Baby } from "lucide-react";
-import { useStore, currentFirm, employeesOfFirm } from "@/data/store";
+import { useMemo, useState } from "react";
+import { CalendarDays, Stethoscope, Hourglass, Baby, Plus, Pencil, Trash2, X } from "lucide-react";
+import { useStore, currentFirm, employeesOfFirm, uid, actions } from "@/data/store";
 import { useT, type TKey } from "@/lib/i18n";
 import {
   Card,
@@ -8,6 +8,10 @@ import {
   CardTitle,
   CardContent,
   Badge,
+  Button,
+  Field,
+  Input,
+  Select,
   Table,
   Th,
   Td,
@@ -16,7 +20,7 @@ import {
 } from "@/components/ui/kit";
 import { dateFr, num } from "@/lib/format";
 import { getParams } from "@/lib/params";
-import type { Employee, LeaveType } from "@/data/types";
+import type { Employee, Leave, LeaveType } from "@/data/types";
 
 const LEAVE_LABEL_KEY: Record<LeaveType, TKey> = {
   conge_paye: "leave.conge_paye",
@@ -25,6 +29,16 @@ const LEAVE_LABEL_KEY: Record<LeaveType, TKey> = {
   absence_injustifiee: "leave.absence_injustifiee",
   maternite: "leave.maternite",
 };
+
+const LEAVE_TYPES: LeaveType[] = ["conge_paye", "maladie", "AT", "absence_injustifiee", "maternite"];
+
+/** Nombre de jours calendaires entre deux dates ISO, bornes incluses (0 si dates invalides/inversées). */
+function inclusiveDays(start: string, end: string): number {
+  if (!start || !end) return 0;
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (isNaN(ms) || ms < 0) return 0;
+  return Math.round(ms / 8.64e7) + 1;
+}
 
 /** Âge en années à une date donnée (null si date de naissance absente). */
 function ageAt(birth_date: string | undefined, at: Date): number | null {
@@ -72,6 +86,25 @@ export default function Leaves() {
     [s.leaves, empIds],
   );
 
+  const [editing, setEditing] = useState<Leave | null>(null);
+
+  function newLeave() {
+    const start = new Date().toISOString().slice(0, 10);
+    setEditing({
+      id: uid("lv"),
+      employee_id: employees[0]?.id ?? "",
+      type: "conge_paye",
+      start_date: start,
+      end_date: start,
+      days: 1,
+      cnss_ipe: false,
+    });
+  }
+
+  function remove(id: string) {
+    if (window.confirm(t("lv.deleteConfirm"))) actions.removeLeave(id);
+  }
+
   const today = new Date();
   const inProgress = leaves.filter(
     (l) => new Date(l.start_date) <= today && today <= new Date(l.end_date),
@@ -97,7 +130,17 @@ export default function Leaves() {
 
   return (
     <div>
-      <PageHeader title={t("page.leaves.title")} subtitle={t("page.leaves.sub")} />
+      <PageHeader title={t("page.leaves.title")} subtitle={t("page.leaves.sub")}>
+        <Button onClick={newLeave} disabled={employees.length === 0}>
+          <Plus size={16} /> {t("lv.new")}
+        </Button>
+      </PageHeader>
+
+      {employees.length === 0 && (
+        <Card className="mb-4">
+          <CardContent className="py-4 text-sm text-muted-foreground">{t("lv.noEmp")}</CardContent>
+        </Card>
+      )}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Kpi
@@ -140,6 +183,7 @@ export default function Leaves() {
                   <Th>{t("lv.col.to")}</Th>
                   <Th className="text-right">{t("lv.col.days")}</Th>
                   <Th>IPE CNSS</Th>
+                  <Th className="text-right">{t("lv.col.actions")}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -158,6 +202,16 @@ export default function Leaves() {
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
+                      </Td>
+                      <Td className="text-right">
+                        <div className="inline-flex gap-1">
+                          <Button size="icon" variant="ghost" title={t("btn.edit")} onClick={() => setEditing(l)}>
+                            <Pencil size={15} />
+                          </Button>
+                          <Button size="icon" variant="ghost" title={t("btn.delete")} onClick={() => remove(l.id)}>
+                            <Trash2 size={15} />
+                          </Button>
+                        </div>
                       </Td>
                     </tr>
                   );
@@ -219,6 +273,110 @@ export default function Leaves() {
           </div>
         </CardContent>
       </Card>
+
+      {editing && (
+        <LeaveForm
+          key={editing.id}
+          initial={editing}
+          employees={employees}
+          onClose={() => setEditing(null)}
+          onSave={(l) => { actions.upsertLeave(l); setEditing(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function LeaveForm({
+  initial,
+  employees,
+  onClose,
+  onSave,
+}: {
+  initial: Leave;
+  employees: { id: string; first_name: string; last_name: string }[];
+  onClose: () => void;
+  onSave: (l: Leave) => void;
+}) {
+  const t = useT();
+  const [f, setF] = useState<Leave>(initial);
+  const set = (patch: Partial<Leave>) => setF((prev) => ({ ...prev, ...patch }));
+
+  // Dates : recalcule automatiquement le nombre de jours (calendaires, bornes incluses) — l'utilisateur
+  // peut ensuite l'ajuster (les congés payés se comptent en jours ouvrables).
+  const setStart = (start_date: string) => setF((p) => ({ ...p, start_date, days: inclusiveDays(start_date, p.end_date) }));
+  const setEnd = (end_date: string) => setF((p) => ({ ...p, end_date, days: inclusiveDays(p.start_date, end_date) }));
+
+  const datesValid = !!f.start_date && !!f.end_date && new Date(f.end_date) >= new Date(f.start_date);
+  const canSave = !!f.employee_id && datesValid && f.days > 0;
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSave) return;
+    onSave(f);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-foreground/40" onClick={onClose}>
+      <form
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+        className="h-full w-full max-w-md overflow-y-auto bg-card p-6 shadow-2xl scrollbar-thin"
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-display">{t("lv.form.title")}</h2>
+          <Button type="button" variant="ghost" size="icon" onClick={onClose}><X size={18} /></Button>
+        </div>
+
+        <div className="space-y-4">
+          <Field label={t("lv.f.employee")}>
+            <Select value={f.employee_id} onChange={(e) => set({ employee_id: e.target.value })}>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label={t("lv.f.type")}>
+            <Select value={f.type} onChange={(e) => set({ type: e.target.value as LeaveType })}>
+              {LEAVE_TYPES.map((ty) => (
+                <option key={ty} value={ty}>{t(LEAVE_LABEL_KEY[ty])}</option>
+              ))}
+            </Select>
+          </Field>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label={t("lv.col.from")}>
+              <Input type="date" value={f.start_date} onChange={(e) => setStart(e.target.value)} />
+            </Field>
+            <Field label={t("lv.col.to")}>
+              <Input type="date" value={f.end_date} min={f.start_date} onChange={(e) => setEnd(e.target.value)} />
+            </Field>
+          </div>
+          {!datesValid && <p className="-mt-1 text-xs text-destructive">{t("lv.f.dateError")}</p>}
+
+          <Field label={t("lv.f.days")}>
+            <Input
+              type="number"
+              min={0}
+              step={0.5}
+              value={f.days}
+              onChange={(e) => set({ days: Math.max(0, +e.target.value) })}
+            />
+          </Field>
+          <p className="-mt-2 text-xs text-muted-foreground">{t("lv.f.daysHint")}</p>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={f.cnss_ipe} onChange={(e) => set({ cnss_ipe: e.target.checked })} />
+            {t("lv.f.ipe")}
+          </label>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>{t("btn.cancel")}</Button>
+          <Button type="submit" disabled={!canSave}>{t("btn.save")}</Button>
+        </div>
+      </form>
     </div>
   );
 }
