@@ -43,8 +43,8 @@ export const CONTRACT_PROJECTS: Record<string, { label: string; location: string
     jurisdiction: "Tribunal de Première Instance de Kénitra, section sociale",
   },
   nador: {
-    label: "Projet Nador — Marchica",
-    location: "Marchica (province de Nador)",
+    label: "Projet Nador Marchica",
+    location: "Nador (province de Nador, région de l'Oriental)",
     jurisdiction: "Tribunal de Première Instance de Nador, section sociale",
   },
 };
@@ -121,8 +121,24 @@ function partiesBlocks(v: RhContractView): LegalBlock[] {
   ];
 }
 
-/* ------------------------------------------------------------------ articles communs (fin de contrat) ------------------------------------------------------------------ */
-function commonTailBlocks(v: RhContractView): LegalBlock[] {
+/**
+ * Article 14 « Règlement intérieur » — version conservée pour le contrat pour travail déterminé
+ * (ouvrier), en l'absence d'une version FR actualisée de son article 14 spécifique.
+ */
+const REGLEMENT_INTERIEUR_ART14: LegalBlock[] = [
+  { k: "h", t: "Article 14 — Règlement intérieur" },
+  {
+    k: "p",
+    t: "Le Salarié déclare avoir pris connaissance du règlement intérieur de l'entreprise (Art. 138 Code du Travail) et s'engage à en respecter les dispositions, notamment en matière d'horaires, de discipline et de sécurité.",
+  },
+];
+
+/* ------------------------------------------------------------------ articles communs (fin de contrat) ------------------------------------------------------------------
+ * Articles 7 à 16 communs aux deux modèles, sauf l'article 14 qui diffère selon le poste
+ * (encadrement pour le chef de projet, règlement intérieur pour l'ouvrier) : il est donc injecté
+ * par chaque modèle via `article14`, inséré entre les articles 13 et 15.
+ */
+function commonTailBlocks(v: RhContractView, article14: LegalBlock[]): LegalBlock[] {
   const p = project(v);
   return [
     { k: "h", t: "Article 7 — Couverture sociale" },
@@ -133,7 +149,7 @@ function commonTailBlocks(v: RhContractView): LegalBlock[] {
     { k: "h", t: "Article 8 — Visite médicale d'embauche et médecine du travail (Art. 304-331)" },
     {
       k: "p",
-      t: "Le Salarié s'engage à se soumettre à la visite médicale d'embauche préalable à sa prise de fonction, ainsi qu'aux visites médicales périodiques organisées par l'Employeur, conformément aux articles 304 à 331 du Code du Travail. L'Employeur prend en charge les frais de ces visites et garantit l'accès du Salarié au service de médecine du travail.",
+      t: "Conformément aux articles 304 à 331 du Code du Travail, le Salarié s'engage à se soumettre à la visite médicale d'embauche dans un délai de 30 jours à compter de sa prise de fonction, ainsi qu'aux visites médicales périodiques organisées par l'Employeur. L'Employeur prend en charge les frais de ces visites et garantit l'accès du Salarié au service de médecine du travail conformément à la législation en vigueur.",
     },
     { k: "h", t: "Article 9 — Hygiène et sécurité — Équipements de protection" },
     {
@@ -158,7 +174,7 @@ function commonTailBlocks(v: RhContractView): LegalBlock[] {
     { k: "h", t: "Article 10 — Congés payés et fin de contrat" },
     {
       k: "p",
-      t: "10.1. Le Salarié a droit à une indemnité compensatrice de congés payés égale à 1/12e de la rémunération totale brute perçue pendant la durée du contrat (Art. 233 du Code du Travail).",
+      t: "10.1. Le Salarié a droit à une indemnité compensatrice de congés payés égale à 1/12e de la rémunération totale brute perçue pendant la durée du contrat (Art. 231 du Code du Travail).",
     },
     {
       k: "p",
@@ -167,31 +183,76 @@ function commonTailBlocks(v: RhContractView): LegalBlock[] {
     { k: "h", t: "Article 11 — Protection des données personnelles du Salarié (Loi n° 09-08)" },
     {
       k: "p",
-      t: `11.1. L'Employeur, ${v.firm.name.toUpperCase()}, agit en qualité de responsable du traitement au sens de l'article 5 de la loi n° 09-08, conformément au décret n° 2-09-165 et aux délibérations de la CNDP. Les données du Salarié (identification, paie, présence, santé au titre de la médecine du travail) sont traitées pour la gestion administrative du personnel, la paie, les déclarations sociales obligatoires (CNSS, AMO, IR, TFP), le suivi de la médecine du travail, la sécurité sur les chantiers et la gestion disciplinaire.`,
+      t: `11.1. Cadre légal et responsable du traitement. Le traitement des données personnelles du Salarié est effectué par l'Employeur, ${v.firm.name.toUpperCase()}, agissant en qualité de responsable du traitement au sens de l'article 5 de la loi marocaine n° 09-08 relative à la protection des personnes physiques à l'égard du traitement des données à caractère personnel, et conformément au décret n° 2-09-165 et aux délibérations de la Commission Nationale de contrôle de la Protection des Données à caractère Personnel (CNDP).`,
     },
     {
       k: "p",
-      t: "11.2. Les données sont conservées pendant la durée du contrat puis : cinq (5) ans pour les pièces sociales, dix (10) ans pour les pièces comptables liées à la paie. Le Salarié dispose des droits d'accès, de rectification et d'opposition (art. 7 à 9 de la loi 09-08), qu'il exerce par demande écrite au siège de l'Employeur accompagnée d'une copie de sa CIN. Tout transfert de données hors du Maroc est subordonné à l'autorisation préalable de la CNDP (art. 43-44).",
+      t: "11.2. Finalités du traitement (Art. 4 Loi 09-08). Les données personnelles du Salarié sont collectées et traitées pour les finalités suivantes, et uniquement celles-ci :",
+    },
+    {
+      k: "ul",
+      items: [
+        "Gestion administrative du personnel (dossier salarié, contrat, avenants, attestations) ;",
+        "Calcul et versement de la paie (salaires, primes, indemnités) ;",
+        "Déclarations sociales obligatoires (CNSS, AMO, IR sur salaires, TFP) ;",
+        "Suivi de la médecine du travail (Art. 304-331 Code Travail) ;",
+        "Gestion de la formation professionnelle ;",
+        "Évaluation et suivi de carrière ;",
+        "Sécurité des personnes et des biens sur les sites et chantiers de l'Employeur ;",
+        "Gestion disciplinaire et exercice des droits attachés au contrat de travail.",
+      ],
+    },
+    {
+      k: "p",
+      t: "11.3. Catégories de données traitées. Sont traitées les données d'identification (nom, prénom, CIN, photo, adresse, coordonnées), familiales (état civil, ayants droit AMO), professionnelles (CV, diplômes, expérience), de paie (salaire, RIB, numéro CNSS), de santé dans la stricte limite de la médecine du travail, et de présence (pointage, congés, absences).",
+    },
+    {
+      k: "p",
+      t: "11.4. Durée de conservation. Les données personnelles sont conservées pendant la durée du contrat puis :",
+    },
+    {
+      k: "ul",
+      items: [
+        "Pièces sociales (contrat, bulletins de paie, déclarations CNSS) : cinq (5) ans après la fin du contrat (conservation prudentielle ; les actions nées du contrat de travail se prescrivent par deux ans, art. 395 du Code du Travail) ;",
+        "Pièces comptables liées à la paie : dix (10) ans (Code de commerce, art. 22) ;",
+        "Données de santé issues de la médecine du travail : durée fixée par la réglementation sectorielle de la médecine du travail.",
+      ],
+    },
+    {
+      k: "p",
+      t: "11.5. Sous-traitants (Art. 24 Loi 09-08). L'Employeur peut recourir à des sous-traitants pour certains traitements (logiciel de paie SaaS, prestataire de paie externalisée, cabinet d'expertise comptable). Chaque sous-traitant s'engage par contrat à respecter les obligations de la loi 09-08, sous la responsabilité de l'Employeur.",
+    },
+    {
+      k: "p",
+      t: "11.6. Droits du Salarié (Art. 7 à 9 Loi 09-08). Le Salarié dispose des droits d'accès (art. 7), de rectification des données inexactes, incomplètes ou périmées (art. 8) et d'opposition au traitement pour des motifs légitimes (art. 9). Il les exerce par demande écrite adressée à l'Employeur — par courrier électronique ou courrier recommandé au siège — accompagnée d'une copie de sa CIN. L'Employeur s'engage à répondre à toute demande dans un délai de trente (30) jours.",
+    },
+    {
+      k: "p",
+      t: "11.7. Sécurité et confidentialité (Art. 23 Loi 09-08). L'Employeur met en œuvre les mesures techniques et organisationnelles nécessaires pour assurer la sécurité, la confidentialité et l'intégrité des données du Salarié, et s'engage à ne pas les communiquer à des tiers non autorisés, sauf obligation légale ou réglementaire.",
+    },
+    {
+      k: "p",
+      t: "11.8. Transferts internationaux (Art. 43-44 Loi 09-08). Tout transfert de données personnelles vers un pays étranger ne peut intervenir qu'après autorisation préalable expresse de la CNDP, sauf si le pays destinataire figure sur la liste blanche reconnue par la CNDP comme assurant un niveau de protection équivalent.",
+    },
+    {
+      k: "p",
+      t: "11.9. Violation de données. En cas de violation des données personnelles du Salarié portant atteinte à ses droits, l'Employeur en informera le Salarié ainsi que la CNDP dans un délai raisonnable, et prendra toutes les mesures appropriées pour limiter les conséquences de la violation.",
     },
     { k: "h", t: "Article 12 — Confidentialité" },
     {
       k: "p",
-      t: "Le Salarié s'engage, tant pendant la durée du contrat qu'après sa cessation, à ne divulguer aucune information confidentielle relative à l'entreprise, à ses clients, aux chantiers sur lesquels il intervient, à ses techniques ou méthodes commerciales. Toute violation pourra donner lieu à des poursuites judiciaires (DOC art. 77-78) indépendamment des sanctions disciplinaires (Art. 39 — divulgation de secret professionnel = faute grave).",
+      t: "Le Salarié s'engage, tant pendant la durée du contrat qu'après sa cessation, à ne divulguer aucune information confidentielle relative à l'entreprise, à ses clients, aux chantiers sur lesquels il intervient, à ses techniques ou méthodes commerciales. Toute violation pourra donner lieu à des poursuites judiciaires en réparation du préjudice (DOC art. 77-78) indépendamment des sanctions disciplinaires (Art. 39 Code du Travail — divulgation de secret professionnel = faute grave).",
     },
     { k: "h", t: "Article 13 — Rupture anticipée (Art. 33)" },
     {
       k: "p",
-      t: "13.1. La rupture anticipée du présent contrat à l'initiative de l'une des Parties, en dehors de la période d'essai et hors faute grave ou cas de force majeure, ouvre droit, au profit de la partie lésée, à des dommages-intérêts équivalents aux salaires correspondant à la période allant de la date de la rupture jusqu'au terme fixé par le contrat (article 33, al. 2 et 3 du Code du Travail).",
+      t: "13.1. La rupture anticipée du présent contrat à l'initiative de l'une des Parties, en dehors de la période d'essai et hors faute grave de l'autre partie ou cas de force majeure, ouvre droit, au profit de la partie lésée, à des dommages-intérêts équivalents aux salaires correspondant à la période allant de la date de la rupture jusqu'au terme fixé par le contrat (article 33, al. 2 et 3 du Code du Travail).",
     },
     {
       k: "p",
       t: "13.2. En cas de faute grave dûment constatée selon la procédure des articles 62 à 65 du Code du Travail (audition préalable, PV, notification motivée), la rupture peut intervenir sans indemnité. L'abandon de poste et les absences injustifiées constituent une faute grave autorisant la rupture sans indemnité ni préavis.",
     },
-    { k: "h", t: "Article 14 — Règlement intérieur" },
-    {
-      k: "p",
-      t: "Le Salarié déclare avoir pris connaissance du règlement intérieur de l'entreprise (Art. 138 Code du Travail) et s'engage à en respecter les dispositions, notamment en matière d'horaires, de discipline et de sécurité.",
-    },
+    ...article14,
     { k: "h", t: "Article 15 — Droit applicable et juridiction compétente" },
     {
       k: "p",
@@ -200,7 +261,7 @@ function commonTailBlocks(v: RhContractView): LegalBlock[] {
     { k: "h", t: "Article 16 — Dispositions finales" },
     {
       k: "p",
-      t: "Le présent contrat est établi en deux (2) exemplaires originaux, dont un est remis au Salarié. Conformément à l'article 18 du Code du Travail, les signatures du Salarié et de l'Employeur sont légalisées par l'autorité communale compétente. Toute modification doit faire l'objet d'un avenant écrit et signé par les deux Parties.",
+      t: "Le présent contrat est établi en deux (2) exemplaires originaux, dont un est remis au Salarié. Conformément à l'article 15 du Code du Travail, les signatures du Salarié et de l'Employeur sont légalisées par l'autorité communale compétente. Toute modification doit faire l'objet d'un avenant écrit et signé par les deux Parties.",
     },
   ];
 }
@@ -209,11 +270,19 @@ function commonTailBlocks(v: RhContractView): LegalBlock[] {
 function cddChefBlocks(v: RhContractView): LegalBlock[] {
   const p = project(v);
   const wage = v.dailyWage?.trim() ? `${v.dailyWage.trim()} DH` : PH;
+  // Article 14 propre au chef de projet : missions d'encadrement et de supervision du chantier.
+  const chefArt14: LegalBlock[] = [
+    { k: "h", t: "Article 14 — Fiche de poste, note de service et obligations professionnelles" },
+    {
+      k: "p",
+      t: "Le Salarié reconnaît avoir reçu sa fiche de poste, annexée au présent contrat, qui définit ses missions d'encadrement et de supervision du chantier. Il s'engage à exercer ses fonctions avec soin, diligence et loyauté sous l'autorité de l'Employeur (Art. 20 et 21 du Code du Travail), à faire respecter et à respecter lui-même les horaires communiqués par note de service (Art. 24), les consignes de sécurité, ainsi que le règlement intérieur de l'entreprise dès sa communication (Art. 138 du Code du Travail), et à assurer la bonne exécution et la qualité des travaux confiés à son équipe. Tout manquement à ces obligations peut donner lieu aux sanctions disciplinaires prévues aux articles 37 et suivants du Code du Travail, dans le respect de la procédure légale.",
+    },
+  ];
   return [
     { k: "h", t: "Article 1 — Motif du recours au CDD — Accroissement temporaire d'activité (Art. 16)" },
     {
       k: "p",
-      t: `Le présent contrat à durée déterminée est conclu au titre de l'accroissement temporaire d'activité prévu à l'article 16, al. 2 du Code du Travail, résultant du chantier d'aménagement paysager du ${p.label}, sis à ${p.location}. Le chantier constitue le lieu d'exécution du contrat. La réalité du surcroît temporaire d'activité est établie par les pièces justificatives (devis du maître d'ouvrage, planning des chantiers) conservées par l'Employeur.`,
+      t: `Le présent contrat à durée déterminée est conclu au titre de l'accroissement temporaire d'activité prévu à l'article 16, al. 2 du Code du Travail, résultant du chantier d'aménagement paysager du ${p.label}, sis à ${p.location}. Le chantier constitue le lieu d'exécution du contrat. La réalité du surcroît temporaire d'activité justifiant ce renfort est établie par les pièces justificatives (devis du maître d'ouvrage, planning des chantiers) conservées par l'Employeur.`,
     },
     { k: "h", t: "Article 2 — Durée et terme du contrat (Art. 17)" },
     {
@@ -228,27 +297,39 @@ function cddChefBlocks(v: RhContractView): LegalBlock[] {
       k: "p",
       t: "2.3. Conformément à l'article 17 du Code du Travail, le présent contrat peut être renouvelé une seule fois, pour une durée ne pouvant excéder la durée du contrat initial, dans la limite d'une durée totale de douze (12) mois. Au-delà, le contrat devient automatiquement à durée indéterminée.",
     },
+    {
+      k: "p",
+      t: "2.4. À l'issue du présent contrat, si la relation de travail se poursuit au-delà de la durée convenue, y compris après renouvellement, le contrat sera réputé à durée indéterminée et régi comme tel (Art. 17, in fine).",
+    },
     { k: "h", t: "Article 3 — Poste et lieu de travail" },
     {
       k: "p",
       t: `Le Salarié est engagé en qualité de ${val(v.jobTitle ?? v.employee.position) === PH ? "paysagiste, chef de projet" : val(v.jobTitle ?? v.employee.position)}. Le lieu d'exécution principal est le chantier désigné à l'article 1, soit le chantier d'aménagement paysager du ${p.label}, sis à ${p.location}. Le Salarié peut être amené à se déplacer sur les différentes zones du même chantier, ou sur les autres sites de l'entreprise, selon les nécessités du chantier.`,
     },
     { k: "h", t: "Article 4 — Période d'essai (Art. 14)" },
+    { k: "p", t: "Conformément à l'article 14, al. 2 du Code du Travail, la période d'essai du présent CDD est :" },
+    {
+      k: "ul",
+      items: [
+        "1 jour par semaine de travail effectif, dans la limite de 2 semaines, lorsque la durée totale du CDD est inférieure ou égale à 6 mois ;",
+        "1 mois maximum, lorsque la durée totale du CDD est supérieure à 6 mois.",
+      ],
+    },
     {
       k: "p",
-      t: "Le présent contrat étant conclu pour une durée de trois (3) mois (inférieure à six mois), la période d'essai applicable est au maximum de deux (2) semaines, calculée à raison d'un (1) jour par semaine de travail effectif (article 14, al. 2). Toute période d'essai excédant ce maximum légal est nulle de plein droit.",
+      t: "Le présent contrat étant conclu pour une durée de trois (3) mois (inférieure à six mois), la période d'essai applicable est au maximum de deux (2) semaines, calculée à raison d'un (1) jour par semaine de travail effectif. Toute période d'essai excédant ce maximum légal est nulle de plein droit, le Salarié étant alors réputé définitivement embauché dès le premier jour.",
     },
     { k: "h", t: "Article 5 — Rémunération" },
     {
       k: "p",
-      t: `Le Salarié percevra un salaire journalier brut de ${wage}. Le salaire est payé par virement bancaire sur le compte du Salarié à la fin du contrat ou, en cas de prolongation au-delà de 15 jours, mensuellement. Le salaire journalier brut, multiplié par le nombre de jours travaillés effectivement, constitue l'assiette des cotisations CNSS et AMO. Ce salaire ne peut être inférieur au SMIG en vigueur (Art. 356). Pour les emplois agricoles, le SMAG s'applique à la place du SMIG.`,
+      t: `Le Salarié percevra un salaire journalier brut de ${wage}, soit pour la durée totale du contrat : ${PH} DH. Le salaire est payé par virement bancaire sur le compte du Salarié à la fin du contrat ou, en cas de prolongation au-delà de 15 jours, mensuellement. Le paiement en espèces n'est admis qu'à titre exceptionnel et contre reçu signé. Le salaire journalier brut, multiplié par le nombre de jours travaillés effectivement, constitue l'assiette des cotisations CNSS et AMO, calculées sans prorata du plafond (Dahir 1-72-184 et circulaires CNSS). Ce salaire ne peut être inférieur au SMIG en vigueur (Art. 356 du Code du Travail). Pour les emplois agricoles, le SMAG s'applique à la place du SMIG.`,
     },
     { k: "h", t: "Article 6 — Durée du travail (Art. 184)" },
     {
       k: "p",
-      t: "La durée du travail est de 44 heures hebdomadaires. Toute heure supplémentaire fait l'objet d'une autorisation écrite préalable et est rémunérée selon les majorations légales (Art. 196-202). Le Salarié bénéficie d'un repos hebdomadaire d'au moins vingt-quatre (24) heures (Art. 205).",
+      t: "La durée du travail est de 44 heures hebdomadaires. Les horaires de travail sont fixés par l'Employeur et communiqués au Salarié par écrit, au moyen d'une note de service affichée sur le chantier et remise contre décharge (Art. 24 du Code du Travail). Toute heure supplémentaire effectuée fait l'objet d'une autorisation écrite préalable et est rémunérée selon les majorations légales (Art. 196-202 du Code du Travail). Le Salarié bénéficie d'un repos hebdomadaire d'au moins vingt-quatre (24) heures, conformément à l'article 205 du Code du Travail.",
     },
-    ...commonTailBlocks(v),
+    ...commonTailBlocks(v, chefArt14),
   ];
 }
 
@@ -306,7 +387,7 @@ function travailDetermineBlocks(v: RhContractView): LegalBlock[] {
       k: "p",
       t: "La durée du travail est de 44 heures hebdomadaires. Toute heure supplémentaire fait l'objet d'une autorisation écrite préalable et est rémunérée selon les majorations légales (Art. 196-202). Le Salarié bénéficie d'un repos hebdomadaire d'au moins vingt-quatre (24) heures (Art. 205).",
     },
-    ...commonTailBlocks(v),
+    ...commonTailBlocks(v, REGLEMENT_INTERIEUR_ART14),
   ];
 }
 
@@ -327,7 +408,7 @@ export function buildContractDoc(v: RhContractView): LegalDoc {
     subheading,
     blocks: [...partiesBlocks(v), ...body],
     faitA: `Fait à ${faitCity}, le ${valDate(v.issueDate)}`,
-    legalNote: "En deux exemplaires originaux — signatures légalisées (Art. 18 Code du Travail).",
+    legalNote: "En deux exemplaires originaux — signatures légalisées (Art. 15 Code du Travail).",
     signatures: [
       {
         title: "Pour l'Employeur",

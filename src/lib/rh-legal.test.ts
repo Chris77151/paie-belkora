@@ -122,6 +122,37 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
     expect(t).toContain("Tribunal de Première Instance de Nador");
   });
 
+  it("CDD chef — contenu actualisé (Nador) : requalification 2.4, essai détaillé, RGPD 11.9, art. 14 encadrement, légalisation art. 15", () => {
+    const d = buildContractDoc(contract({ model: "cdd-chef" }));
+    const t = text(d.blocks);
+    // Requalification en CDI si poursuite (art. 17 in fine)
+    expect(t).toContain("réputé à durée indéterminée");
+    // Période d'essai détaillée
+    expect(t).toContain("réputé définitivement embauché dès le premier jour");
+    // Rémunération : espèces exceptionnelles + sans prorata du plafond
+    expect(t).toContain("sans prorata du plafond");
+    // Note de service (art. 24) dans la durée du travail
+    expect(t).toContain("note de service affichée sur le chantier");
+    // Indemnité compensatrice congés : art. 231
+    expect(t).toContain("(Art. 231 du Code du Travail)");
+    // RGPD étendu jusqu'à la violation de données
+    expect(t).toContain("11.9. Violation de données");
+    // Article 14 propre au chef de projet
+    expect(t).toContain("missions d'encadrement et de supervision du chantier");
+    // Légalisation des signatures : art. 15 (et non art. 18)
+    expect(t).toContain("l'article 15 du Code du Travail");
+    expect(t).not.toContain("l'article 18 du Code du Travail");
+    expect(d.legalNote).toContain("Art. 15 Code du Travail");
+  });
+
+  it("travail déterminé — conserve l'article 14 « Règlement intérieur » et bénéficie du tronc commun actualisé", () => {
+    const t = text(buildContractDoc(contract({ model: "travail-determine" })).blocks);
+    expect(t).toContain("Article 14 — Règlement intérieur");
+    expect(t).toContain("(Art. 231 du Code du Travail)"); // tronc commun actualisé
+    expect(t).toContain("11.9. Violation de données");
+    expect(t).not.toContain("missions d'encadrement"); // pas l'art. 14 du chef
+  });
+
   it("zéro invention : dates et salaire absents → placeholder", () => {
     const t = text(buildContractDoc(contract()).blocks);
     expect(t).toContain(PH); // date début/fin/salaire non fournis
