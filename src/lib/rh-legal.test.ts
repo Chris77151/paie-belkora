@@ -172,6 +172,38 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
     expect(buildContractDoc(contract({ model: "cdd-chef" })).ar).toBeUndefined();
   });
 
+  it("AR ouvrier — variantes reflétées : préambule/dispense, logement, panier 47, deux sites", () => {
+    const at = text(
+      buildContractDoc(contract({ model: "travail-determine", projectKey: "gotion", priorEmployee: true, housing: true, dailyBasket: "47" })).ar!.blocks,
+    );
+    expect(at).toContain("تمهيد — تصريحات مسبقة للطرفين"); // préambule
+    expect(at).toContain("الإعفاء من فترة الاختبار"); // dispense d'essai
+    expect(at).toContain("السكن العيني"); // logement en nature
+    expect(at).toContain("موقع الإنتاج"); // site de production (Gotion → deux sites)
+    expect(at).toContain("11,16 درهم"); // panier 47 → fraction réintégrée
+  });
+
+  it("AR ouvrier — nouvel embauché (Nador) : période d'essai, panier 27 exonéré, pas de deux-sites", () => {
+    const at = text(
+      buildContractDoc(contract({ model: "travail-determine", projectKey: "nador", priorEmployee: false })).ar!.blocks,
+    );
+    expect(at).toContain("المادة 4 — فترة الاختبار"); // période d'essai
+    expect(at).not.toContain("تمهيد — تصريحات مسبقة"); // pas de préambule
+    expect(at).toContain("معفى بالكامل"); // panier 27 intégralement exonéré
+    expect(at).not.toContain("موقع الإنتاج"); // Nador n'a pas de site de production
+  });
+
+  it("CDD→CDI — version arabe attachée, renouvellement + évolution CDI + art. 6 bis (185)", () => {
+    const d = buildContractDoc(contract({ model: "cdd-cdi", projectKey: "gotion" }));
+    expect(d.ar).toBeDefined();
+    const at = text(d.ar!.blocks);
+    expect(d.ar!.heading).toBe("عقد عمل محدّد المدّة");
+    expect(at).toContain("2.2. التجديد"); // renouvellement
+    expect(at).toContain("التطوّر نحو عقد غير محدّد المدّة"); // évolution CDI
+    expect(at).toContain("المادة 185"); // chômage technique
+    expect(at).toContain("تكون العبرة بالنسخة العربية"); // la version arabe prévaut
+  });
+
   it("ouvrier — ancien salarié : préambule + dispense d'essai (pas de période d'essai)", () => {
     const t = text(buildContractDoc(contract({ model: "travail-determine", priorEmployee: true })).blocks);
     expect(t).toContain("PRÉAMBULE — DÉCLARATIONS PRÉALABLES DES PARTIES");

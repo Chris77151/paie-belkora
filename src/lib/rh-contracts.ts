@@ -25,7 +25,7 @@ import {
   type LegalDoc,
 } from "./rh-legal";
 import { dateFr } from "./format";
-import { buildTravailDetermineAr } from "./rh-contracts-ar";
+import { buildTravailDetermineAr, buildCddCdiAr } from "./rh-contracts-ar";
 
 export type ContractModel = "cdd-chef" | "travail-determine" | "cdd-cdi";
 /** Civilité — définition unique dans `rh-legal.ts`, ré-exportée pour les pages. */
@@ -648,14 +648,19 @@ export function buildContractDoc(v: RhContractView): LegalDoc {
         caption: "Signature précédée de « Lu et approuvé », et légalisation",
       },
     ],
-    // Variante arabe (RTL, HTML) — disponible pour le contrat pour travail déterminé.
-    ar: v.model === "travail-determine" ? buildTravailDetermineAr(v) : undefined,
+    // Variante arabe (RTL, HTML) — travail déterminé (paramétré) et CDD→CDI.
+    ar:
+      v.model === "travail-determine"
+        ? buildTravailDetermineAr(v)
+        : v.model === "cdd-cdi"
+          ? buildCddCdiAr(v)
+          : undefined,
   };
 }
 
 /** Le modèle dispose-t-il d'une version arabe (RTL) ? */
 export function contractHasArabic(model: ContractModel): boolean {
-  return model === "travail-determine";
+  return model === "travail-determine" || model === "cdd-cdi";
 }
 
 /** Champs rendus en placeholder (à compléter à la main) — transparence « zéro invention ». PURE. */
