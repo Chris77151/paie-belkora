@@ -465,7 +465,7 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
  *{box-sizing:border-box;font-family:"Libre Baskerville","Times New Roman",Times,serif}
  body{margin:0;padding:24px;background:#f4f5f2;color:var(--ink)}
  .sheet{max-width:820px;margin:auto;background:#fff;padding:40px 48px 64px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,.08);position:relative}
- .top{display:flex;gap:18px;align-items:center;border-bottom:2.5px solid var(--vf);padding-bottom:14px}
+ .top{display:flex;gap:18px;align-items:center;border-bottom:2.5px solid var(--olive);padding-bottom:14px}
  .top img{width:74px;height:74px;object-fit:contain;flex:0 0 auto}
  .firm{flex:1;text-align:center}
  .firm .fname{display:block;font-weight:700;font-size:25px;letter-spacing:.01em}

@@ -35,9 +35,13 @@ describe("palette par société — aucune régression Miya", () => {
     expect(paletteForFirm("")).toBe(DEFAULT_PALETTE);
     expect(paletteForFirm("invalide")).toBe(DEFAULT_PALETTE);
   });
-  it("les valeurs Miya par défaut sont bien celles du bulletin historique", () => {
-    expect(DEFAULT_PALETTE.limeHex.toLowerCase()).toBe("#8db94e");
-    expect(DEFAULT_PALETTE.lime).toEqual([141, 185, 78]);
+  it("les valeurs Miya par défaut sont celles du gabarit LaTeX officiel mbd-style.sty", () => {
+    // Source de vérité : mbdvertfonce #1B4332, mbdvertclair #52B788, mbdvertpale #D8F3DC, mbdmuted #6B7280.
+    expect(DEFAULT_PALETTE.deepHex.toLowerCase()).toBe("#1b4332");
+    expect(DEFAULT_PALETTE.deep).toEqual([27, 67, 50]);
+    expect(DEFAULT_PALETTE.oliveHex.toLowerCase()).toBe("#52b788");
+    expect(DEFAULT_PALETTE.tintHex.toLowerCase()).toBe("#d8f3dc");
+    expect(DEFAULT_PALETTE.mutedHex.toLowerCase()).toBe("#6b7280");
   });
 });
 

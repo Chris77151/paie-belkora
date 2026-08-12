@@ -183,6 +183,14 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
     expect(html).not.toContain('class="titlebox"');
   });
 
+  it("rendu HTML : couleurs EXACTES du gabarit LaTeX officiel (mbd-style.sty)", () => {
+    const html = renderLegalHtml(firm, buildContractDoc(contract())); // Miya : palette par défaut
+    expect(html).toContain("#1B4332"); // mbdvertfonce (titre, intitulés d'articles)
+    expect(html).toContain("#52B788"); // mbdvertclair (filet d'accent, filet d'en-tête)
+    expect(html).toContain("#6B7280"); // mbdmuted (texte secondaire)
+    expect(html).toContain("var(--olive)"); // filet d'en-tête au vert médian, pas au vert foncé
+  });
+
   it("zéro invention : dates et salaire absents → placeholder", () => {
     const t = text(buildContractDoc(contract()).blocks);
     expect(t).toContain(PH); // date début/fin/salaire non fournis

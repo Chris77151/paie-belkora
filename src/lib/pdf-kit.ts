@@ -371,7 +371,9 @@ export function drawFullHeader(doc: jsPDF, firm: Firm, logo: LoadedLogo | null, 
   sub(firmIdentifiersLine(firm), FS.micro, pal.muted, 4.8);
   sub(firmContactLine(firm), FS.micro, pal.muted, 4.4);
 
-  doc.setDrawColor(...pal.deep).setLineWidth(0.9).line(M, HEAD - 8, pw - M, HEAD - 8);
+  // Filet d'en-tête au vert MÉDIAN de marque (mbdvertclair #52B788 pour Miya), comme le gabarit
+  // officiel — et non le vert foncé quasi-noir.
+  doc.setDrawColor(...pal.olive).setLineWidth(0.9).line(M, HEAD - 8, pw - M, HEAD - 8);
   return HEAD;
 }
 

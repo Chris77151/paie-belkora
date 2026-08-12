@@ -35,22 +35,28 @@ export interface PayslipPalette {
   mutedHex: string;
 }
 
-/** Palette Miya par défaut — valeurs historiques EXACTES du bulletin (aucune régression). */
+/**
+ * Palette Miya par défaut — couleurs EXACTES du gabarit LaTeX officiel `mbd-style.sty` v1.1
+ * (source de vérité fournie par le Groupe Belkora) :
+ *   mbdvertfonce #1B4332 · mbdvertclair #52B788 · mbdvertpale #D8F3DC · mbdmuted #6B7280.
+ * `deep` = vert foncé (titres, intitulés d'articles, en-têtes de tableau) ; `olive`/`lime` = vert
+ * clair (filet d'accent, filets médians) ; `tint` = vert pâle ; `muted` = gris ; `ink` = quasi-noir.
+ */
 export const DEFAULT_PALETTE: PayslipPalette = {
-  lime: [141, 185, 78],
-  olive: [139, 162, 95],
-  sageDark: [96, 108, 96],
-  tint: [236, 240, 226],
-  ink: [40, 52, 44],
-  deep: [58, 82, 42],
-  muted: [120, 128, 116],
-  limeHex: "#8DB94E",
-  oliveHex: "#8BA25F",
-  sageHex: "#606C60",
-  tintHex: "#ecf0e2",
-  inkHex: "#28342c",
-  deepHex: "#3a522a",
-  mutedHex: "#788074",
+  lime: [82, 183, 136], // #52B788 mbdvertclair
+  olive: [82, 183, 136], // #52B788 mbdvertclair (filets)
+  sageDark: [64, 145, 108], // #40916C vert médian (même famille)
+  tint: [216, 243, 220], // #D8F3DC mbdvertpale
+  ink: [31, 41, 55], // #1F2937 quasi-noir neutre (corps)
+  deep: [27, 67, 50], // #1B4332 mbdvertfonce
+  muted: [107, 114, 128], // #6B7280 mbdmuted
+  limeHex: "#52B788",
+  oliveHex: "#52B788",
+  sageHex: "#40916C",
+  tintHex: "#D8F3DC",
+  inkHex: "#1F2937",
+  deepHex: "#1B4332",
+  mutedHex: "#6B7280",
 };
 
 /* ------------------------------------------------------------------ conversions ------------------------------------------------------------------ */
