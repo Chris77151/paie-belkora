@@ -177,7 +177,10 @@ function commonTailBlocks(v: RhContractView, article14: LegalBlock[]): LegalBloc
     { k: "h", t: "Article 7 — Couverture sociale" },
     {
       k: "p",
-      t: "Le Salarié sera affilié à la CNSS (Dahir 1-72-184) et à l'AMO (Loi 65-00) pour la durée du contrat. Lorsque le Salarié n'est pas encore immatriculé à la CNSS, l'Employeur procède à son immatriculation et effectue la déclaration et le règlement des cotisations selon les taux en vigueur, sur la base du salaire réel. Le Salarié est couvert par l'assurance accidents du travail de l'entreprise (Loi 18-12) pendant toute la durée du contrat, y compris les trajets entre son domicile et le chantier.",
+      // Salarié déjà connu : déclaration d'entrée (reprise) au lieu d'une première immatriculation.
+      t: v.priorEmployee
+        ? "Le Salarié sera affilié à la CNSS (Dahir 1-72-184) et à l'AMO (Loi 65-00) pour la durée du contrat. Le Salarié ayant déjà été déclaré par l'Employeur au titre de la relation antérieure visée au préambule, l'Employeur procède à sa déclaration d'entrée (reprise) et au règlement des cotisations selon les taux en vigueur, sur la base du salaire réel ; à défaut d'immatriculation valide, l'Employeur y procède dans le délai légal. Le Salarié est couvert par l'assurance accidents du travail de l'entreprise (Loi 18-12) pendant toute la durée du contrat, y compris les trajets entre son domicile et le chantier."
+        : "Le Salarié sera affilié à la CNSS (Dahir 1-72-184) et à l'AMO (Loi 65-00) pour la durée du contrat. Lorsque le Salarié n'est pas encore immatriculé à la CNSS, l'Employeur procède à son immatriculation et effectue la déclaration et le règlement des cotisations selon les taux en vigueur, sur la base du salaire réel. Le Salarié est couvert par l'assurance accidents du travail de l'entreprise (Loi 18-12) pendant toute la durée du contrat, y compris les trajets entre son domicile et le chantier.",
     },
     { k: "h", t: "Article 8 — Visite médicale d'embauche et médecine du travail (Art. 304-331)" },
     {
@@ -279,7 +282,8 @@ function commonTailBlocks(v: RhContractView, article14: LegalBlock[]): LegalBloc
     { k: "h", t: "Article 13 — Rupture anticipée (Art. 33)" },
     {
       k: "p",
-      t: "13.1. La rupture anticipée du présent contrat à l'initiative de l'une des Parties, en dehors de la période d'essai et hors faute grave de l'autre partie ou cas de force majeure, ouvre droit, au profit de la partie lésée, à des dommages-intérêts équivalents aux salaires correspondant à la période allant de la date de la rupture jusqu'au terme fixé par le contrat (article 33, al. 2 et 3 du Code du Travail).",
+      // Salarié dispensé d'essai : la mention « en dehors de la période d'essai » n'a pas lieu d'être.
+      t: `13.1. La rupture anticipée du présent contrat à l'initiative de l'une des Parties, ${v.priorEmployee ? "" : "en dehors de la période d'essai et "}hors faute grave de l'autre partie ou cas de force majeure, ouvre droit, au profit de la partie lésée, à des dommages-intérêts équivalents aux salaires correspondant à la période allant de la date de la rupture jusqu'au terme fixé par le contrat (article 33, al. 2 et 3 du Code du Travail).`,
     },
     {
       k: "p",
@@ -365,6 +369,15 @@ function cddChefBlocks(v: RhContractView): LegalBlock[] {
     ...commonTailBlocks(v, chefArt14),
   ];
 }
+
+/** Article 14 « Règlement intérieur » — version ouvrier des contrats Nador (sans site de production). */
+const REGLEMENT_INTERIEUR_ART14: LegalBlock[] = [
+  { k: "h", t: "Article 14 — Règlement intérieur" },
+  {
+    k: "p",
+    t: "Le Salarié déclare avoir pris connaissance du règlement intérieur de l'entreprise (Art. 138 Code du Travail) et s'engage à en respecter les dispositions, notamment en matière d'horaires, de discipline et de sécurité.",
+  },
+];
 
 /** Article 14 « Fiche de poste » — version ouvrier (missions + cadence de référence attendue). */
 const OUVRIER_ART14: LegalBlock[] = [
@@ -515,10 +528,15 @@ function travailDetermineBlocks(v: RhContractView): LegalBlock[] {
     { k: "h", t: "Article 6 — Durée du travail (Art. 184)" },
     {
       k: "p",
-      t: "La durée du travail est de 44 heures hebdomadaires. Les horaires de travail sont fixés par l'Employeur et communiqués au Salarié par écrit, au moyen d'une note de service affichée sur le chantier et remise contre décharge (Art. 24 du Code du Travail). Toute heure supplémentaire effectuée fait l'objet d'une autorisation écrite préalable et est rémunérée selon les majorations légales (Art. 196-202 du Code du Travail). Le Salarié bénéficie d'un repos hebdomadaire d'au moins vingt-quatre (24) heures, conformément à l'article 205 du Code du Travail.",
+      // Chantier avec site de production (Gotion) : horaires par note de service (Art. 24) ;
+      // chantiers simples (Nador) : horaires fixés par le chef de projet.
+      t: prod
+        ? "La durée du travail est de 44 heures hebdomadaires. Les horaires de travail sont fixés par l'Employeur et communiqués au Salarié par écrit, au moyen d'une note de service affichée sur le chantier et remise contre décharge (Art. 24 du Code du Travail). Toute heure supplémentaire effectuée fait l'objet d'une autorisation écrite préalable et est rémunérée selon les majorations légales (Art. 196-202 du Code du Travail). Le Salarié bénéficie d'un repos hebdomadaire d'au moins vingt-quatre (24) heures, conformément à l'article 205 du Code du Travail."
+        : "La durée du travail est de 44 heures hebdomadaires. Les horaires sont fixés par le chef de projet en fonction des contraintes du site et communiqués au Salarié à son arrivée. Toute heure supplémentaire effectuée fait l'objet d'une autorisation écrite préalable et est rémunérée selon les majorations légales (Art. 196-202 du Code du Travail). Le Salarié bénéficie d'un repos hebdomadaire d'au moins vingt-quatre (24) heures, conformément à l'article 205 du Code du Travail.",
     },
     ...OUVRIER_ART6BIS,
-    ...commonTailBlocks(v, OUVRIER_ART14),
+    // Art. 14 : « Fiche de poste » pour le chantier avec production (Gotion), « Règlement intérieur » sinon (Nador).
+    ...commonTailBlocks(v, prod ? OUVRIER_ART14 : REGLEMENT_INTERIEUR_ART14),
   );
 
   return blocks;

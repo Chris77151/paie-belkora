@@ -245,6 +245,43 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
     expect(buildContractDoc(contract({ model: "travail-determine", projectKey: "gotion" })).faitA).toContain("Kénitra");
   });
 
+  it("ouvrier Nador (sans production) — art. 14 « Règlement intérieur » et art. 6 « chef de projet »", () => {
+    const t = text(buildContractDoc(contract({ model: "travail-determine", projectKey: "nador" })).blocks);
+    expect(t).toContain("Article 14 — Règlement intérieur");
+    expect(t).not.toContain("Article 14 — Fiche de poste");
+    expect(t).toContain("fixés par le chef de projet"); // art. 6 version Nador
+    expect(t).not.toContain("note de service affichée sur le chantier"); // pas la version Gotion
+  });
+
+  it("ouvrier Gotion (avec production) — art. 14 « Fiche de poste » et art. 6 « note de service »", () => {
+    const t = text(buildContractDoc(contract({ model: "travail-determine", projectKey: "gotion" })).blocks);
+    expect(t).toContain("Article 14 — Fiche de poste, note de service et obligations professionnelles");
+    expect(t).toContain("note de service affichée sur le chantier"); // art. 6 version Gotion
+    expect(t).not.toContain("fixés par le chef de projet");
+  });
+
+  it("ouvrier ancien salarié — art. 7 « déclaration d'entrée (reprise) » et art. 13.1 sans période d'essai", () => {
+    const t = text(buildContractDoc(contract({ model: "travail-determine", projectKey: "nador", priorEmployee: true })).blocks);
+    expect(t).toContain("déclaration d'entrée (reprise)"); // art. 7 salarié déjà déclaré
+    expect(t).not.toContain("en dehors de la période d'essai"); // art. 13.1 : dispense
+    const tn = text(buildContractDoc(contract({ model: "travail-determine", projectKey: "nador", priorEmployee: false })).blocks);
+    expect(tn).toContain("en dehors de la période d'essai"); // nouvel embauché : mention présente
+    expect(tn).not.toContain("déclaration d'entrée (reprise)");
+  });
+
+  it("AR ouvrier Nador — art. 14 « النظام الداخلي » ; Gotion — art. 14 « بطاقة المنصب »", () => {
+    const nador = text(buildContractDoc(contract({ model: "travail-determine", projectKey: "nador" })).ar!.blocks);
+    expect(nador).toContain("المادة 14 — النظام الداخلي");
+    expect(nador).toContain("رئيس المشروع"); // art. 6 chef de projet
+    const gotion = text(buildContractDoc(contract({ model: "travail-determine", projectKey: "gotion" })).ar!.blocks);
+    expect(gotion).toContain("المادة 14 — بطاقة المنصب ومذكرة العمل والالتزامات المهنية");
+  });
+
+  it("AR ouvrier ancien salarié — art. 7 « التصريح بدخوله (الاستئناف) »", () => {
+    const t = text(buildContractDoc(contract({ model: "travail-determine", projectKey: "nador", priorEmployee: true })).ar!.blocks);
+    expect(t).toContain("التصريح بدخوله (الاستئناف)");
+  });
+
   it("CDD→CDI : titre CDD, renouvellement + évolution CDI + plafond 2 ans (art. 2)", () => {
     const d = buildContractDoc(contract({ model: "cdd-cdi" }));
     expect(d.heading).toBe("CONTRAT À DURÉE DÉTERMINÉE");
