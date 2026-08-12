@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Calculator, FileText, ShieldAlert,
   CalendarDays, Settings, Moon, Sun, Sprout, BookText, FileSignature,
   Search, UserRound, ShieldCheck, Bot, ScanSearch, LogOut, Menu, X, HardHat, Languages, Lock as LockIcon, Activity, FileClock,
-  ClipboardList,
+  ClipboardList, BookMarked,
 } from "lucide-react";
 import { actions, currentFirm, deriveAlerts, useStore } from "@/data/store";
 import { Select } from "@/components/ui/kit";
@@ -23,6 +23,7 @@ const NAV_GROUPS: { labelKey: TKey; items: NavItem[] }[] = [
     { to: "/documents", labelKey: "nav.documents", icon: FileSignature },
     { to: "/documents-log", labelKey: "nav.doclog", icon: FileClock },
     { to: "/payroll", labelKey: "nav.payroll", icon: Calculator },
+    { to: "/livre-paie", labelKey: "nav.livrePaie", icon: BookMarked },
     { to: "/leaves", labelKey: "nav.leaves", icon: CalendarDays },
   ] },
   { labelKey: "nav.group.compta", items: [

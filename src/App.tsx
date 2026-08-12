@@ -11,6 +11,7 @@ import Documents from "./pages/Documents";
 import DocumentsLog from "./pages/DocumentsLog";
 import Register from "./pages/Register";
 import Payroll from "./pages/Payroll";
+import PayrollBook from "./pages/PayrollBook";
 import Accounting from "./pages/Accounting";
 import Declarations from "./pages/Declarations";
 import Compliance from "./pages/Compliance";
@@ -50,6 +51,7 @@ const router = createHashRouter([
       { path: "documents-log", element: g(<DocumentsLog />) },
       { path: "registre", element: g(<Register />) },
       { path: "payroll", element: g(<Payroll />) },
+      { path: "livre-paie", element: g(<PayrollBook />) },
       { path: "accounting", element: g(<Accounting />) },
       { path: "declarations", element: g(<Declarations />) },
       { path: "compliance", element: g(<Compliance />) },
