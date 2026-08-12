@@ -49,6 +49,7 @@ import {
 import {
   CONTRACT_MODELS,
   CONTRACT_PROJECTS,
+  CONTRACT_SCENARIOS,
   buildContractDoc,
   contractHasArabic,
   contractMissingFields,
@@ -619,6 +620,20 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
   const [priorEmployee, setPriorEmployee] = useState<boolean>(false);
   const [housing, setHousing] = useState<boolean>(false);
   const [dailyBasket, setDailyBasket] = useState<string>("27");
+  // Cas de contrat pré-réglé (les 7 scénarios fournis) — "" = réglage manuel.
+  const [scenarioKey, setScenarioKey] = useState<string>("");
+
+  /** Applique un cas prêt à l'emploi : renseigne modèle, projet et options en une fois. */
+  function applyScenario(key: string) {
+    setScenarioKey(key);
+    const s = CONTRACT_SCENARIOS.find((sc) => sc.key === key);
+    if (!s) return; // "" → réglage manuel, on ne touche à rien
+    setModel(s.model);
+    if (s.projectKey) setProjectKey(s.projectKey);
+    setPriorEmployee(s.priorEmployee ?? false);
+    setHousing(s.housing ?? false);
+    setDailyBasket(s.dailyBasket ?? "27");
+  }
 
   const customProject = projectKey === "custom";
   const isOuvrier = model === "travail-determine";
@@ -668,8 +683,25 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Field label="Cas de contrat" hint="Choisir un cas préremplit le modèle, le projet et les options ; tout reste ajustable.">
+            <Select value={scenarioKey} onChange={(e) => applyScenario(e.target.value)}>
+              <option value="">— Réglage manuel —</option>
+              {CONTRACT_SCENARIOS.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
           <Field label="Modèle de contrat">
-            <Select value={model} onChange={(e) => setModel(e.target.value as ContractModel)}>
+            <Select
+              value={model}
+              onChange={(e) => {
+                setModel(e.target.value as ContractModel);
+                setScenarioKey(""); // choix manuel du modèle → on quitte le préréglage
+              }}
+            >
               {CONTRACT_MODELS.map((m) => (
                 <option key={m.value} value={m.value}>
                   {m.label}

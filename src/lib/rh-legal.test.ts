@@ -6,6 +6,7 @@ import {
   contractMissingFields,
   contractPrefilled,
   contractFileName,
+  CONTRACT_SCENARIOS,
   type RhContractView,
 } from "./rh-contracts";
 import {
@@ -280,6 +281,22 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
   it("AR ouvrier ancien salarié — art. 7 « التصريح بدخوله (الاستئناف) »", () => {
     const t = text(buildContractDoc(contract({ model: "travail-determine", projectKey: "nador", priorEmployee: true })).ar!.blocks);
     expect(t).toContain("التصريح بدخوله (الاستئناف)");
+  });
+
+  it("les 7 cas de contrat sont exposés et produisent chacun le bon document", () => {
+    expect(CONTRACT_SCENARIOS).toHaveLength(7);
+    for (const s of CONTRACT_SCENARIOS) {
+      const d = buildContractDoc(
+        contract({ model: s.model, projectKey: s.projectKey, priorEmployee: s.priorEmployee, housing: s.housing, dailyBasket: s.dailyBasket }),
+      );
+      expect(d.heading.length).toBeGreaterThan(0);
+      const t = text(d.blocks);
+      if (s.priorEmployee) expect(t).toContain("PRÉAMBULE — DÉCLARATIONS PRÉALABLES DES PARTIES");
+      if (s.housing) expect(t).toContain("Logement en nature");
+      if (s.dailyBasket === "47") expect(t).toContain("11,16 DH par journée, étant réintégrée");
+    }
+    // Le dernier cas est bien le CDD → CDI.
+    expect(CONTRACT_SCENARIOS[6].model).toBe("cdd-cdi");
   });
 
   it("CDD→CDI : titre CDD, renouvellement + évolution CDI + plafond 2 ans (art. 2)", () => {

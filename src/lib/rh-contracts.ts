@@ -37,6 +37,71 @@ export const CONTRACT_MODELS: { value: ContractModel; label: string; hint: strin
   { value: "cdd-cdi", label: "CDD ouvrier — renouvelable, vocation CDI", hint: "Durée déterminée · renouvelable · évolution vers CDI (art. 16-17)" },
 ];
 
+/**
+ * Cas de contrat prêts à l'emploi (les 7 scénarios fournis). Choisir un cas préremplit d'un coup
+ * le modèle, le projet et les options (ancien salarié, logement, panier). Les champs restent
+ * ajustables ensuite. `key = ""` = réglage manuel (aucun préréglage imposé).
+ */
+export interface ContractScenario {
+  key: string;
+  label: string;
+  model: ContractModel;
+  projectKey?: string;
+  priorEmployee?: boolean;
+  housing?: boolean;
+  dailyBasket?: string;
+}
+
+export const CONTRACT_SCENARIOS: ContractScenario[] = [
+  { key: "chef-nador", label: "1. CDD chantier — chef de projet (Nador)", model: "cdd-chef", projectKey: "nador" },
+  {
+    key: "ouvrier-gotion",
+    label: "2. Ouvrier — Projet Gotion (nouvel embauché, site de production)",
+    model: "travail-determine",
+    projectKey: "gotion",
+    priorEmployee: false,
+    housing: false,
+    dailyBasket: "27",
+  },
+  {
+    key: "ouvrier-nador-local-neuf",
+    label: "3. Ouvrier — Nador, résidant sur place, nouvel embauché (panier 27)",
+    model: "travail-determine",
+    projectKey: "nador",
+    priorEmployee: false,
+    housing: false,
+    dailyBasket: "27",
+  },
+  {
+    key: "ouvrier-nador-eloigne-neuf",
+    label: "4. Ouvrier — Nador, logé (éloigné), nouvel embauché (panier 47)",
+    model: "travail-determine",
+    projectKey: "nador",
+    priorEmployee: false,
+    housing: true,
+    dailyBasket: "47",
+  },
+  {
+    key: "ouvrier-nador-local-ancien",
+    label: "5. Ouvrier — Nador, résidant sur place, ancien salarié (panier 27)",
+    model: "travail-determine",
+    projectKey: "nador",
+    priorEmployee: true,
+    housing: false,
+    dailyBasket: "27",
+  },
+  {
+    key: "ouvrier-nador-eloigne-ancien",
+    label: "6. Ouvrier — Nador, logé (éloigné), ancien salarié (panier 47)",
+    model: "travail-determine",
+    projectKey: "nador",
+    priorEmployee: true,
+    housing: true,
+    dailyBasket: "47",
+  },
+  { key: "cdd-cdi", label: "7. CDD → CDI — titularisation (renouvelable)", model: "cdd-cdi", projectKey: "gotion", dailyBasket: "27" },
+];
+
 /** Preset d'un projet chantier (préremplit lieu, juridiction, site de production, ville d'arrêté). */
 export interface ContractProject {
   label: string;
