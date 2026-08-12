@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/kit";
 import { dateFr, num } from "@/lib/format";
 import { getParams } from "@/lib/params";
+import { countLeaveDays } from "@/lib/holidays-maroc";
 import type { Employee, Leave, LeaveType } from "@/data/types";
 
 const LEAVE_LABEL_KEY: Record<LeaveType, TKey> = {
@@ -31,14 +32,6 @@ const LEAVE_LABEL_KEY: Record<LeaveType, TKey> = {
 };
 
 const LEAVE_TYPES: LeaveType[] = ["conge_paye", "maladie", "AT", "absence_injustifiee", "maternite"];
-
-/** Nombre de jours calendaires entre deux dates ISO, bornes incluses (0 si dates invalides/inversées). */
-function inclusiveDays(start: string, end: string): number {
-  if (!start || !end) return 0;
-  const ms = new Date(end).getTime() - new Date(start).getTime();
-  if (isNaN(ms) || ms < 0) return 0;
-  return Math.round(ms / 8.64e7) + 1;
-}
 
 /** Âge en années à une date donnée (null si date de naissance absente). */
 function ageAt(birth_date: string | undefined, at: Date): number | null {
@@ -302,10 +295,25 @@ function LeaveForm({
   const [f, setF] = useState<Leave>(initial);
   const set = (patch: Partial<Leave>) => setF((prev) => ({ ...prev, ...patch }));
 
-  // Dates : recalcule automatiquement le nombre de jours (calendaires, bornes incluses) — l'utilisateur
-  // peut ensuite l'ajuster (les congés payés se comptent en jours ouvrables).
-  const setStart = (start_date: string) => setF((p) => ({ ...p, start_date, days: inclusiveDays(start_date, p.end_date) }));
-  const setEnd = (end_date: string) => setF((p) => ({ ...p, end_date, days: inclusiveDays(p.start_date, end_date) }));
+  // Jour(s) de repos hebdomadaire pour le décompte : dimanche par défaut (jours ouvrables, cohérent
+  // avec l'acquisition art. 231), ou samedi + dimanche.
+  const [restDays, setRestDays] = useState<number[]>([0]);
+
+  // Dates : recalcule le nombre de jours DÉCOMPTÉS (jours ouvrables : week-end/repos et jours fériés
+  // fixes exclus). L'utilisateur peut ensuite ajuster (fêtes religieuses variables, cas particulier).
+  const setStart = (start_date: string) =>
+    setF((p) => ({ ...p, start_date, days: countLeaveDays(start_date, p.end_date, { restDays }).working }));
+  const setEnd = (end_date: string) =>
+    setF((p) => ({ ...p, end_date, days: countLeaveDays(p.start_date, end_date, { restDays }).working }));
+  const changeRest = (rd: number[]) => {
+    setRestDays(rd);
+    setF((p) => ({ ...p, days: countLeaveDays(p.start_date, p.end_date, { restDays: rd }).working }));
+  };
+
+  const count = useMemo(
+    () => countLeaveDays(f.start_date, f.end_date, { restDays }),
+    [f.start_date, f.end_date, restDays],
+  );
 
   const datesValid = !!f.start_date && !!f.end_date && new Date(f.end_date) >= new Date(f.start_date);
   const canSave = !!f.employee_id && datesValid && f.days > 0;
@@ -355,6 +363,13 @@ function LeaveForm({
           </div>
           {!datesValid && <p className="-mt-1 text-xs text-destructive">{t("lv.f.dateError")}</p>}
 
+          <Field label={t("lv.f.restDays")}>
+            <Select value={restDays.join(",")} onChange={(e) => changeRest(e.target.value.split(",").map(Number))}>
+              <option value="0">{t("lv.rest.sun")}</option>
+              <option value="6,0">{t("lv.rest.satsun")}</option>
+            </Select>
+          </Field>
+
           <Field label={t("lv.f.days")}>
             <Input
               type="number"
@@ -364,7 +379,24 @@ function LeaveForm({
               onChange={(e) => set({ days: Math.max(0, +e.target.value) })}
             />
           </Field>
-          <p className="-mt-2 text-xs text-muted-foreground">{t("lv.f.daysHint")}</p>
+
+          {datesValid && (
+            <div className="-mt-2 rounded-md border bg-muted/30 p-2.5 text-xs">
+              <p className="text-muted-foreground">
+                <span className="font-medium text-foreground">{count.calendar}</span> {t("lv.dc.cal")}
+                {" − "}<span className="font-medium text-foreground">{count.rest}</span> {t("lv.dc.rest")}
+                {" − "}<span className="font-medium text-foreground">{count.holidays}</span> {t("lv.dc.hol")}
+                {" = "}<span className="font-semibold text-foreground">{count.working}</span> {t("lv.dc.work")}
+                {f.days !== count.working && <span className="text-warning"> · saisi : {f.days}</span>}
+              </p>
+              {count.holidayList.length > 0 && (
+                <p className="mt-1 text-muted-foreground">
+                  {count.holidayList.map((h) => `${dateFr(h.date)} — ${h.name}`).join(" · ")}
+                </p>
+              )}
+            </div>
+          )}
+          <p className="-mt-1 text-xs text-muted-foreground">{t("lv.f.daysHint")}</p>
 
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={f.cnss_ipe} onChange={(e) => set({ cnss_ipe: e.target.checked })} />

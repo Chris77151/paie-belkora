@@ -171,10 +171,22 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
     expect(buildContractDoc(contract({ model: "cdd-chef" })).ar).toBeUndefined();
   });
 
-  it("rendu PDF : titre SANS cadre + filet d'accent (gabarit Belkora), document non vide", async () => {
-    const doc = await renderLegalPdf(firm, buildContractDoc(contract()));
-    expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(1);
+  it("rendu PDF : titre SANS cadre + filet d'accent (gabarit Belkora), mise en page paginée", async () => {
+    const warnings: string[] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => { warnings.push(a.map(String).join(" ")); };
+    let doc;
+    try {
+      doc = await renderLegalPdf(firm, buildContractDoc(contract()));
+    } finally {
+      console.error = orig;
+    }
+    // Contrat complet (16 articles + RGPD détaillé) → plusieurs pages, paginées proprement.
+    expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(3);
     expect(doc.output().length).toBeGreaterThan(1000);
+    // A4 portrait ; aucun débordement de tableau (décompte STC éventuel).
+    expect(doc.internal.pageSize.getWidth()).toBeLessThan(doc.internal.pageSize.getHeight());
+    expect(warnings.join(" ")).not.toContain("could not fit");
   });
 
   it("rendu HTML : plus de cadre de titre, un filet d'accent le remplace", () => {
