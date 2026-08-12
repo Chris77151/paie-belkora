@@ -615,8 +615,13 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
   const [issueCity, setIssueCity] = useState<string>("");
   const [signatoryName, setSignatoryName] = useState<string>("");
   const [signatoryRole, setSignatoryRole] = useState<string>("");
+  // Variantes du contrat pour travail déterminé (ouvrier).
+  const [priorEmployee, setPriorEmployee] = useState<boolean>(false);
+  const [housing, setHousing] = useState<boolean>(false);
+  const [dailyBasket, setDailyBasket] = useState<string>("27");
 
   const customProject = projectKey === "custom";
+  const isOuvrier = model === "travail-determine";
 
   const view: RhContractView = {
     firm,
@@ -637,6 +642,9 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
     startDate: startDate || undefined,
     endDate: endDate || undefined,
     dailyWage: dailyWage || undefined,
+    priorEmployee: isOuvrier ? priorEmployee : undefined,
+    housing: isOuvrier ? housing : undefined,
+    dailyBasket: isOuvrier ? dailyBasket : undefined,
     issueDate,
     issueCity: issueCity || undefined,
     signatoryName: signatoryName || undefined,
@@ -694,6 +702,26 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
                 <Input value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} placeholder="TPI de …, section sociale" />
               </Field>
             </>
+          )}
+
+          {isOuvrier && (
+            <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+              <p className="text-xs font-medium text-muted-foreground">Variantes du contrat ouvrier</p>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={priorEmployee} onChange={(e) => setPriorEmployee(e.target.checked)} />
+                Ancien salarié (préambule + dispense de période d'essai, art. 13-14)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={housing} onChange={(e) => setHousing(e.target.checked)} />
+                Logé en nature (chantier éloigné)
+              </label>
+              <Field label="Indemnité de panier (DH / jour)" hint="27 = exonéré · 47 = fraction 11,16 réintégrée">
+                <Select value={dailyBasket} onChange={(e) => setDailyBasket(e.target.value)}>
+                  <option value="27">27,00 (exonéré)</option>
+                  <option value="47">47,00 (11,16 réintégré)</option>
+                </Select>
+              </Field>
+            </div>
           )}
 
           <Field label="Civilité">

@@ -36,17 +36,31 @@ export const CONTRACT_MODELS: { value: ContractModel; label: string; hint: strin
   { value: "travail-determine", label: "Contrat pour travail déterminé — ouvrier", hint: "Terme = achèvement des travaux (art. 16 al.1 & 33)" },
 ];
 
-/** Projets chantier connus (préremplissent lieu d'exécution + juridiction). */
-export const CONTRACT_PROJECTS: Record<string, { label: string; location: string; jurisdiction: string }> = {
+/** Preset d'un projet chantier (préremplit lieu, juridiction, site de production, ville d'arrêté). */
+export interface ContractProject {
+  label: string;
+  location: string;
+  jurisdiction: string;
+  /** Site de production des végétaux (phase préparatoire), le cas échéant (ex. Gotion → Sidi Taibi). */
+  productionSite?: string;
+  /** Ville du « Fait à … » (siège du tribunal), sinon déduite du lieu. */
+  faitCity?: string;
+}
+
+/** Projets chantier connus (préremplissent lieu d'exécution, juridiction, site de production). */
+export const CONTRACT_PROJECTS: Record<string, ContractProject> = {
   gotion: {
-    label: "Projet Gotion",
-    location: "Sidi Yahya El Gharb (province de Kénitra)",
+    label: "Projet Gotion Power Morocco",
+    location: "l'Atlantic Free Zone, commune d'Ameur Seflia (province de Kénitra)",
     jurisdiction: "Tribunal de Première Instance de Kénitra, section sociale",
+    productionSite: "Sidi Taibi (province de Kénitra)",
+    faitCity: "Kénitra",
   },
   nador: {
     label: "Projet Nador Marchica",
     location: "Nador (province de Nador, région de l'Oriental)",
     jurisdiction: "Tribunal de Première Instance de Nador, section sociale",
+    faitCity: "Nador",
   },
 };
 
@@ -74,6 +88,12 @@ export interface RhContractView {
   endDate?: string;
   /** Salaire journalier brut (texte libre, ex. « 250,00 »). */
   dailyWage?: string;
+  /** Ancien salarié déjà connu de l'entreprise → préambule + dispense de période d'essai (art. 13-14). */
+  priorEmployee?: boolean;
+  /** Ouvrier logé en nature (chantier éloigné) → clause de logement en nature. */
+  housing?: boolean;
+  /** Indemnité de panier journalière (texte, ex. « 27 » ou « 47 »). Défaut : 27. */
+  dailyBasket?: string;
   /** Date de délivrance / « Fait à ». */
   issueDate: string;
   issueCity?: string;
@@ -91,7 +111,24 @@ function project(v: RhContractView) {
     label: v.projectLabel?.trim() || preset?.label || PH,
     location: v.location?.trim() || preset?.location || PH,
     jurisdiction: v.jurisdiction?.trim() || preset?.jurisdiction || PH,
+    productionSite: preset?.productionSite,
+    faitCity: preset?.faitCity,
   };
+}
+
+/** Plafond journalier d'exonération de l'indemnité de panier : 2 × SMIG horaire (17,92). */
+const PANIER_CAP = 35.84;
+
+/** Paragraphe « 5.2 Indemnité de panier » adapté au montant (exonéré, ou fraction réintégrée). PURE. */
+export function panierParagraph(dailyBasket?: string): string {
+  const amount = Number((dailyBasket ?? "27").trim().replace(",", ".")) || 27;
+  const shown = amount.toFixed(2).replace(".", ",");
+  const base = `5.2. Indemnité de panier. En sus du salaire de base, le Salarié perçoit une indemnité de panier (repas) de ${shown} DH par journée de travail effectif. Cette indemnité a la nature d'une indemnité représentative de frais professionnels ; `;
+  if (amount <= PANIER_CAP) {
+    return `${base}elle demeure inférieure au plafond légal d'exonération (deux fois le taux horaire du SMIG, soit 35,84 DH par jour) et est donc intégralement exonérée de cotisations sociales et d'impôt sur le revenu. Elle n'est pas due en cas d'absence ou de repas fourni par l'Employeur.`;
+  }
+  const excess = (amount - PANIER_CAP).toFixed(2).replace(".", ",");
+  return `${base}elle est exonérée de cotisations sociales et d'impôt sur le revenu dans la limite du plafond légal (deux fois le taux horaire du SMIG, soit 35,84 DH par jour), la fraction excédentaire, soit ${excess} DH par journée, étant réintégrée dans l'assiette soumise aux cotisations et à l'impôt. Elle n'est pas due en cas d'absence ou de repas fourni par l'Employeur.`;
 }
 
 export const CONTRACT_TITLE: Record<ContractModel, string> = {
@@ -118,7 +155,8 @@ function partiesBlocks(v: RhContractView): LegalBlock[] {
     { k: "h", t: "LE SALARIÉ" },
     { k: "ul", items: salarie },
     { k: "p", t: "Ci-après « le Salarié », d'autre part." },
-    { k: "center", t: "IL A ÉTÉ CONVENU CE QUI SUIT :", strong: true },
+    // « IL A ÉTÉ CONVENU » vient APRÈS le préambule pour un ancien salarié : le corps l'ajoute alors lui-même.
+    ...(v.priorEmployee ? [] : [{ k: "center" as const, t: "IL A ÉTÉ CONVENU CE QUI SUIT :", strong: true }]),
   ];
 }
 
@@ -334,74 +372,185 @@ function cddChefBlocks(v: RhContractView): LegalBlock[] {
   ];
 }
 
+/** Article 14 « Fiche de poste » — version ouvrier (missions + cadence de référence attendue). */
+const OUVRIER_ART14: LegalBlock[] = [
+  { k: "h", t: "Article 14 — Fiche de poste, note de service et obligations professionnelles" },
+  {
+    k: "p",
+    t: "Le Salarié reconnaît avoir reçu sa fiche de poste, annexée au présent contrat, qui définit ses missions et la cadence de référence attendue à conditions équivalentes. Il s'engage à exécuter son travail avec soin, diligence et loyauté sous l'autorité de l'Employeur (Art. 20 et 21 du Code du Travail), à respecter les horaires portés à sa connaissance par note de service affichée sur le chantier (Art. 24), les consignes de sécurité et le port des équipements de protection individuelle, ainsi que le règlement intérieur de l'entreprise dès sa communication (Art. 138 du Code du Travail). Une insuffisance de rendement significative, répétée et non justifiée au regard de cette cadence, comme tout manquement aux obligations ci-dessus, peut donner lieu aux sanctions disciplinaires prévues aux articles 37 et suivants du Code du Travail, dans le respect de la procédure légale.",
+  },
+];
+
+/** Article 6 bis « Interruption des travaux (fait du maître d'ouvrage) » — modèle travail déterminé. */
+const OUVRIER_ART6BIS: LegalBlock[] = [
+  { k: "h", t: "Article 6 bis — Interruption des travaux (fait du maître d'ouvrage)" },
+  {
+    k: "p",
+    t: "6bis.1. Définition. L'exécution des travaux dépend de la mise à disposition, par le maître d'ouvrage du chantier, des conditions préalables nécessaires à leur réalisation (accès au site, alimentation en eau, travaux de terrassement et de viabilisation). Constitue une interruption des travaux tout arrêt, total ou partiel, du chantier résultant du fait du maître d'ouvrage ou d'une cause étrangère à l'Employeur.",
+  },
+  {
+    k: "p",
+    t: "6bis.2. Coupure temporaire. La rémunération étant exclusivement calculée au prorata des journées effectivement travaillées (article 5.1), les journées non travaillées du fait de l'interruption ne donnent pas lieu à rémunération. Pendant toute la durée de l'interruption, le Salarié n'est pas tenu de se maintenir à la disposition de l'Employeur : il recouvre sa pleine liberté, n'est soumis à aucune obligation d'exclusivité et peut occuper tout autre emploi. Lorsque le chantier est en mesure de reprendre, l'Employeur en informe le Salarié et lui propose de reprendre son poste, sans que le Salarié soit tenu d'y déférer. À défaut de reprise dans un délai de trente (30) jours à compter de l'interruption, ou si celle-ci révèle l'abandon définitif des travaux, le contrat prend fin dans les conditions de l'article 2 et il est procédé au solde de tout compte (jours travaillés et congés).",
+  },
+  {
+    k: "p",
+    t: "6bis.3. Arrêt définitif ou force majeure. Si l'interruption traduit l'achèvement ou l'abandon définitif des travaux objet du contrat, ou résulte d'un cas de force majeure (événement extérieur, imprévisible, irrésistible et définitif), le contrat prend fin dans les conditions de l'article 2 ; l'achèvement est constaté par un procès-verbal de fin de travaux, ou, à défaut, par un accord de rupture d'un commun accord. Il est alors procédé au solde de tout compte (jours travaillés et congés), sans dommages-intérêts.",
+  },
+  { k: "p", t: "6bis.4. Les stipulations du présent article s'appliquent dans le respect des dispositions impératives du Code du Travail." },
+];
+
+/**
+ * Contrat pour travail déterminé (ouvrier) — PARAMÉTRÉ selon les variantes fournies :
+ *  - `priorEmployee` : préambule « déclarations préalables » + dispense de période d'essai (art. 13-14) ;
+ *  - `housing`       : clause de logement en nature (chantier éloigné) ;
+ *  - `dailyBasket`   : panier 27 (exonéré) ou 47 (fraction 11,16 réintégrée) ;
+ *  - projet avec `productionSite` (ex. Gotion → Sidi Taibi) : lieu d'exécution à deux sites + transport en nature.
+ */
 function travailDetermineBlocks(v: RhContractView): LegalBlock[] {
   const p = project(v);
   const wage = v.dailyWage?.trim() ? `${v.dailyWage.trim()} DH` : "sur la base du SMIG (17,92 DH de l'heure)";
-  return [
+  const poste =
+    val(v.jobTitle ?? v.employee.position) === PH
+      ? "ouvrier de chantier en aménagement paysager"
+      : val(v.jobTitle ?? v.employee.position);
+  const de = /^[aeiouhâàéèêîïôùû]/i.test(poste) ? "d'" : "de ";
+  const prod = p.productionSite; // ex. Gotion → Sidi Taibi (phase de production)
+
+  const blocks: LegalBlock[] = [];
+
+  // Préambule — salarié déjà connu de l'entreprise (dispense d'essai + absence de reprise d'ancienneté).
+  if (v.priorEmployee) {
+    blocks.push(
+      { k: "center", t: "PRÉAMBULE — DÉCLARATIONS PRÉALABLES DES PARTIES", strong: true },
+      {
+        k: "p",
+        t: "Les Parties reconnaissent que le Salarié a précédemment collaboré avec l'Employeur dans le cadre d'une relation contractuelle distincte, aujourd'hui définitivement arrivée à son terme et ayant donné lieu à un solde de tout compte. Le présent contrat constitue un contrat nouveau et autonome, conclu pour le motif qui lui est propre (Article 1) ; il ne constitue ni la prolongation, ni le renouvellement, ni la continuation du ou des contrats antérieurs, et n'emporte aucune reprise d'ancienneté, les droits nés de la relation antérieure ayant été intégralement réglés. La mention de cette collaboration antérieure a pour seul objet la transparence entre les Parties et la dispense de période d'essai prévue à l'Article 4.",
+      },
+      { k: "center", t: "IL A ÉTÉ CONVENU CE QUI SUIT :", strong: true },
+    );
+  }
+
+  blocks.push(
     { k: "h", t: "Article 1 — Motif du recours au contrat (Art. 16)" },
     {
       k: "p",
-      t: `Le présent contrat est conclu pour accomplir un travail déterminé, au sens de l'article 16, al. 1er du Code du Travail, en raison de l'accroissement temporaire d'activité (article 16, al. 2) résultant du chantier d'aménagement paysager du ${p.label}. Le chantier constitue le lieu d'exécution et son achèvement détermine le terme du contrat dans les conditions de l'article 2 ci-après.`,
+      t: prod
+        ? `Le présent contrat est conclu pour accomplir un travail déterminé, au sens de l'article 16, al. 1er du Code du Travail, à savoir la réalisation des travaux d'aménagement paysager du ${p.label}, ouvrage nettement individualisé dont l'achèvement constitue le terme du contrat dans les conditions de l'article 2 ci-après. Le chantier constitue le lieu d'exécution principal ; la phase préparatoire de production des végétaux destinés à ce projet s'exécute sur le site de production de ${prod}, dans les conditions de l'article 3.`
+        : `Le présent contrat est conclu pour accomplir un travail déterminé, au sens de l'article 16, al. 1er du Code du Travail, à savoir la réalisation des travaux d'aménagement paysager du ${p.label}, ouvrage nettement individualisé dont l'achèvement constitue le terme du contrat dans les conditions de l'article 2 ci-après. Le chantier constitue le lieu d'exécution.`,
     },
     { k: "h", t: "Article 2 — Nature, objet et durée du contrat (Art. 16 et 33)" },
     {
       k: "p",
-      t: `2.1. Nature. Le présent contrat est conclu pour accomplir un travail déterminé (article 16 al. 1er de la loi n° 65-99), en raison de l'accroissement temporaire d'activité résultant du chantier du ${p.label}.`,
+      t: `2.1. Nature du contrat. Le présent contrat est conclu pour accomplir un travail déterminé, conformément à l'article 16 (al. 1er) de la loi n° 65-99 portant Code du Travail, à savoir la réalisation d'un ouvrage déterminé : l'ensemble des travaux d'aménagement paysager du ${p.label}.`,
     },
     {
       k: "p",
-      t: "2.2. Objet. Le contrat a pour objet l'exécution par le Salarié de l'ensemble des travaux d'aménagement paysager du chantier, notamment la préparation des sols, la pose et l'installation de gazon, la plantation, l'arrosage et tous travaux connexes nécessaires à l'achèvement de l'aménagement.",
+      t: prod
+        ? `2.2. Objet. Le contrat a pour objet l'exécution par le Salarié de l'ensemble des travaux d'aménagement paysager du ${p.label}, en ce compris la phase préparatoire de production et de préparation des végétaux destinés à ce même projet (préparation, semis, repiquage, rempotage, élevage réalisés sur le site de production de ${prod}), le terrassement et la préparation des sols, la plantation et l'installation de gazon, la plantation de sujets, l'arrosage, la fertilisation, le désherbage et tous travaux connexes. Le Salarié peut être affecté à l'une quelconque de ces tâches selon les besoins du projet. L'ensemble de ces travaux constitue un ouvrage unique dont l'achèvement, constaté par procès-verbal de fin de travaux, vaut terme du présent contrat.`
+        : `2.2. Objet. Le contrat a pour objet l'exécution par le Salarié de l'ensemble des travaux d'aménagement paysager nécessaires à la réalisation du chantier, notamment : la préparation et le terrassement des sols, la plantation, l'engazonnement, l'arrosage, la fertilisation, le désherbage et tous travaux connexes. Le Salarié peut être affecté à l'une quelconque de ces tâches selon les besoins du chantier.`,
     },
     {
       k: "p",
-      t: `2.3. Prise d'effet et terme. Le contrat prend effet le ${valDate(v.startDate)}. Conformément à l'article 33 du Code du Travail, il prend fin de plein droit à l'achèvement des travaux qui en constituent l'objet, sans qu'il soit besoin de préavis. L'achèvement des travaux, qui constitue le terme du présent contrat, sera constaté par un procès-verbal de fin de travaux daté et signé.`,
+      t: `2.3. Prise d'effet et terme. Le contrat prend effet le ${valDate(v.startDate)}. Conformément à l'article 33 du Code du Travail, il prend fin de plein droit à l'achèvement des travaux qui en constituent l'objet, sans qu'il soit besoin de préavis, l'achèvement desdits travaux valant terme du contrat. L'achèvement des travaux, qui constitue le terme du présent contrat, sera constaté par un procès-verbal de fin de travaux daté et signé.`,
     },
     {
       k: "p",
-      t: "2.4. Durée minimale et estimation. Les Parties conviennent d'une durée minimale garantie de quinze (15) jours à compter de la date de prise d'effet. La durée prévisionnelle d'exécution est estimée à trente (30) jours, cette estimation étant purement indicative et non contractuelle, sans valeur de terme ; le terme effectif demeure constitué par l'achèvement des travaux.",
+      t: "2.4. Durée minimale et estimation. Les Parties conviennent d'une durée minimale garantie de quinze (15) jours à compter de la date de prise d'effet. La durée prévisionnelle d'exécution est estimée à trente (30) jours, cette estimation étant purement indicative et non contractuelle, sans valeur de terme ; le terme effectif du contrat demeure constitué par l'achèvement des travaux objet du présent contrat. L'Employeur informera le Salarié de la date prévisible d'achèvement des travaux dans un délai de prévenance raisonnable.",
+    },
+    {
+      k: "p",
+      t: "2.5. Si, après l'achèvement des travaux objet du présent contrat, la relation de travail se poursuit, le contrat sera réputé à durée indéterminée (Art. 16, al. 1er).",
     },
     { k: "h", t: "Article 3 — Poste et lieu de travail" },
     {
       k: "p",
-      t: `Le Salarié est engagé en qualité de ${val(v.jobTitle ?? v.employee.position) === PH ? "ouvrier de chantier (ouvrier paysagiste, aide-jardinier ou manœuvre)" : val(v.jobTitle ?? v.employee.position)}. Le lieu d'exécution principal est le chantier d'aménagement paysager du ${p.label}, sis à ${p.location}. Le Salarié peut être amené à se déplacer sur les différentes zones du même chantier, ou sur les autres sites de l'entreprise, selon les nécessités du chantier.`,
+      t: prod
+        ? `Le Salarié est engagé en qualité ${de}${poste}. Le lieu d'exécution du présent contrat comprend : (a) le chantier d'aménagement paysager du ${p.label}, sis à ${p.location}, lieu d'exécution principal ; (b) le site de production de ${prod}, pour la seule phase préparatoire de production et de préparation des végétaux destinés au projet. Ce site est mis à la disposition de l'Employeur en vertu d'une convention conclue avec l'exploitant du site. Le Salarié y demeure à tout moment sous l'autorité et la subordination exclusives de l'Employeur, dont il reçoit seul ses instructions, et n'est ni intégré à l'organisation ni placé sous la direction de l'exploitant du site. Le Salarié peut être amené à se déplacer entre les différentes zones du chantier. En cas de nécessité, il peut être affecté temporairement à un autre chantier de l'Employeur.`
+        : `Le Salarié est engagé en qualité ${de}${poste}. Le lieu d'exécution principal est le chantier désigné à l'article 1, soit le chantier d'aménagement paysager du ${p.label}, sis à ${p.location}. Le Salarié peut être amené à se déplacer entre les différentes zones du même chantier. En cas de nécessité, il peut être affecté temporairement à un autre chantier de l'Employeur.`,
     },
-    { k: "h", t: "Article 4 — Période d'essai (Art. 14)" },
-    {
+  );
+
+  if (v.housing) {
+    blocks.push({
       k: "p",
-      t: "La durée du contrat étant inférieure à six (6) mois, la période d'essai est fixée à un (1) jour par semaine de travail effectif, dans la limite de deux (2) semaines (article 14 du Code du Travail).",
-    },
+      t: "Logement en nature. Le Salarié ne résidant pas dans la région du chantier, il est logé en nature par l'Employeur, sur le site ou à proximité immédiate, pour la seule durée du chantier. Ce logement est imposé par l'éloignement du chantier et fourni dans le seul intérêt du service ; il ne constitue ni un avantage en nature ni un complément de salaire et ne peut donner lieu à aucune contrepartie en espèces. Le transport nécessaire au déplacement est également assuré en nature par l'Employeur.",
+    });
+  }
+
+  if (v.priorEmployee) {
+    blocks.push(
+      { k: "h", t: "Article 4 — Dispense de période d'essai (Art. 13 et 14)" },
+      {
+        k: "p",
+        t: "La période d'essai a pour objet de permettre à chacune des Parties d'apprécier les aptitudes professionnelles du Salarié et l'adéquation au poste (Art. 13 du Code du Travail). Le Salarié ayant déjà occupé le même emploi, auprès du même Employeur, dans le cadre de la relation antérieure visée au préambule, ses aptitudes professionnelles sont d'ores et déjà connues et appréciées. Une période d'essai destinée à apprécier des aptitudes déjà éprouvées serait dépourvue d'objet. En conséquence, et faisant usage de la faculté ouverte par l'article 14 (dernier alinéa) du Code du Travail — qui autorise la stipulation de périodes d'essai inférieures aux durées maximales légales —, les Parties conviennent expressément qu'aucune période d'essai ne s'applique au présent contrat. Le Salarié est réputé définitivement engagé dès le premier jour d'exécution du présent contrat.",
+      },
+    );
+  } else {
+    blocks.push(
+      { k: "h", t: "Article 4 — Période d'essai (Art. 14)" },
+      {
+        k: "p",
+        t: "Conformément à l'article 14 du Code du Travail, la durée du contrat étant inférieure à six (6) mois, la période d'essai est fixée à un (1) jour par semaine de travail effectif, dans la limite de deux (2) semaines, soit pour le présent contrat quatre (4) jours (1 jour par semaine de travail, dans la limite légale de 2 semaines).",
+      },
+    );
+  }
+
+  blocks.push(
     { k: "h", t: "Article 5 — Rémunération et modalités de paiement" },
     {
       k: "p",
-      t: `5.1. Salaire de base. Le Salarié perçoit un salaire journalier brut de ${wage}, calculé au prorata des heures (ou journées) effectivement travaillées, ne pouvant être inférieur au SMIG (art. 356) — salaire de référence 3 422,72 DH pour 191 heures.`,
+      t: `5.1. Salaire de base. Le Salarié perçoit un salaire de base de ${wage}, correspondant à un salaire de base mensuel de référence de 3 422,72 DH pour cent quatre-vingt-onze (191) heures de travail effectif (Art. 356), calculé au prorata des heures (ou journées) effectivement travaillées.`,
+    },
+    { k: "p", t: panierParagraph(v.dailyBasket) },
+  );
+  if (prod) {
+    blocks.push({
+      k: "p",
+      t: `5.3. Transport assuré en nature. Le transport du Salarié entre son domicile et les différents lieux d'exécution est assuré en nature par l'Employeur ; aucune indemnité de transport n'est due à ce titre. Il couvre l'acheminement vers le site de production de ${prod} pour la phase préparatoire de production des végétaux destinés au projet, ainsi que la récupération des fournitures et produits nécessaires au chantier.`,
+    });
+  }
+  blocks.push(
+    {
+      k: "p",
+      t: `${prod ? "5.4" : "5.3"}. Charges sociales et fiscales. Le salaire de base et, le cas échéant, la fraction des indemnités excédant les plafonds légaux, sont soumis aux cotisations sociales légales (CNSS, AMO) et à la retenue au titre de l'impôt sur le revenu (IR), sur la base du salaire réel (Dahir 1-72-184 et circulaires CNSS).`,
     },
     {
       k: "p",
-      t: "5.2. Indemnités représentatives de frais professionnels. En sus du salaire de base, le Salarié perçoit, dans la limite des plafonds légaux exonérés de cotisations et d'IR : une indemnité de transport interurbain (28,82 DH par journée, plafond 750 DH/mois), une indemnité de panier (35,00 DH par journée), et une indemnité de salissure (74,00 DH par mois). Toute fraction excédant les plafonds est réintégrée dans l'assiette soumise.",
-    },
-    {
-      k: "p",
-      t: "5.3. Charges et paiement. Le salaire de base et la fraction des indemnités excédant les plafonds sont soumis aux cotisations CNSS/AMO et à l'IR sur la base du salaire réel. La rémunération est versée par quinzaine, par virement bancaire ou, à défaut de RIB, en espèces contre reçu signé. Un bulletin de paie conforme à l'article 370 est remis à chaque paiement.",
+      t: `${prod ? "5.5" : "5.4"}. Modalités de paiement. La rémunération est versée par quinzaine, par virement bancaire sur le compte du Salarié ou, à défaut de RIB, en espèces contre reçu signé par le Salarié et émargement du livre de paie. Un bulletin de paie conforme à l'article 370 du Code du Travail, détaillant le salaire de base, chaque indemnité, les cotisations et retenues, est remis à chaque paiement.`,
     },
     { k: "h", t: "Article 6 — Durée du travail (Art. 184)" },
     {
       k: "p",
-      t: "La durée du travail est de 44 heures hebdomadaires. Toute heure supplémentaire fait l'objet d'une autorisation écrite préalable et est rémunérée selon les majorations légales (Art. 196-202). Le Salarié bénéficie d'un repos hebdomadaire d'au moins vingt-quatre (24) heures (Art. 205).",
+      t: "La durée du travail est de 44 heures hebdomadaires. Les horaires de travail sont fixés par l'Employeur et communiqués au Salarié par écrit, au moyen d'une note de service affichée sur le chantier et remise contre décharge (Art. 24 du Code du Travail). Toute heure supplémentaire effectuée fait l'objet d'une autorisation écrite préalable et est rémunérée selon les majorations légales (Art. 196-202 du Code du Travail). Le Salarié bénéficie d'un repos hebdomadaire d'au moins vingt-quatre (24) heures, conformément à l'article 205 du Code du Travail.",
     },
-    ...commonTailBlocks(v, REGLEMENT_INTERIEUR_ART14),
-  ];
+    ...OUVRIER_ART6BIS,
+    ...commonTailBlocks(v, OUVRIER_ART14),
+  );
+
+  return blocks;
 }
 
 /* ------------------------------------------------------------------ assemblage du document ------------------------------------------------------------------ */
 export function buildContractDoc(v: RhContractView): LegalDoc {
   const p = project(v);
   const body = v.model === "cdd-chef" ? cddChefBlocks(v) : travailDetermineBlocks(v);
-  const subheading =
-    v.model === "cdd-chef"
-      ? `Accroissement temporaire d'activité — renfort de chantier · ${p.label} — Paysagiste chef de projet`
-      : `Accroissement temporaire d'activité — renfort de chantier · ${p.label} — Ouvrier`;
+  let subheading: string;
+  if (v.model === "cdd-chef") {
+    subheading = `Accroissement temporaire d'activité — renfort de chantier · ${p.label} — Paysagiste chef de projet`;
+  } else {
+    const status = v.priorEmployee
+      ? "Salarié déjà connu de l'entreprise — dispense de période d'essai"
+      : "Renfort de chantier — ouvrage déterminé";
+    const worker = v.housing ? "Ouvrier logé sur place (éloigné)" : "Ouvrier";
+    subheading = `${status} · ${p.label} — ${worker}`;
+  }
 
-  const faitCity = v.issueCity?.trim() || (p.location !== PH ? p.location.split("(")[0].trim() : v.firm.city) || PH;
+  // « Fait à » : ville d'arrêté du preset (siège du tribunal), sinon ville déduite du lieu, sinon siège société.
+  const faitCity =
+    v.issueCity?.trim() ||
+    p.faitCity ||
+    (p.location !== PH ? p.location.replace(/^l'/, "").split(",")[0].split("(")[0].trim() : v.firm.city) ||
+    PH;
 
   return {
     fileTitle: `${CONTRACT_TITLE[v.model]} — ${fullName(v.employee)}`,

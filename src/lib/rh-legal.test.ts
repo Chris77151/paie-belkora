@@ -106,7 +106,7 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
     expect(t).toContain("article 16, al. 2");
     expect(t).toContain("douze (12) mois");
     expect(t).toContain("MIYA BELKORA DESIGN SARL");
-    expect(t).toContain("Sidi Yahya El Gharb");
+    expect(t).toContain("Ameur Seflia"); // preset Gotion actualisé
   });
 
   it("travail déterminé : terme = achèvement des travaux (art. 33), PV de fin", () => {
@@ -145,9 +145,10 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
     expect(d.legalNote).toContain("Art. 15 Code du Travail");
   });
 
-  it("travail déterminé — conserve l'article 14 « Règlement intérieur » et bénéficie du tronc commun actualisé", () => {
+  it("travail déterminé — article 14 « Fiche de poste » (ouvrier) + tronc commun actualisé", () => {
     const t = text(buildContractDoc(contract({ model: "travail-determine" })).blocks);
-    expect(t).toContain("Article 14 — Règlement intérieur");
+    expect(t).toContain("Article 14 — Fiche de poste, note de service et obligations professionnelles");
+    expect(t).toContain("cadence de référence"); // version ouvrier
     expect(t).toContain("(Art. 231 du Code du Travail)"); // tronc commun actualisé
     expect(t).toContain("11.9. Violation de données");
     expect(t).not.toContain("missions d'encadrement"); // pas l'art. 14 du chef
@@ -169,6 +170,47 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
 
   it("CDD chef — pas de version arabe (non fournie)", () => {
     expect(buildContractDoc(contract({ model: "cdd-chef" })).ar).toBeUndefined();
+  });
+
+  it("ouvrier — ancien salarié : préambule + dispense d'essai (pas de période d'essai)", () => {
+    const t = text(buildContractDoc(contract({ model: "travail-determine", priorEmployee: true })).blocks);
+    expect(t).toContain("PRÉAMBULE — DÉCLARATIONS PRÉALABLES DES PARTIES");
+    expect(t).toContain("Dispense de période d'essai");
+    expect(t).not.toContain("Article 4 — Période d'essai");
+  });
+
+  it("ouvrier — nouvel embauché : période d'essai (pas de préambule)", () => {
+    const t = text(buildContractDoc(contract({ model: "travail-determine", priorEmployee: false })).blocks);
+    expect(t).toContain("Article 4 — Période d'essai");
+    expect(t).not.toContain("PRÉAMBULE");
+  });
+
+  it("ouvrier — logement en nature (chantier éloigné)", () => {
+    const t = text(buildContractDoc(contract({ model: "travail-determine", housing: true })).blocks);
+    expect(t).toContain("Logement en nature");
+    expect(t).toContain("ni un avantage en nature ni un complément de salaire");
+  });
+
+  it("ouvrier — panier 47 réintègre 11,16 ; panier 27 (défaut) intégralement exonéré", () => {
+    const t47 = text(buildContractDoc(contract({ model: "travail-determine", dailyBasket: "47" })).blocks);
+    expect(t47).toContain("47,00 DH");
+    expect(t47).toContain("11,16 DH par journée, étant réintégrée");
+    const t27 = text(buildContractDoc(contract({ model: "travail-determine" })).blocks);
+    expect(t27).toContain("27,00 DH");
+    expect(t27).toContain("intégralement exonérée");
+  });
+
+  it("ouvrier — projet Gotion : site de production Sidi Taibi + transport en nature ; art. 2.5 et 6 bis", () => {
+    const t = text(buildContractDoc(contract({ model: "travail-determine", projectKey: "gotion" })).blocks);
+    expect(t).toContain("Sidi Taibi");
+    expect(t).toContain("Transport assuré en nature");
+    expect(t).toContain("réputé à durée indéterminée"); // art. 2.5
+    expect(t).toContain("Article 6 bis — Interruption des travaux");
+  });
+
+  it("ouvrier — « Fait à » = ville du preset (Nador / Kénitra)", () => {
+    expect(buildContractDoc(contract({ model: "travail-determine", projectKey: "nador" })).faitA).toContain("Nador");
+    expect(buildContractDoc(contract({ model: "travail-determine", projectKey: "gotion" })).faitA).toContain("Kénitra");
   });
 
   it("rendu PDF : titre SANS cadre + filet d'accent (gabarit Belkora), mise en page paginée", async () => {
