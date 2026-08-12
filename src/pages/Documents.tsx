@@ -50,6 +50,7 @@ import {
   CONTRACT_MODELS,
   CONTRACT_PROJECTS,
   buildContractDoc,
+  contractHasArabic,
   contractMissingFields,
   contractPrefilled,
   exportContractPdf,
@@ -771,11 +772,16 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
           </div>
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "contrat", "html", employee); openContractHtml(view); }}>
-              <Printer size={16} /> HTML
+            <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "contrat", "html", employee); openContractHtml(view, "fr"); }}>
+              <Printer size={16} /> HTML (FR)
             </Button>
+            {contractHasArabic(model) && (
+              <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "contrat", "html", employee); openContractHtml(view, "ar"); }}>
+                <Printer size={16} /> عربي (HTML)
+              </Button>
+            )}
             <Button className="flex-1" onClick={() => { trackRhDoc(firm, "contrat", "pdf", employee); exportContractPdf(view); }}>
-              <FileDown size={16} /> PDF
+              <FileDown size={16} /> PDF (FR)
             </Button>
             <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "contrat", "apercu", employee); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")}

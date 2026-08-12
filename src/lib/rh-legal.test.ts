@@ -153,6 +153,24 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
     expect(t).not.toContain("missions d'encadrement"); // pas l'art. 14 du chef
   });
 
+  it("travail déterminé — version arabe (RTL) attachée, transcrite du contrat bilingue", () => {
+    const d = buildContractDoc(contract({ model: "travail-determine", projectKey: "gotion" }));
+    expect(d.ar).toBeDefined();
+    const ar = d.ar!;
+    expect(ar.heading).toBe("عقد عمل لإنجاز شغل معيّن");
+    const at = text(ar.blocks);
+    expect(at).toContain("المشغّل"); // l'employeur
+    expect(at).toContain("الأجير"); // le salarié
+    expect(at).toContain("المادة 33"); // achèvement des travaux (art. 33)
+    expect(at).toContain("المادة 6 مكرر"); // arrêt des travaux (article 6 bis)
+    expect(at).toContain("تكون العبرة بالنسخة العربية"); // la version arabe prévaut
+    expect(at).toContain(PH); // zéro invention : données absentes → pointillés
+  });
+
+  it("CDD chef — pas de version arabe (non fournie)", () => {
+    expect(buildContractDoc(contract({ model: "cdd-chef" })).ar).toBeUndefined();
+  });
+
   it("zéro invention : dates et salaire absents → placeholder", () => {
     const t = text(buildContractDoc(contract()).blocks);
     expect(t).toContain(PH); // date début/fin/salaire non fournis
