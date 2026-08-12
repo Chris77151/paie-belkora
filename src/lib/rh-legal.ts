@@ -28,7 +28,8 @@ import {
   M,
   W,
   afterTable,
-  drawTitleBox,
+  drawTitleText,
+  drawAccentBar,
   drawFullHeader,
   ensure as ensureSpace,
   drawWordLine,
@@ -291,16 +292,18 @@ export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
     ctx.y += 2;
   }
 
-  // Titre du document, dans son cadre
-  ensure(ctx, 30);
-  ctx.y = drawTitleBox(doc, pal, d.heading, ctx.y + 5);
+  // Titre du document — gabarit officiel Belkora : capitales espacées en VERT de marque, SANS
+  // cadre, sous-titre gris, puis un FILET D'ACCENT (vert médian) qui souligne l'ensemble.
+  ensure(ctx, 36);
+  ctx.y = drawTitleText(doc, pal, d.heading, ctx.y + 5);
   if (d.subheading) {
-    ctx.y += 6;
+    ctx.y += 5;
     doc.setFont(FONT, "italic").setFontSize(FS.note).setTextColor(...MUTED);
     const sub = doc.splitTextToSize(asciiSpaces(d.subheading), CW) as string[];
     doc.text(sub, W / 2, ctx.y, { align: "center", lineHeightFactor: 1.25 });
     ctx.y += sub.length * lineHeight(FS.note);
   }
+  ctx.y = drawAccentBar(doc, pal, ctx.y + 5);
   ctx.y += 12;
 
   // Corps
@@ -471,10 +474,12 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
  .rh{text-align:right;font-size:13px;margin-top:16px}
  .meta{font-size:13px;margin-top:10px;line-height:1.6}
  .meta b{color:var(--ink)}
- h1.title{margin:0;text-align:center;color:var(--vf);font-size:20px;font-weight:700;letter-spacing:.09em}
- .titlebox{border:1px solid var(--vf);padding:12px 34px;margin:34px auto 0;width:max-content;max-width:100%}
+ /* Titre du gabarit Belkora : vert de marque, capitales espacées, SANS cadre. */
+ h1.title{margin:32px 0 0;text-align:center;color:var(--vf);font-size:26px;font-weight:700;letter-spacing:.09em;line-height:1.15}
  .sub{text-align:center;color:var(--muted);font-size:12px;font-style:italic;margin:8px auto 0}
- .divider{height:26px}
+ /* Filet d'accent vert médian qui souligne le titre / sous-titre, à la place d'un cadre. */
+ .accentbar{height:3px;width:120px;background:var(--olive);margin:14px auto 0;border-radius:2px}
+ .divider{height:22px}
  h2{color:var(--vf);font-size:14px;margin:20px 0 6px}
  p{font-size:13.5px;line-height:1.75;text-align:justify;margin:0 0 12px}
  p.ctr{text-align:center}p.strong{font-weight:700}
@@ -512,8 +517,9 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
  </div>
  ${!rtl && d.rightHeader ? `<div class="rh">${esc(d.rightHeader)}</div>` : ""}
  ${meta}
- <div class="titlebox"><h1 class="title">${esc(c.heading.toUpperCase())}</h1></div>
+ <h1 class="title">${esc(c.heading.toUpperCase())}</h1>
  ${c.subheading ? `<p class="sub">${esc(c.subheading)}</p>` : ""}
+ <div class="accentbar"></div>
  <div class="divider"></div>
  ${parts.join("\n ")}
  ${c.faitA ? `<div class="faitA">${esc(c.faitA)}</div>` : ""}

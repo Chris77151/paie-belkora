@@ -391,21 +391,51 @@ export function drawRunningHeader(doc: jsPDF, firm: Firm, pal: PayslipPalette): 
  * Titre du document dans son cadre : encadré fin à la couleur de marque, texte en capitales
  * espacées. Retourne l'ordonnée sous le cadre.
  */
-export function drawTitleBox(doc: jsPDF, pal: PayslipPalette, title: string, y: number): number {
+export function drawTitleText(
+  doc: jsPDF,
+  pal: PayslipPalette,
+  title: string,
+  y: number,
+  size = 21,
+): number {
   const pw = doc.internal.pageSize.getWidth();
-  const t = asciiSpaces(title.toUpperCase());
-  const CHAR = 0.6; // interlettrage (mm) — le titre respire sans se disloquer
-  doc.setFont(FONT, "bold").setFontSize(FS.title);
-  const tw = doc.getTextWidth(t) + CHAR * Math.max(0, t.length - 1);
-  // Cadre plafonné à la largeur de composition RÉELLE de la page : en paysage (registre), le
-  // plafond portrait (166 mm) tronquait un titre long, dont la fin débordait hors du cadre.
-  const boxW = Math.min(pw - 2 * M, tw + 34);
-  const boxH = 14;
-  const x = (pw - boxW) / 2;
-  doc.setDrawColor(...pal.deep).setLineWidth(0.5).rect(x, y, boxW, boxH);
-  doc.setTextColor(...pal.deep);
-  doc.text(t, pw / 2, y + boxH / 2 + 1.9, { align: "center", charSpace: CHAR });
-  return y + boxH;
+  const CHAR = 0.8; // interlettrage (mm) — capitales espacées du gabarit
+  doc.setFont(FONT, "bold").setFontSize(size).setTextColor(...pal.deep);
+  const lines = doc.splitTextToSize(asciiSpaces(title.toUpperCase()), pw - 2 * M) as string[];
+  const lh = lineHeight(size, 1.12);
+  let yy = y + lh;
+  for (const line of lines) {
+    doc.text(line, pw / 2, yy, { align: "center", charSpace: CHAR });
+    yy += lh;
+  }
+  return yy - lh + lineHeight(size, 0.32);
+}
+
+/**
+ * Filet d'accent centré à la couleur de marque (vert médian) — SOULIGNE le titre / sous-titre à la
+ * place d'un cadre, exactement comme le gabarit officiel Belkora. Retourne l'ordonnée sous le filet.
+ */
+export function drawAccentBar(
+  doc: jsPDF,
+  pal: PayslipPalette,
+  y: number,
+  width = 46,
+  thick = 1.6,
+): number {
+  const pw = doc.internal.pageSize.getWidth();
+  doc.setFillColor(...pal.olive);
+  doc.rect((pw - width) / 2, y, width, thick, "F");
+  return y + thick;
+}
+
+/**
+ * Titre du document + filet d'accent (documents tabulaires : écritures, registre, bordereau, livre
+ * de paie). Le titre N'EST PLUS ENCADRÉ : capitales espacées en vert de marque, soulignées d'un
+ * filet d'accent — conforme au gabarit de référence. Signature historique conservée.
+ */
+export function drawTitleBox(doc: jsPDF, pal: PayslipPalette, title: string, y: number): number {
+  const y2 = drawTitleText(doc, pal, title, y);
+  return drawAccentBar(doc, pal, y2 + 3);
 }
 
 /**

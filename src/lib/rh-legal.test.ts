@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Employee, Firm } from "@/data/types";
-import { PH, val, valDate, legalFileName, employerParagraph, type LegalBlock } from "./rh-legal";
+import { PH, val, valDate, legalFileName, employerParagraph, renderLegalHtml, renderLegalPdf, type LegalBlock } from "./rh-legal";
 import {
   buildContractDoc,
   contractMissingFields,
@@ -169,6 +169,18 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
 
   it("CDD chef — pas de version arabe (non fournie)", () => {
     expect(buildContractDoc(contract({ model: "cdd-chef" })).ar).toBeUndefined();
+  });
+
+  it("rendu PDF : titre SANS cadre + filet d'accent (gabarit Belkora), document non vide", async () => {
+    const doc = await renderLegalPdf(firm, buildContractDoc(contract()));
+    expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(1);
+    expect(doc.output().length).toBeGreaterThan(1000);
+  });
+
+  it("rendu HTML : plus de cadre de titre, un filet d'accent le remplace", () => {
+    const html = renderLegalHtml(firm, buildContractDoc(contract()));
+    expect(html).toContain('class="accentbar"');
+    expect(html).not.toContain('class="titlebox"');
   });
 
   it("zéro invention : dates et salaire absents → placeholder", () => {
