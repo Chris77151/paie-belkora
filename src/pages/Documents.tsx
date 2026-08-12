@@ -622,6 +622,7 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
 
   const customProject = projectKey === "custom";
   const isOuvrier = model === "travail-determine";
+  const usesBasket = model === "travail-determine" || model === "cdd-cdi";
 
   const view: RhContractView = {
     firm,
@@ -644,7 +645,7 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
     dailyWage: dailyWage || undefined,
     priorEmployee: isOuvrier ? priorEmployee : undefined,
     housing: isOuvrier ? housing : undefined,
-    dailyBasket: isOuvrier ? dailyBasket : undefined,
+    dailyBasket: usesBasket ? dailyBasket : undefined,
     issueDate,
     issueCity: issueCity || undefined,
     signatoryName: signatoryName || undefined,
@@ -704,17 +705,23 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
             </>
           )}
 
-          {isOuvrier && (
+          {usesBasket && (
             <div className="space-y-3 rounded-md border bg-muted/20 p-3">
-              <p className="text-xs font-medium text-muted-foreground">Variantes du contrat ouvrier</p>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={priorEmployee} onChange={(e) => setPriorEmployee(e.target.checked)} />
-                Ancien salarié (préambule + dispense de période d'essai, art. 13-14)
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={housing} onChange={(e) => setHousing(e.target.checked)} />
-                Logé en nature (chantier éloigné)
-              </label>
+              <p className="text-xs font-medium text-muted-foreground">
+                {isOuvrier ? "Variantes du contrat ouvrier" : "Options du contrat"}
+              </p>
+              {isOuvrier && (
+                <>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={priorEmployee} onChange={(e) => setPriorEmployee(e.target.checked)} />
+                    Ancien salarié (préambule + dispense de période d'essai, art. 13-14)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={housing} onChange={(e) => setHousing(e.target.checked)} />
+                    Logé en nature (chantier éloigné)
+                  </label>
+                </>
+              )}
               <Field label="Indemnité de panier (DH / jour)" hint="27 = exonéré · 47 = fraction 11,16 réintégrée">
                 <Select value={dailyBasket} onChange={(e) => setDailyBasket(e.target.value)}>
                   <option value="27">27,00 (exonéré)</option>

@@ -213,6 +213,36 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
     expect(buildContractDoc(contract({ model: "travail-determine", projectKey: "gotion" })).faitA).toContain("Kénitra");
   });
 
+  it("CDD→CDI : titre CDD, renouvellement + évolution CDI + plafond 2 ans (art. 2)", () => {
+    const d = buildContractDoc(contract({ model: "cdd-cdi" }));
+    expect(d.heading).toBe("CONTRAT À DURÉE DÉTERMINÉE");
+    const t = text(d.blocks);
+    expect(t).toContain("2.2. Renouvellement");
+    expect(t).toContain("2.3. Évolution vers un CDI");
+    expect(t).toContain("n'excédera pas deux (2) ans"); // plafond 2.4
+    expect(t).toContain("réputé à durée indéterminée");
+  });
+
+  it("CDD→CDI : art. 6 bis interruption d'un chantier — réaffectation + chômage technique art. 185", () => {
+    const t = text(buildContractDoc(contract({ model: "cdd-cdi" })).blocks);
+    expect(t).toContain("Article 6 bis — Interruption d'un chantier");
+    expect(t).toContain("réaffecte à un autre site ou chantier");
+    expect(t).toContain("chômage technique (article 185");
+    expect(t).toContain("50 % du salaire");
+  });
+
+  it("CDD→CDI : poste polyvalent multi-sites incluant le site de production ; panier paramétrable", () => {
+    const t = text(buildContractDoc(contract({ model: "cdd-cdi", projectKey: "gotion", dailyBasket: "47" })).blocks);
+    expect(t).toContain("Sidi Taibi");
+    expect(t).toContain("nature polyvalente de son emploi");
+    expect(t).toContain("11,16 DH par journée, étant réintégrée");
+  });
+
+  it("CDD→CDI : « Date de fin » est un champ requis", () => {
+    expect(contractMissingFields(contract({ model: "cdd-cdi", endDate: "" }))).toContain("Date de fin");
+    expect(contractMissingFields(contract({ model: "cdd-cdi", endDate: "2026-12-31" }))).not.toContain("Date de fin");
+  });
+
   it("rendu PDF : titre SANS cadre + filet d'accent (gabarit Belkora), mise en page paginée", async () => {
     const warnings: string[] = [];
     const orig = console.error;

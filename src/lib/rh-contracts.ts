@@ -27,13 +27,14 @@ import {
 import { dateFr } from "./format";
 import { buildTravailDetermineAr } from "./rh-contracts-ar";
 
-export type ContractModel = "cdd-chef" | "travail-determine";
+export type ContractModel = "cdd-chef" | "travail-determine" | "cdd-cdi";
 /** Civilité — définition unique dans `rh-legal.ts`, ré-exportée pour les pages. */
 export type { Civility };
 
 export const CONTRACT_MODELS: { value: ContractModel; label: string; hint: string }[] = [
   { value: "cdd-chef", label: "CDD chantier — chef de projet", hint: "Accroissement temporaire (art. 16-17) · 3 mois" },
   { value: "travail-determine", label: "Contrat pour travail déterminé — ouvrier", hint: "Terme = achèvement des travaux (art. 16 al.1 & 33)" },
+  { value: "cdd-cdi", label: "CDD ouvrier — renouvelable, vocation CDI", hint: "Durée déterminée · renouvelable · évolution vers CDI (art. 16-17)" },
 ];
 
 /** Preset d'un projet chantier (préremplit lieu, juridiction, site de production, ville d'arrêté). */
@@ -134,6 +135,7 @@ export function panierParagraph(dailyBasket?: string): string {
 export const CONTRACT_TITLE: Record<ContractModel, string> = {
   "cdd-chef": "CONTRAT À DURÉE DÉTERMINÉE",
   "travail-determine": "CONTRAT POUR ACCOMPLIR UN TRAVAIL DÉTERMINÉ",
+  "cdd-cdi": "CONTRAT À DURÉE DÉTERMINÉE",
 };
 
 /* ------------------------------------------------------------------ bloc « parties » commun ------------------------------------------------------------------ */
@@ -164,18 +166,10 @@ function partiesBlocks(v: RhContractView): LegalBlock[] {
  * Article 14 « Règlement intérieur » — version conservée pour le contrat pour travail déterminé
  * (ouvrier), en l'absence d'une version FR actualisée de son article 14 spécifique.
  */
-const REGLEMENT_INTERIEUR_ART14: LegalBlock[] = [
-  { k: "h", t: "Article 14 — Règlement intérieur" },
-  {
-    k: "p",
-    t: "Le Salarié déclare avoir pris connaissance du règlement intérieur de l'entreprise (Art. 138 Code du Travail) et s'engage à en respecter les dispositions, notamment en matière d'horaires, de discipline et de sécurité.",
-  },
-];
-
 /* ------------------------------------------------------------------ articles communs (fin de contrat) ------------------------------------------------------------------
- * Articles 7 à 16 communs aux deux modèles, sauf l'article 14 qui diffère selon le poste
- * (encadrement pour le chef de projet, règlement intérieur pour l'ouvrier) : il est donc injecté
- * par chaque modèle via `article14`, inséré entre les articles 13 et 15.
+ * Articles 7 à 16 communs aux modèles CDD chef et travail déterminé, sauf l'article 14 qui diffère
+ * selon le poste (encadrement pour le chef de projet, « Fiche de poste » pour l'ouvrier) : il est donc
+ * injecté par chaque modèle via `article14`, inséré entre les articles 13 et 15.
  */
 function commonTailBlocks(v: RhContractView, article14: LegalBlock[]): LegalBlock[] {
   const p = project(v);
@@ -530,13 +524,96 @@ function travailDetermineBlocks(v: RhContractView): LegalBlock[] {
   return blocks;
 }
 
+/**
+ * CDD ouvrier RENOUVELABLE à vocation CDI (titularisation) — version condensée fournie.
+ * Distinct du travail déterminé : durée déterminée + renouvellement + évolution CDI (plafond 2 ans),
+ * poste polyvalent multi-sites, article 6 bis « interruption d'un chantier » (réaffectation / chômage
+ * technique art. 185), et un tronc d'articles 7-16 condensé.
+ */
+function cddCdiBlocks(v: RhContractView): LegalBlock[] {
+  const p = project(v);
+  const wage = v.dailyWage?.trim() ? `${v.dailyWage.trim()} DH` : "sur la base du SMIG (17,92 DH de l'heure)";
+  const prod = p.productionSite ?? "Sidi Taibi (province de Kénitra)";
+  const jur = p.jurisdiction;
+  return [
+    { k: "h", t: "Article 1 — Nature et motif du contrat (Art. 16)" },
+    {
+      k: "p",
+      t: "Le présent contrat est un contrat de travail à durée déterminée (CDD), conclu conformément à l'article 16 du Code du Travail, au titre de l'accroissement temporaire de l'activité de l'entreprise résultant du surcroît de commandes et de la montée en charge des chantiers d'aménagement paysager actuellement en cours. À l'échéance du terme, les Parties ont l'intention, sous réserve de la persistance de ce surcroît d'activité, de poursuivre leur collaboration par la conclusion d'un contrat à durée indéterminée (Art. 16).",
+    },
+    { k: "h", t: "Article 2 — Durée, prise d'effet et terme" },
+    {
+      k: "p",
+      t: `2.1. Le contrat est conclu pour une durée déterminée de ${PH} (par exemple six ou douze mois), prenant effet le ${valDate(v.startDate)} et venant à terme le ${valDate(v.endDate)}.`,
+    },
+    { k: "p", t: "2.2. Renouvellement. Le contrat peut être renouvelé par accord écrit des Parties, dans les limites légales, avant son terme." },
+    {
+      k: "p",
+      t: "2.3. Évolution vers un CDI. À l'issue du présent contrat (ou de son renouvellement), la poursuite de la relation de travail donnera lieu à la conclusion d'un contrat à durée indéterminée. À défaut de terme écrit ou en cas de poursuite au-delà du terme, le contrat est réputé à durée indéterminée (Art. 16).",
+    },
+    {
+      k: "p",
+      t: "2.4. Plafond de durée. En tout état de cause, la durée cumulée du présent contrat et de son éventuel renouvellement n'excédera pas deux (2) ans ; au-delà, la relation se poursuit exclusivement sous forme de contrat à durée indéterminée (Art. 16).",
+    },
+    { k: "h", t: "Article 3 — Poste et lieux de travail" },
+    {
+      k: "p",
+      t: `Le Salarié est engagé en qualité d'ouvrier de chantier en aménagement paysager. Compte tenu de la nature polyvalente de son emploi, il est affecté aux différents sites et chantiers de l'Employeur et peut être amené à se déplacer entre eux selon les besoins de l'activité (production horticole, plantation, engazonnement, entretien d'espaces verts). Ces sites incluent notamment le site de production de ${prod}, mis à la disposition de l'Employeur en vertu d'une convention conclue avec l'exploitant du site ; le Salarié y demeure à tout moment sous l'autorité et la subordination exclusives de l'Employeur, dont il reçoit seul ses instructions, et n'est ni intégré à l'organisation ni placé sous la direction de l'exploitant du site.`,
+    },
+    { k: "h", t: "Article 4 — Période d'essai (Art. 14)" },
+    {
+      k: "p",
+      t: `La période d'essai est fixée à ${PH} : elle ne peut dépasser une (1) journée par semaine de travail dans la limite de deux (2) semaines pour un contrat inférieur à six mois, ni un (1) mois pour un contrat d'une durée supérieure ou égale à six mois.`,
+    },
+    { k: "h", t: "Article 5 — Rémunération et modalités de paiement" },
+    {
+      k: "p",
+      t: `5.1. Salaire de base. Le Salarié perçoit un salaire de base de ${wage}, correspondant à un salaire de base mensuel de référence de 3 422,72 DH pour 191 heures (Art. 356), au prorata du travail effectif.`,
+    },
+    { k: "p", t: panierParagraph(v.dailyBasket) },
+    { k: "p", t: "5.3. Transport. Lorsque le transport n'est pas assuré en nature par l'Employeur, une indemnité de transport peut être versée dans la limite du plafond légal exonéré." },
+    { k: "p", t: "5.4. Charges. Le salaire de base et la fraction des indemnités excédant les plafonds sont soumis aux cotisations (CNSS, AMO) et à l'impôt sur le revenu (IR), sur la base du salaire réel." },
+    { k: "p", t: "5.5. Paiement. La rémunération est versée par quinzaine, par virement bancaire ou, à défaut de RIB, en espèces contre reçu signé. Un bulletin de paie (Art. 370) est remis à chaque paiement." },
+    { k: "h", t: "Article 6 — Durée du travail (Art. 184)" },
+    { k: "p", t: "La durée du travail est de 44 heures hebdomadaires. Les horaires sont fixés par l'encadrement et communiqués au Salarié. Toute heure supplémentaire fait l'objet d'une autorisation écrite préalable et est rémunérée selon les majorations légales (Art. 196-202). Le Salarié bénéficie d'un repos hebdomadaire d'au moins vingt-quatre (24) heures (Art. 205)." },
+    { k: "h", t: "Article 6 bis — Interruption d'un chantier" },
+    {
+      k: "p",
+      t: "Le présent contrat n'étant pas rattaché à un chantier unique (Article 3), l'interruption d'un chantier n'affecte pas la rémunération du Salarié : l'Employeur le réaffecte à un autre site ou chantier, la rémunération demeurant due. Lorsqu'aucune réaffectation n'est possible, l'Employeur peut recourir au chômage technique (article 185 du Code du Travail) dans les conditions légales : indemnité au moins égale à 50 % du salaire, pour une durée n'excédant pas soixante (60) jours par an, après consultation des délégués des salariés ou, à défaut de délégués élus, après information des salariés concernés et de l'agent chargé de l'inspection du travail. En cas de cessation définitive et involontaire de l'activité constitutive d'un cas de force majeure au sens des articles 268 et 269 du D.O.C., il peut être mis fin au contrat sans indemnité ; hors ce cas, toute rupture avant le terme ouvre droit aux dommages-intérêts de l'article 33 (salaires restant dus jusqu'au terme).",
+    },
+    { k: "h", t: "Article 7 — Couverture sociale" },
+    { k: "p", t: "Le Salarié est affilié à la CNSS (Dahir 1-72-184) et à l'AMO (Loi 65-00). Lorsqu'il n'est pas encore immatriculé, l'Employeur procède à son immatriculation et déclare les cotisations sur la base du salaire réel. Il est couvert par l'assurance accidents du travail (Loi 18-12) pendant toute la durée du contrat, trajets inclus." },
+    { k: "h", t: "Article 8 — Visite médicale d'embauche et aptitude (Art. 290 et 304-331)" },
+    { k: "p", t: "Le Salarié est soumis à une visite médicale d'embauche préalable à la prise de fonction, attestant de son aptitude au poste. L'Employeur adhère à un service médical du travail interentreprises, qui réalise cette visite et les visites périodiques, à ses frais." },
+    { k: "h", t: "Article 9 — Hygiène et sécurité — Équipements de protection" },
+    { k: "p", t: "Le Salarié porte obligatoirement les équipements de protection individuelle (EPI) fournis par l'entreprise et respecte les consignes de sécurité des sites et de l'encadrement. Le non-port des EPI constitue une faute disciplinaire. À la fin du contrat, il restitue les équipements et outillages ; toute non-restitution ou dégradation fautive engage sa responsabilité." },
+    { k: "h", t: "Article 10 — Congés payés" },
+    { k: "p", t: "Le Salarié a droit aux congés payés à raison d'un jour et demi (1,5) par mois de travail (Art. 231). À la fin du contrat, les congés acquis et non pris donnent lieu à une indemnité compensatrice égale à 1/12e de la rémunération brute perçue, cette modalité étant au moins aussi favorable au Salarié (Art. 11)." },
+    { k: "h", t: "Article 11 — Protection des données personnelles (Loi n° 09-08)" },
+    { k: "p", t: `L'Employeur, ${v.firm.name.toUpperCase()}, responsable du traitement (Art. 5), traite les données du Salarié pour les seules finalités de gestion du personnel, de paie, de déclarations sociales, de médecine du travail, de sécurité et de gestion disciplinaire. Les pièces sociales sont conservées cinq (5) ans après la fin du contrat, les pièces comptables dix (10) ans. Le Salarié dispose des droits d'accès, de rectification et d'opposition (Art. 7 à 9), exercés par demande écrite. L'Employeur assure la sécurité et la confidentialité des données (Art. 23) et ne procède à aucun transfert hors du Maroc sans autorisation préalable de la CNDP (Art. 43-44).` },
+    { k: "h", t: "Article 12 — Confidentialité" },
+    { k: "p", t: "Le Salarié s'engage, pendant et après le contrat, à ne divulguer aucune information confidentielle relative à l'entreprise, à ses clients, à ses chantiers ou à ses méthodes. Toute violation peut donner lieu à des poursuites (DOC art. 77-78) et à des sanctions disciplinaires (Art. 39)." },
+    { k: "h", t: "Article 13 — Rupture anticipée (Art. 33)" },
+    { k: "p", t: "13.1. La rupture anticipée du présent CDD, en dehors de la période d'essai et hors faute grave ou force majeure, ouvre droit, au profit de la partie lésée, à des dommages-intérêts équivalents aux salaires restant dus jusqu'au terme (Art. 33, al. 2 et 3)." },
+    { k: "p", t: "13.2. En cas de faute grave dûment constatée selon la procédure des articles 62 à 65, la rupture peut intervenir sans indemnité. L'abandon de poste et les absences injustifiées constituent une faute grave." },
+    { k: "h", t: "Article 14 — Règlement intérieur" },
+    { k: "p", t: "Le Salarié déclare avoir pris connaissance du règlement intérieur (Art. 138) et s'engage à en respecter les dispositions." },
+    { k: "h", t: "Article 15 — Droit applicable et juridiction compétente" },
+    { k: "p", t: `Le présent contrat est régi par le droit marocain (Loi 65-99, Loi 09-08, DOC). Conformément à l'article 28 du Code de procédure civile, tout litige sera soumis, après tentative de conciliation, au ${jur}, section sociale.` },
+    { k: "h", t: "Article 16 — Dispositions finales" },
+    { k: "p", t: "Établi en deux (2) exemplaires originaux, dont un remis au Salarié. Conformément à l'article 15, les signatures sont légalisées par l'autorité communale. Toute modification fait l'objet d'un avenant écrit et signé." },
+  ];
+}
+
 /* ------------------------------------------------------------------ assemblage du document ------------------------------------------------------------------ */
 export function buildContractDoc(v: RhContractView): LegalDoc {
   const p = project(v);
-  const body = v.model === "cdd-chef" ? cddChefBlocks(v) : travailDetermineBlocks(v);
+  const body = v.model === "cdd-chef" ? cddChefBlocks(v) : v.model === "cdd-cdi" ? cddCdiBlocks(v) : travailDetermineBlocks(v);
   let subheading: string;
   if (v.model === "cdd-chef") {
     subheading = `Accroissement temporaire d'activité — renfort de chantier · ${p.label} — Paysagiste chef de projet`;
+  } else if (v.model === "cdd-cdi") {
+    subheading = `Ouvrier d'aménagement paysager · ${p.label} — Renouvelable, avec vocation à évoluer vers un CDI`;
   } else {
     const status = v.priorEmployee
       ? "Salarié déjà connu de l'entreprise — dispense de période d'essai"
@@ -594,7 +671,7 @@ export function contractMissingFields(v: RhContractView): string[] {
   if (!(v.address ?? e.address)?.trim()) out.push("Adresse du salarié");
   if (!(v.projectLabel?.trim() || (v.projectKey && CONTRACT_PROJECTS[v.projectKey]))) out.push("Projet / chantier");
   if (!v.startDate?.trim()) out.push("Date de début");
-  if (v.model === "cdd-chef" && !v.endDate?.trim()) out.push("Date de fin");
+  if ((v.model === "cdd-chef" || v.model === "cdd-cdi") && !v.endDate?.trim()) out.push("Date de fin");
   if (!v.dailyWage?.trim()) out.push("Salaire journalier brut");
   if (!(v.signatoryName ?? v.firm.signatory_name)?.trim()) out.push("Signataire employeur");
   return out;
