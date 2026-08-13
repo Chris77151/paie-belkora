@@ -96,6 +96,41 @@ export interface PayrollParams {
 
   /** Registre du personnel — délais et expositions de la déclaration CNSS. */
   registre: RegistreParams;
+
+  /** Pénalités CNSS d'une déclaration tardive / complémentaire (majorations + astreinte). */
+  declarationPenalty: DeclarationPenaltyParams;
+}
+
+/**
+ * Régime des pénalités CNSS applicables à une déclaration COMPLÉMENTAIRE ou tardive
+ * (art. 28 du Dahir 1-72-184 et pratique CNSS/DAMANCOM). Deux postes CUMULABLES :
+ *   1. Majoration de retard sur le PAIEMENT des cotisations (assiette = cotisations dues).
+ *   2. Astreinte pour DÉCLARATION tardive (au-delà d'un seuil de mois).
+ *
+ * AVERTISSEMENT DE FIABILITÉ : les sources publiques divergent sur le taux du 1er mois
+ * (3 % officiel CNSS vs 5 % selon certains cabinets) et sur le mode exact de l'astreinte.
+ * Valeurs prudentes (officielles), `sourceNote` à afficher partout. À confirmer auprès de la
+ * CNSS / du conseil avant toute régularisation contentieuse. Le taux « par mois supplémentaire »
+ * a été RÉFORMÉ au 01/04/2025 (1 % → 0,5 %) : il se choisit selon la DATE D'EXIGIBILITÉ de la
+ * période régularisée, d'où la date de réforme et les deux taux ci-dessous.
+ */
+export interface DeclarationPenaltyParams {
+  /** Majoration du 1er mois (ou fraction) de retard, sur les cotisations dues. Ex. 3 %. */
+  firstMonthRate: number;
+  /** Date de réforme du taux « par mois supplémentaire » (ISO « AAAA-MM-JJ »). */
+  extraMonthRateReformDate: string;
+  /** Taux par mois supplémentaire AVANT la réforme (période exigible avant la date). Ex. 1 %. */
+  extraMonthRateBefore: number;
+  /** Taux par mois supplémentaire À PARTIR de la réforme. Ex. 0,5 %. */
+  extraMonthRateAfter: number;
+  /** Astreinte de déclaration tardive : DH par mois de retard et par salarié, au-delà du seuil. */
+  astreintePerMonthPerEmployee: number;
+  /** Seuil (mois de retard) au-delà duquel l'astreinte s'applique. */
+  astreinteThresholdMonths: number;
+  /** Jour du mois M+1 avant lequel la déclaration/paiement DAMANCOM est dû (le retard court après). */
+  dueDayOfNextMonth: number;
+  /** Mention de source/réserve à afficher avec tout calcul de pénalité. */
+  sourceNote: string;
 }
 
 /**
@@ -270,6 +305,22 @@ const PARAMS_2026: PayrollParams = {
       + "les sources divergent sur le délai d'immatriculation du salarié ; à confirmer auprès de "
       + "la CNSS avant tout usage contentieux. Le poste dominant reste le rappel des cotisations "
       + "depuis la date réelle d'embauche.",
+  },
+
+  declarationPenalty: {
+    firstMonthRate: 0.03, // 3 % le 1er mois (ou fraction) — source officielle CNSS (cabinets : 5 %, à confirmer)
+    extraMonthRateReformDate: "2025-04-01", // réforme du taux « par mois supplémentaire »
+    extraMonthRateBefore: 0.01, // 1 %/mois avant la réforme
+    extraMonthRateAfter: 0.005, // 0,5 %/mois à partir du 01/04/2025
+    astreintePerMonthPerEmployee: 50, // 50 DH/mois/salarié
+    astreinteThresholdMonths: 7, // au-delà de 7 mois de retard
+    dueDayOfNextMonth: 10, // DAMANCOM dû avant le 10 du mois M+1 ; retard dès le 11
+    sourceNote:
+      "Majorations et astreintes CNSS INDICATIVES (art. 28 Dahir 1-72-184 ; réforme du taux « par "
+      + "mois supplémentaire » au 01/04/2025 : 1 % → 0,5 %). Sources publiques divergentes sur le taux "
+      + "du 1er mois (3 % officiel vs 5 %) et sur le mode exact de l'astreinte de déclaration. Le retard "
+      + "court dès le 11 du mois suivant la période. À CONFIRMER auprès de la CNSS / du conseil juridique "
+      + "avant toute régularisation contentieuse.",
   },
 };
 

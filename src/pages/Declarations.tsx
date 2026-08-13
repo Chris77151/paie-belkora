@@ -14,13 +14,15 @@ import {
   Table,
   Th,
   Td,
+  Input,
   PageHeader,
 } from "@/components/ui/kit";
-import { mad, num, pct, periodLabel, MONTHS_FR } from "@/lib/format";
+import { mad, num, pct, dateFr, periodLabel, MONTHS_FR } from "@/lib/format";
 import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
-import type { PayrollResult } from "@/lib/payroll-engine";
+import { round2, type PayrollResult } from "@/lib/payroll-engine";
 import { SELECTABLE_YEARS, getParams } from "@/lib/params";
 import { exportDeclarationPdf } from "@/lib/declaration-export";
+import { computeDeclarationPenalty } from "@/lib/declaration-penalty";
 
 const YEAR_OPTIONS = SELECTABLE_YEARS;
 
@@ -105,6 +107,30 @@ export default function Declarations() {
 
   const cnssTotal = totals.cnssSal + totals.cnssPatr;
 
+  // Déclaration complémentaire / tardive : pénalités CNSS (majoration de retard + astreinte).
+  const [complementary, setComplementary] = useState(false);
+  const [paymentDate, setPaymentDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [penaltyBase, setPenaltyBase] = useState<string>(""); // "" → défaut = total cotisations CNSS
+  const [nbSalStr, setNbSalStr] = useState<string>(""); // "" → défaut = effectif affiché
+
+  // Assiette par défaut : tout ce qui est collecté par la CNSS (CNSS + AMO + AF + TFP, parts sal. + patr.).
+  const cotisationsCnss = useMemo(
+    () => round2(rows.reduce((a, { r }) => a + r.cnssSalarie + r.cnssPatronal + r.amoSalarie + r.amoPatronal + r.af + r.tfp, 0)),
+    [rows],
+  );
+  const penaltyCotisations = penaltyBase.trim() ? Number(penaltyBase.replace(",", ".")) || 0 : cotisationsCnss;
+  const penaltyEmployees = nbSalStr.trim() ? Math.max(0, parseInt(nbSalStr, 10) || 0) : rows.length;
+  const penalty = useMemo(
+    () =>
+      complementary
+        ? computeDeclarationPenalty(
+            { cotisations: penaltyCotisations, employees: penaltyEmployees, periodYear: year, periodMonth: month, paymentDate },
+            p,
+          )
+        : null,
+    [complementary, penaltyCotisations, penaltyEmployees, year, month, paymentDate, p],
+  );
+
   /** Trace une déclaration CNSS produite (traçabilité + KPI du « Journal des documents »). */
   function trackDecl(format: "bds" | "print") {
     actions.recordDocGeneration({
@@ -145,6 +171,10 @@ export default function Declarations() {
         ? { validatedCount: frozen.length, realCount: employees.length }
         : undefined,
       issuedOn: new Date().toISOString().slice(0, 10),
+      penalty:
+        complementary && penalty
+          ? { cotisations: penaltyCotisations, employees: penaltyEmployees, paymentDate, result: penalty, sourceNote: p.declarationPenalty.sourceNote }
+          : undefined,
     });
   }
 
@@ -292,6 +322,61 @@ export default function Declarations() {
           <p className="mt-3 text-xs text-muted-foreground">
             {t("decl.damancomNote")}
           </p>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>
+            <span className="inline-flex items-center gap-2">
+              <AlertTriangle size={16} className="text-warning" />
+              Déclaration complémentaire (régularisation)
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={complementary} onChange={(e) => setComplementary(e.target.checked)} />
+            Cette déclaration est <b>complémentaire / tardive</b> — calculer les pénalités CNSS (majoration de retard + astreinte).
+          </label>
+
+          {complementary && penalty && (
+            <>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <Field label="Cotisations à régulariser (DH)" hint={`Défaut : CNSS+AMO+AF+TFP (${num(cotisationsCnss)})`}>
+                  <Input value={penaltyBase} onChange={(e) => setPenaltyBase(e.target.value)} placeholder={num(cotisationsCnss)} />
+                </Field>
+                <Field label="Salariés concernés" hint={`Défaut : ${rows.length}`}>
+                  <Input value={nbSalStr} onChange={(e) => setNbSalStr(e.target.value)} placeholder={String(rows.length)} />
+                </Field>
+                <Field label="Date de paiement du complément">
+                  <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
+                </Field>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                <div className="rounded-md border bg-card p-3">
+                  <p className="text-xs text-muted-foreground">Échéance / retard</p>
+                  <p className="mt-1 text-sm font-semibold">{dateFr(penalty.dueDate)} · <span className="num">{penalty.monthsLate}</span> mois</p>
+                  <p className="text-xs text-muted-foreground">Taux : {pct(penalty.firstMonthRate)} + {pct(penalty.extraMonthRate)}/mois</p>
+                </div>
+                <div className="rounded-md border bg-card p-3">
+                  <p className="text-xs text-muted-foreground">Majoration de retard</p>
+                  <p className="mt-1 num text-lg font-semibold">{mad(penalty.majorationPaiement)}</p>
+                </div>
+                <div className="rounded-md border bg-card p-3">
+                  <p className="text-xs text-muted-foreground">Astreinte (&gt; 7 mois)</p>
+                  <p className="mt-1 num text-lg font-semibold">{mad(penalty.astreinte)}</p>
+                </div>
+                <div className="rounded-md border border-warning/50 bg-warning/5 p-3">
+                  <p className="text-xs text-muted-foreground">Total des pénalités</p>
+                  <p className="mt-1 num text-lg font-semibold text-warning">{mad(penalty.total)}</p>
+                </div>
+              </div>
+
+              <p className="mt-3 text-xs text-muted-foreground">{p.declarationPenalty.sourceNote}</p>
+            </>
+          )}
         </CardContent>
       </Card>
 

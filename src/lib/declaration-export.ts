@@ -14,6 +14,7 @@ import autoTable from "jspdf-autotable";
 import type { Firm } from "@/data/types";
 import { asciiSpaces, dateFr, mad, num, pct } from "./format";
 import { periodLabel } from "./format";
+import type { DeclarationPenalty } from "./declaration-penalty";
 import {
   ALERT,
   FONT,
@@ -70,6 +71,14 @@ export interface DeclarationData {
   incomplete?: { validatedCount: number; realCount: number };
   /** Date d'établissement du document (ISO) — pour le bloc « Fait à … le … ». */
   issuedOn?: string;
+  /** Déclaration complémentaire / tardive : pénalités CNSS calculées (majoration + astreinte). */
+  penalty?: {
+    cotisations: number;
+    employees: number;
+    paymentDate: string;
+    result: DeclarationPenalty;
+    sourceNote: string;
+  };
 }
 
 /** Nom de fichier normalisé (ASCII) : Bordereau_CNSS_<firm>_<aaaa-mm>.pdf */
@@ -229,6 +238,51 @@ export async function buildDeclarationPdf(firm: Firm, d: DeclarationData): Promi
     },
   });
   afterTable(cur, 8);
+
+  // Déclaration complémentaire / tardive — pénalités CNSS (majoration de retard + astreinte).
+  if (d.penalty) {
+    const { result: pen, cotisations, employees, paymentDate, sourceNote } = d.penalty;
+    ensure(cur, 20);
+    doc.setFont(FONT, "bold").setFontSize(FS.section).setTextColor(...ALERT);
+    doc.text(asciiSpaces("Déclaration complémentaire — pénalités de retard CNSS"), M, cur.y);
+    cur.y += 2;
+    const tauxTxt = `${pct(pen.firstMonthRate)} (1er mois) + ${pct(pen.extraMonthRate)}/mois suppl.`;
+    const penRecap: [string, string, boolean?][] = [
+      ["Cotisations à régulariser (assiette)", mad(cotisations)],
+      ["Échéance DAMANCOM", dateFr(pen.dueDate)],
+      ["Date de paiement du complément", dateFr(paymentDate)],
+      ["Retard", `${pen.monthsLate} mois`],
+      ["Taux de majoration appliqué", tauxTxt],
+      ["Majoration de retard (paiement)", mad(pen.majorationPaiement)],
+      [`Astreinte de déclaration (${employees} salarié(s), > 7 mois)`, mad(pen.astreinte)],
+      ["Total des pénalités", mad(pen.total), true],
+    ];
+    autoTable(doc, {
+      startY: cur.y + 2,
+      body: penRecap.map(([k, v]) => [k, v]),
+      theme: "plain",
+      tableWidth: "wrap",
+      styles: { ...styles.styles, fontSize: 8.4, cellPadding: 1.3 },
+      columnStyles: { 0: { cellWidth: 100 }, 1: { halign: "right", cellWidth: 46, fontStyle: "bold" } },
+      margin: { left: M, right: M },
+      didParseCell: (c) => {
+        if (penRecap[c.row.index]?.[2]) {
+          c.cell.styles.fontStyle = "bold";
+          c.cell.styles.fillColor = [pal.tint[0], pal.tint[1], pal.tint[2]];
+        }
+      },
+    });
+    afterTable(cur, 4);
+    // Réserve de fiabilité — sur fond sobre, jamais masquée.
+    const pw0 = doc.internal.pageSize.getWidth();
+    doc.setFont(FONT, "italic").setFontSize(FS.micro).setTextColor(...pal.muted);
+    for (const line of doc.splitTextToSize(asciiSpaces(sourceNote), pw0 - 2 * M) as string[]) {
+      ensure(cur, lineHeight(FS.micro, 1.3));
+      doc.text(line, M, cur.y);
+      cur.y += lineHeight(FS.micro, 1.3);
+    }
+    cur.y += 4;
+  }
 
   // Établissement + signature — pièce de contrôle interne, le dépôt DAMANCOM faisant foi.
   ensure(cur, 30);
