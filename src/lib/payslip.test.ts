@@ -59,6 +59,17 @@ describe("bulletin — « Partie réservée à l'employeur » optionnelle", () =
     expect(buildPayslipLatex(view(false))).toContain("\\vfill");
   });
 
+  it("assiduité réelle : absences = jours ouvrés − jours travaillés (plus de « 0 » figé)", () => {
+    // 26 j travaillés → 0 absence ; le décompte n'invente rien.
+    expect(buildPayslipHtml(view())).toContain("<td>26</td><td>26</td><td>0</td>");
+    // 20 j travaillés → 6 absences affichées.
+    const partial: PayslipView = {
+      firm, employee, period, result,
+      input: { ...defaultInput(employee), days_worked: 20 },
+    };
+    expect(buildPayslipHtml(partial)).toContain("<td>26</td><td>20</td><td>6</td>");
+  });
+
   it("le CALCUL est inchangé : le net et les charges patronales restent identiques", () => {
     // Masquer la section n'affecte que l'affichage, jamais les montants calculés.
     expect(result.chargesPatronales).toBeGreaterThan(0);

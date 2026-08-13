@@ -220,10 +220,14 @@ export async function buildPayslipDoc(v: PayslipView): Promise<jsPDF> {
   );
   const inp = defaults(v);
   const otH = inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100;
+  // Assiduité RÉELLE : jours ouvrés = base de proratisation du barème (26 j), absences = jours
+  // ouvrés − jours travaillés (jamais négatif). Plus de « 0 » figé qui masquait les absences.
+  const joursOuvres = getParams(period.year).standardMonthlyDays;
+  const absences = Math.max(0, joursOuvres - inp.days_worked);
   y = grid(
     y,
     ["Jours ouvrés", "Jours travaillés", "Absences", "Maladie", "H. supp."],
-    ["26", String(inp.days_worked), "0", "0", otH ? String(otH) : "0"],
+    [String(joursOuvres), String(inp.days_worked), absences ? String(absences) : "0", "0", otH ? String(otH) : "0"],
     [full / 5, full / 5, full / 5, full / 5, full / 5],
   );
 
@@ -335,6 +339,8 @@ export function buildPayslipHtml(v: PayslipView): string {
   const inp = defaults(v);
   const start = new Date(period.year, period.month - 1, 1);
   const end = new Date(period.year, period.month, 0);
+  const joursOuvres = getParams(period.year).standardMonthlyDays;
+  const absences = Math.max(0, joursOuvres - inp.days_worked);
   const rows = mainRows(v);
   const emp = employerRows(v);
   const den = denominations(v.result.netAPayer);
@@ -402,7 +408,7 @@ export function buildPayslipHtml(v: PayslipView): string {
  <table><tr><th>Naissance</th><th>Embauche</th><th>Situation familiale</th><th>Déduction</th><th>N° C.I.N.</th><th>N° C.N.S.S.</th></tr>
    <tr style="text-align:center"><td>${dateFr(e.birth_date)}</td><td>${dateFr(e.hire_date)}</td><td>${e.marital_status ?? "—"}</td><td>${e.dependents}</td><td>${e.cin ?? "—"}</td><td>${e.cnss_number ?? "EN COURS (DAMANCOM)"}</td></tr></table>
  <table><tr><th>Jours ouvrés</th><th>Jours travaillés</th><th>Absences</th><th>Maladie</th><th>H. supp.</th></tr>
-   <tr style="text-align:center"><td>26</td><td>${inp.days_worked}</td><td>0</td><td>0</td><td>${inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100}</td></tr></table>
+   <tr style="text-align:center"><td>${joursOuvres}</td><td>${inp.days_worked}</td><td>${absences}</td><td>0</td><td>${inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100}</td></tr></table>
  <table><tr><th style="text-align:left">LIBELLE</th><th>Nbre ou Base</th><th>TAUX</th><th>GAINS</th><th>RETENUES</th></tr>${mainTr}</table>
  ${v.showEmployerSection === false ? "" : `<table class="emp"><tr><th style="text-align:left">Partie réservée à l'employeur — charges patronales</th><th>Base</th><th>Taux %</th><th>Plafond</th><th>Montant</th></tr>${empTr}</table>`}
  <div class="bottom">
