@@ -93,6 +93,9 @@ export default function PayrollBook() {
                     <Th className="text-right">CNSS</Th>
                     <Th className="text-right">AMO</Th>
                     <Th className="text-right">IR</Th>
+                    <Th className="text-right">Total ret.</Th>
+                    <Th className="text-right">Salaire net</Th>
+                    <Th className="text-right">Avances</Th>
                     <Th className="text-right">Net à payer</Th>
                   </tr>
                 </thead>
@@ -122,7 +125,10 @@ export default function PayrollBook() {
                       <Td className="text-right num">{num(r.cnssSalarie)}</Td>
                       <Td className="text-right num">{num(r.amoSalarie)}</Td>
                       <Td className="text-right num">{num(r.ir)}</Td>
-                      <Td className="text-right num font-medium">{num(r.netAPayer)}</Td>
+                      <Td className="text-right num">{num(r.totalRetenues)}</Td>
+                      <Td className="text-right num">{num(r.netAPayer)}</Td>
+                      <Td className="text-right num">{r.avances ? num(r.avances) : "—"}</Td>
+                      <Td className="text-right num font-medium">{num(r.netFinal)}</Td>
                     </tr>
                   ))}
                 </tbody>
@@ -138,7 +144,10 @@ export default function PayrollBook() {
                     <Td className="text-right num">{num(totals.cnssSalarie)}</Td>
                     <Td className="text-right num">{num(totals.amoSalarie)}</Td>
                     <Td className="text-right num">{num(totals.ir)}</Td>
+                    <Td className="text-right num">{num(totals.totalRetenues)}</Td>
                     <Td className="text-right num">{num(totals.netAPayer)}</Td>
+                    <Td className="text-right num">{num(totals.avances)}</Td>
+                    <Td className="text-right num">{num(totals.netFinal)}</Td>
                   </tr>
                 </tfoot>
               </Table>

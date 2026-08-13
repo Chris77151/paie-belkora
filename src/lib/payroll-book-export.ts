@@ -59,7 +59,8 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
 
   const head = [
     "N°", "Période", "Nom et prénom", "N° CNSS", "Jours", "H.N.", "H.S.",
-    "Base", "Ancien.", "Primes/Ind.", "Brut", "SBI", "CNSS", "AMO", "IR", "Net à payer",
+    "Base", "Ancien.", "Primes/Ind.", "Brut", "SBI", "CNSS", "AMO", "IR",
+    "Total ret.", "Salaire net", "Avances", "Net à payer",
   ];
   const body = b.rows.map((r) => [
     String(r.order),
@@ -77,7 +78,10 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
     money(r.cnssSalarie),
     money(r.amoSalarie),
     money(r.ir),
+    money(r.totalRetenues),
     money(r.netAPayer),
+    money(r.avances),
+    money(r.netFinal),
   ]);
   const totalRow = [
     "", "", `Total (${b.totals.count})`, "",
@@ -90,7 +94,10 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
     money(b.totals.cnssSalarie),
     money(b.totals.amoSalarie),
     money(b.totals.ir),
+    money(b.totals.totalRetenues),
     money(b.totals.netAPayer),
+    money(b.totals.avances),
+    money(b.totals.netFinal),
   ];
   const totalIdx = body.length;
   const styles = tableStyles(pal);
@@ -121,6 +128,9 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
       13: { halign: "right" },
       14: { halign: "right" },
       15: { halign: "right" },
+      16: { halign: "right" },
+      17: { halign: "right" },
+      18: { halign: "right" },
     },
     didParseCell: (c) => {
       if (c.section === "body" && c.row.index === totalIdx) {
@@ -134,7 +144,7 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
   doc.setFont(FONT, "italic").setFontSize(FS.micro).setTextColor(...pal.muted);
   doc.text(
     asciiSpaces(
-      "Livre de paie (art. 371 du Code du Travail) établi à partir des bulletins validés — à conserver au moins deux ans (art. 373). Montants en dirhams ; retenues salariales = CNSS + AMO + IR.",
+      "Livre de paie (art. 371 du Code du Travail) établi à partir des bulletins validés — à conserver au moins deux ans (art. 373). Montants en dirhams ; total des retenues = CNSS + AMO + IR ; net à payer = salaire net − avances.",
     ),
     M,
     cur.y,
@@ -157,7 +167,8 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
     "Date d'entrée", "N° CNSS", "Situation de famille", "Personnes à charge",
     "H.N.", "H.S. 25%", "H.S. 50%", "H.S. 100%", "Jours travaillés", "Total heures",
     "Salaire de base", "Ancienneté", "Taux ancienneté %", "Primes/Indemnités",
-    "Salaire brut", "SBI", "CNSS sal.", "AMO sal.", "IR", "Total retenues", "Net à payer",
+    "Salaire brut", "SBI", "CNSS sal.", "AMO sal.", "IR", "Total retenues",
+    "Salaire net à payer", "Avances", "Net à payer",
   ];
   const rows: (string | number)[][] = [
     [`Livre de paie — ${b.firm.name} — ${scopeLabel(b)}`],
@@ -171,7 +182,8 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
       r.hireDate ? dateFr(r.hireDate) : "", r.cnss ?? "", r.maritalStatus ?? "", r.dependents,
       r.hoursNormal, r.hoursOt25, r.hoursOt50, r.hoursOt100, r.daysWorked, r.totalHours,
       r.salaireBase, r.primeAnciennete, round1(r.seniorityRate * 100), r.primesIndemnites,
-      r.salaireBrut, r.sbi, r.cnssSalarie, r.amoSalarie, r.ir, r.totalRetenues, r.netAPayer,
+      r.salaireBrut, r.sbi, r.cnssSalarie, r.amoSalarie, r.ir, r.totalRetenues,
+      r.netAPayer, r.avances, r.netFinal,
     ]);
   }
   rows.push([
@@ -179,7 +191,7 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
     "", "", "", "", b.totals.daysWorked, b.totals.totalHours,
     b.totals.salaireBase, b.totals.primeAnciennete, "", b.totals.primesIndemnites,
     b.totals.salaireBrut, b.totals.sbi, b.totals.cnssSalarie, b.totals.amoSalarie,
-    b.totals.ir, b.totals.totalRetenues, b.totals.netAPayer,
+    b.totals.ir, b.totals.totalRetenues, b.totals.netAPayer, b.totals.avances, b.totals.netFinal,
   ]);
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -188,7 +200,8 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
     { wch: 13 }, { wch: 14 }, { wch: 16 }, { wch: 10 },
     { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 9 }, { wch: 10 }, { wch: 10 },
     { wch: 13 }, { wch: 11 }, { wch: 12 }, { wch: 14 },
-    { wch: 12 }, { wch: 12 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 }, { wch: 13 },
+    { wch: 12 }, { wch: 12 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 },
+    { wch: 15 }, { wch: 11 }, { wch: 13 },
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Livre de paie");

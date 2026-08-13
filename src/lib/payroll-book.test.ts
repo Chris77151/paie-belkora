@@ -80,6 +80,23 @@ describe("payroll-book — livre de paie", () => {
     expect(b.totals.count).toBe(2);
   });
 
+  it("avances : net à payer final = salaire net − avances (colonnes officielles)", () => {
+    const s = state();
+    // Bulletin d'Ahmed (e1) avec 500 DH d'avances.
+    (s.payslips as Payslip[])[0] = slip("s1", "per7", "e1", (s.employees as Employee[])[0], input({ advances: 500 }));
+    const b = buildPayrollBook(s, firm, 2026, 7);
+    const ahmed = b.rows.find((r) => r.name === "Ahmed Alaoui")!;
+    expect(ahmed.avances).toBe(500);
+    expect(ahmed.netFinal).toBeCloseTo(ahmed.netAPayer - 500, 2);
+    // Sans avances, net final = salaire net.
+    const sara = b.rows.find((r) => r.name === "Sara Bennani")!;
+    expect(sara.avances).toBe(0);
+    expect(sara.netFinal).toBeCloseTo(sara.netAPayer, 2);
+    // Totaux cohérents.
+    expect(b.totals.avances).toBe(500);
+    expect(b.totals.netFinal).toBeCloseTo(b.totals.netAPayer - 500, 2);
+  });
+
   it("exclut les bulletins non validés (result null)", () => {
     const e3 = emp({ id: "e3", matricule: "003" });
     const s = state();

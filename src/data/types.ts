@@ -126,6 +126,8 @@ export interface PayslipInput {
   salissure: number;
   other_gross: number;
   transport_outside_urban?: boolean;
+  /** Avances / acomptes déjà versés ce mois, déduits du net à payer (livre de paie). Défaut : 0. */
+  advances?: number;
 }
 
 export interface Payslip {

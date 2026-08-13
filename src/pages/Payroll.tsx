@@ -318,7 +318,7 @@ function InputEditor({
 
   const numField = (label: string, key: keyof PayslipInput, step = "1", hint?: string) => (
     <Field label={label} hint={hint}>
-      <Input type="number" step={step} value={inp[key] as number} onChange={(e) => set({ [key]: +e.target.value } as Partial<PayslipInput>)} />
+      <Input type="number" step={step} value={(inp[key] as number | undefined) ?? 0} onChange={(e) => set({ [key]: +e.target.value } as Partial<PayslipInput>)} />
     </Field>
   );
 
@@ -341,6 +341,7 @@ function InputEditor({
           {numField(t("pay.f.transport"), "transport", "0.01")}
           {numField(t("pay.f.salissure"), "salissure", "0.01")}
           {numField(t("pay.f.other"), "other_gross", "0.01")}
+          {numField(t("pay.f.advances"), "advances", "0.01", t("pay.f.advances.hint"))}
         </div>
         <label className="mt-3 flex items-center gap-2 text-sm">
           <input type="checkbox" checked={!!inp.transport_outside_urban} onChange={(e) => set({ transport_outside_urban: e.target.checked })} />

@@ -371,6 +371,8 @@ export const DICT = {
   "pay.f.transport": { fr: "Transport (DH)", ar: "بدل النقل (د.م)" },
   "pay.f.salissure": { fr: "Salissure (DH)", ar: "بدل الاتساخ (د.م)" },
   "pay.f.other": { fr: "Autres gains (DH)", ar: "مكاسب أخرى (د.م)" },
+  "pay.f.advances": { fr: "Avances / acomptes (DH)", ar: "تسبيقات (د.م)" },
+  "pay.f.advances.hint": { fr: "Déduites du net à payer (livre de paie)", ar: "تُخصم من الصافي المؤدى (سجل الأداء)" },
   "pay.f.transportOutside": { fr: "Transport hors périmètre urbain (plafond 750)", ar: "نقل خارج المحيط الحضري (سقف 750)" },
   "pay.l.gross": { fr: "Salaire brut", ar: "الأجر الخام" },
   "pay.l.sbi": { fr: "SBI (imposable)", ar: "الأجر الخام الخاضع للضريبة" },

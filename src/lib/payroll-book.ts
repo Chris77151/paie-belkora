@@ -52,7 +52,12 @@ export interface PayrollBookRow {
   amoSalarie: number;
   ir: number;
   totalRetenues: number;
+  /** Salaire net à payer = brut − total des retenues (avant avances). */
   netAPayer: number;
+  /** Avances / acomptes déjà versés (colonne « AVANCES » du registre officiel). */
+  avances: number;
+  /** Net à payer final = salaire net − avances (dernière colonne du registre). */
+  netFinal: number;
 }
 
 export interface PayrollBookTotals {
@@ -69,6 +74,8 @@ export interface PayrollBookTotals {
   ir: number;
   totalRetenues: number;
   netAPayer: number;
+  avances: number;
+  netFinal: number;
 }
 
 export interface PayrollBook {
@@ -123,6 +130,8 @@ export function buildPayrollBook(
       // « À ajouter » (primes + heures supp. + indemnités) = brut − base − ancienneté.
       const primesIndemnites = round2(r.salaireBrut - r.salaireBase - r.primeAnciennete);
       const totalRetenues = round2(r.cnssSalarie + r.amoSalarie + r.ir);
+      const avances = round2(Math.max(0, inp.advances ?? 0));
+      const netFinal = round2(r.netAPayer - avances);
       rows.push({
         order,
         bulletin: (e?.matricule ?? sl.employee_id).trim(),
@@ -154,6 +163,8 @@ export function buildPayrollBook(
         ir: r.ir,
         totalRetenues,
         netAPayer: r.netAPayer,
+        avances,
+        netFinal,
       });
     }
   }
@@ -173,12 +184,14 @@ export function buildPayrollBook(
       acc.ir = round2(acc.ir + r.ir);
       acc.totalRetenues = round2(acc.totalRetenues + r.totalRetenues);
       acc.netAPayer = round2(acc.netAPayer + r.netAPayer);
+      acc.avances = round2(acc.avances + r.avances);
+      acc.netFinal = round2(acc.netFinal + r.netFinal);
       return acc;
     },
     {
       count: 0, daysWorked: 0, totalHours: 0, salaireBase: 0, primeAnciennete: 0,
       primesIndemnites: 0, salaireBrut: 0, sbi: 0, cnssSalarie: 0, amoSalarie: 0,
-      ir: 0, totalRetenues: 0, netAPayer: 0,
+      ir: 0, totalRetenues: 0, netAPayer: 0, avances: 0, netFinal: 0,
     },
   );
 
