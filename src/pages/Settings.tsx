@@ -37,6 +37,7 @@ import type { LoginEvent, LoginFailReason } from "@/data/types";
 import { paletteForFirm, dominantColorFromImage, DEFAULT_PALETTE } from "@/lib/brand-color";
 import { getParams, AVAILABLE_YEARS } from "@/lib/params";
 import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
+import { hashPin, isValidPin } from "@/lib/pin";
 import type { AppRole, Firm, Regime } from "@/data/types";
 
 const ROLES: { role: AppRole; label: string; desc: string; tone: Parameters<typeof Badge>[0]["tone"] }[] = [
@@ -74,6 +75,30 @@ export default function Settings() {
 
   function saveFirm() {
     actions.upsertFirm(draft);
+  }
+
+  // Code de validation (paie & écritures comptables) — stocké HASHÉ sur la société.
+  const [pin1, setPin1] = useState("");
+  const [pin2, setPin2] = useState("");
+  const [pinMsg, setPinMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const hasPin = !!draft.validation_pin_hash;
+
+  async function savePin() {
+    if (!isValidPin(pin1)) { setPinMsg({ ok: false, text: "Le code doit comporter exactement 4 chiffres." }); return; }
+    if (pin1 !== pin2) { setPinMsg({ ok: false, text: "Les deux codes ne correspondent pas." }); return; }
+    const hash = await hashPin(pin1, firm.id);
+    const next: Firm = { ...draft, validation_pin_hash: hash };
+    setDraft(next);
+    actions.upsertFirm(next);
+    setPin1(""); setPin2(""); setPinMsg({ ok: true, text: "Code enregistré. Il sera exigé pour valider la paie et les écritures." });
+  }
+
+  function clearPin() {
+    if (!confirm("Supprimer le code de validation ? La paie et les écritures pourront alors être validées sans code.")) return;
+    const next: Firm = { ...draft, validation_pin_hash: undefined };
+    setDraft(next);
+    actions.upsertFirm(next);
+    setPin1(""); setPin2(""); setPinMsg({ ok: true, text: "Code supprimé." });
   }
 
   function onLogoFile(file: File | undefined) {
@@ -256,6 +281,60 @@ export default function Settings() {
               <Save size={16} />
               Enregistrer
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>
+            <span className="inline-flex items-center gap-2">
+              <KeyRound size={16} className="text-primary" />
+              Code de validation (paie &amp; écritures comptables)
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Code à <b>4 chiffres</b> exigé pour <b>valider la paie</b> d'une période et <b>verrouiller les écritures
+            comptables</b>. Garde-fou anti-erreur (double consentement) — le code est stocké <b>haché</b>, jamais en clair.
+            {" "}Statut actuel :{" "}
+            {hasPin ? <Badge tone="success">Code défini</Badge> : <Badge tone="warning">Aucun code — validation libre</Badge>}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 max-w-lg">
+            <Field label={hasPin ? "Nouveau code (4 chiffres)" : "Code (4 chiffres)"}>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={pin1}
+                placeholder="••••"
+                onChange={(e) => { setPinMsg(null); setPin1(e.target.value.replace(/\D/g, "").slice(0, 4)); }}
+              />
+            </Field>
+            <Field label="Confirmer le code">
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={pin2}
+                placeholder="••••"
+                onChange={(e) => { setPinMsg(null); setPin2(e.target.value.replace(/\D/g, "").slice(0, 4)); }}
+              />
+            </Field>
+          </div>
+          {pinMsg && (
+            <p className={`mt-2 text-sm ${pinMsg.ok ? "text-success" : "text-destructive"}`}>{pinMsg.text}</p>
+          )}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button onClick={() => void savePin()} disabled={pin1.length !== 4 || pin2.length !== 4}>
+              <Save size={16} /> {hasPin ? "Modifier le code" : "Définir le code"}
+            </Button>
+            {hasPin && (
+              <Button variant="outline" onClick={clearPin}>
+                <ShieldX size={16} /> Supprimer le code
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

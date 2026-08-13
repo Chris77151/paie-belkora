@@ -15,6 +15,7 @@ import {
 import { MONTHS_FR, mad, num, periodLabel } from "@/lib/format";
 import { exportPayslipPdf, downloadTex, openHtmlPayslip, type PayslipView } from "@/lib/payslip";
 import { SELECTABLE_YEARS } from "@/lib/params";
+import { PinPrompt } from "@/components/PinPrompt";
 
 const YEARS = SELECTABLE_YEARS;
 
@@ -109,6 +110,13 @@ export default function Payroll() {
     actions.setPeriodStatus(period.id, "validated");
   }
 
+  // Verrou : si un code de validation est défini pour la société, l'exiger avant de figer la paie.
+  const [pinOpen, setPinOpen] = useState(false);
+  function requestValidate() {
+    if (firm.validation_pin_hash) setPinOpen(true);
+    else validate();
+  }
+
   /** Remet une période verrouillée (validée/déclarée/payée) en brouillon : la saisie redevient modifiable. */
   function revertToDraft() {
     if (!period) return;
@@ -176,7 +184,7 @@ export default function Payroll() {
           {!locked ? (
             <>
               <Button variant="outline" onClick={exportAll}><FileDown size={16} /> {t("pay.exportGroup")}</Button>
-              <Button onClick={validate}><Lock size={16} /> {t("pay.validate")}</Button>
+              <Button onClick={requestValidate}><Lock size={16} /> {t("pay.validate")}</Button>
             </>
           ) : (
             <div className="flex items-center gap-2">
@@ -279,6 +287,16 @@ export default function Payroll() {
           emp={editing}
           slip={slips.find((sl) => sl.employee_id === editing.id)!}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {pinOpen && (
+        <PinPrompt
+          firm={firm}
+          title={t("pay.validate")}
+          action={t("pay.validate")}
+          onSuccess={validate}
+          onClose={() => setPinOpen(false)}
         />
       )}
     </div>

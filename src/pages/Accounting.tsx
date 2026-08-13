@@ -13,6 +13,7 @@ import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml, exportEntriesCsv
 import { Badge, Button, Card, CardContent, Field, PageHeader, Select, Table, Td, Th } from "@/components/ui/kit";
 import { MONTHS_FR, dateFr, mad, num, periodLabel } from "@/lib/format";
 import { SELECTABLE_YEARS } from "@/lib/params";
+import { PinPrompt } from "@/components/PinPrompt";
 
 const YEARS = SELECTABLE_YEARS;
 
@@ -62,12 +63,10 @@ export default function Accounting() {
   const controlsOk = balanced && invariants.ok;
   const showEntries = isValidated || generated;
 
-  function validate() {
-    if (!controlsOk) {
-      window.alert("Impossible de valider : un contrôle d'invariant a échoué (voir le détail). Corrigez la paie avant de figer la période.");
-      return;
-    }
-    if (!window.confirm(`Valider et verrouiller les écritures de ${period} ? La période sera figée.`)) return;
+  const [pinOpen, setPinOpen] = useState(false);
+
+  /** Fige réellement les écritures — appelé après confirmation (code de validation ou confirm simple). */
+  function doValidate() {
     actions.validateAccounting({
       id: closureId,
       firm_id: firm.id,
@@ -77,6 +76,20 @@ export default function Accounting() {
       validated_at: new Date().toISOString(),
       validated_by: session?.username ?? "—",
     });
+  }
+
+  function validate() {
+    if (!controlsOk) {
+      window.alert("Impossible de valider : un contrôle d'invariant a échoué (voir le détail). Corrigez la paie avant de figer la période.");
+      return;
+    }
+    // Verrou : si un code de validation est défini pour la société, l'exiger avant de figer la période.
+    if (firm.validation_pin_hash) {
+      setPinOpen(true);
+      return;
+    }
+    if (!window.confirm(`Valider et verrouiller les écritures de ${period} ? La période sera figée.`)) return;
+    doValidate();
   }
 
   function revert() {
@@ -207,6 +220,16 @@ export default function Accounting() {
             validés par l'expert-comptable. Écritures à contrôler avant intégration en comptabilité.
           </p>
         </>
+      )}
+
+      {pinOpen && (
+        <PinPrompt
+          firm={firm}
+          title="Valider les écritures comptables"
+          action="Valider"
+          onSuccess={doValidate}
+          onClose={() => setPinOpen(false)}
+        />
       )}
     </div>
   );

@@ -53,6 +53,12 @@ export interface Firm {
    * Généré automatiquement à la première base de référence. Ne contient AUCUN RIB.
    */
   bank_audit_salt?: string;
+  /**
+   * Empreinte SHA-256 (hex) du code de validation à 4 chiffres, salée par l'id société.
+   * Défini dans le volet Paramètres (admin). Requis pour valider la paie et les écritures
+   * comptables. Ne contient JAMAIS le code en clair. Absent = aucun code exigé.
+   */
+  validation_pin_hash?: string;
 }
 
 /** Paramètres de connexion à l'API Odoo (JSON-RPC). */
