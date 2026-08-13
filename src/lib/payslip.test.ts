@@ -59,6 +59,22 @@ describe("bulletin — « Partie réservée à l'employeur » optionnelle", () =
     expect(buildPayslipLatex(view(false))).toContain("\\vfill");
   });
 
+  it("congés payés : synthèse compacte (acquis/pris/solde) sans le détail des congés posés", () => {
+    const withLeave: PayslipView = {
+      firm, employee, period, result, input: defaultInput(employee),
+      leave: { acquired: 27, taken: 12, balance: 15 },
+    };
+    const html = buildPayslipHtml(withLeave);
+    // La synthèse figure (une seule ligne : acquis / pris / solde).
+    expect(html).toContain("Congés payés acquis");
+    expect(html).toContain("Solde congés (jours)");
+    expect(html).toContain("<td>27.0</td><td>12.0</td><td>15.0</td>");
+    // Aucune fuite de détail : pas de dates/journal de congés dans le bulletin.
+    expect(html).not.toContain("start_date");
+    // Sans balance fournie, la ligne congés n'apparaît pas.
+    expect(buildPayslipHtml(view())).not.toContain("Congés payés acquis");
+  });
+
   it("assiduité réelle : absences = jours ouvrés − jours travaillés (plus de « 0 » figé)", () => {
     // 26 j travaillés → 0 absence ; le décompte n'invente rien.
     expect(buildPayslipHtml(view())).toContain("<td>26</td><td>26</td><td>0</td>");

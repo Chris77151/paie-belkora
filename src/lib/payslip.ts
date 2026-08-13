@@ -12,6 +12,7 @@ import { amountToWordsFr, asciiSpaces, dateFr, periodLabel } from "./format";
 import { firmDescriptor, firmLegalLine } from "./firm-legal";
 import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
 import { firmLogoPath, loadLogo } from "./pdf-kit";
+import type { LeaveBalance } from "./leave-balance";
 
 export interface PayslipView {
   firm: Firm;
@@ -19,6 +20,12 @@ export interface PayslipView {
   period: PayrollPeriod;
   result: PayrollResult;
   input?: PayslipInput;
+  /**
+   * Solde de congés payés (acquis / pris / solde) arrêté à la fin de la période. Affiché de façon
+   * COMPACTE dans le bulletin (une seule ligne de synthèse) — jamais le détail des congés posés.
+   * Optionnel : absent → la ligne congés n'apparaît pas.
+   */
+  leave?: LeaveBalance;
   /**
    * Afficher la « Partie réservée à l'employeur » (charges patronales + coût total employeur).
    * Défaut : `true` (comportement historique). Mettre à `false` pour un bulletin remis au salarié
@@ -52,6 +59,8 @@ function f(n: number | null | undefined): string {
   return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/,/g, " ");
 }
 const pctv = (r: number) => (r * 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Jours (congés) : 1 décimale, y compris 0 — ex. « 27.0 », « 1.5 ». */
+const fdays = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace(/,/g, " ");
 
 function defaults(v: PayslipView): PayslipInput {
   return (
@@ -231,6 +240,16 @@ export async function buildPayslipDoc(v: PayslipView): Promise<jsPDF> {
     [full / 5, full / 5, full / 5, full / 5, full / 5],
   );
 
+  // Congés payés — synthèse COMPACTE (acquis / pris / solde), sans le détail des congés posés.
+  if (v.leave) {
+    y = grid(
+      y,
+      ["Congés payés acquis", "Congés pris", "Solde congés (jours)"],
+      [fdays(v.leave.acquired), fdays(v.leave.taken), fdays(v.leave.balance)],
+      [full / 3, full / 3, full / 3],
+    );
+  }
+
   // Tableau principal
   const rows = mainRows(v);
   autoTable(doc, {
@@ -409,6 +428,8 @@ export function buildPayslipHtml(v: PayslipView): string {
    <tr style="text-align:center"><td>${dateFr(e.birth_date)}</td><td>${dateFr(e.hire_date)}</td><td>${e.marital_status ?? "—"}</td><td>${e.dependents}</td><td>${e.cin ?? "—"}</td><td>${e.cnss_number ?? "EN COURS (DAMANCOM)"}</td></tr></table>
  <table><tr><th>Jours ouvrés</th><th>Jours travaillés</th><th>Absences</th><th>Maladie</th><th>H. supp.</th></tr>
    <tr style="text-align:center"><td>${joursOuvres}</td><td>${inp.days_worked}</td><td>${absences}</td><td>0</td><td>${inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100}</td></tr></table>
+ ${v.leave ? `<table><tr><th>Congés payés acquis</th><th>Congés pris</th><th>Solde congés (jours)</th></tr>
+   <tr style="text-align:center"><td>${fdays(v.leave.acquired)}</td><td>${fdays(v.leave.taken)}</td><td>${fdays(v.leave.balance)}</td></tr></table>` : ""}
  <table><tr><th style="text-align:left">LIBELLE</th><th>Nbre ou Base</th><th>TAUX</th><th>GAINS</th><th>RETENUES</th></tr>${mainTr}</table>
  ${v.showEmployerSection === false ? "" : `<table class="emp"><tr><th style="text-align:left">Partie réservée à l'employeur — charges patronales</th><th>Base</th><th>Taux %</th><th>Plafond</th><th>Montant</th></tr>${empTr}</table>`}
  <div class="bottom">

@@ -15,6 +15,7 @@ import {
 import { MONTHS_FR, mad, num, periodLabel } from "@/lib/format";
 import { exportPayslipPdf, downloadTex, openHtmlPayslip, type PayslipView } from "@/lib/payslip";
 import { SELECTABLE_YEARS } from "@/lib/params";
+import { leaveBalance } from "@/lib/leave-balance";
 import { PinPrompt } from "@/components/PinPrompt";
 
 const YEARS = SELECTABLE_YEARS;
@@ -148,6 +149,8 @@ export default function Payroll() {
   const view = (emp: Employee, result: PayrollResult, input: PayslipInput): PayslipView => ({
     firm, employee: emp, period: period!, result, input,
     showEmployerSection: showEmployer, // « Partie réservée à l'employeur » : optionnelle à l'export
+    // Solde de congés payés arrêté à la fin de la période — affiché en synthèse (sans le détail).
+    leave: leaveBalance(emp, s.leaves, new Date(period!.year, period!.month, 0)),
   });
 
   return (
