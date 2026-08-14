@@ -77,9 +77,11 @@ const C = (account: string, label: string, credit: number): JournalLine => ({ ac
 /** Options de génération des écritures de paie. */
 export interface PayrollEntryOptions {
   /**
-   * TFP créditée sur le bordereau CNSS (compte 4441) — DÉFAUT `true`, fidèle au recouvrement réel
-   * par la CNSS pour le compte de l'OFPPT. Si `false`, la TFP est isolée en 4457 (État – taxes).
-   * Le compte de CHARGE 61671 est présent dans les deux cas.
+   * Où créditer la TFP. DÉFAUT `false` : la TFP (TAXE, pas une cotisation) est isolée dans le
+   * compte d'État **4457**, conforme au référentiel (`accounting-accounts.ts` : « au crédit 4457,
+   * pas 4441 »). `true` la crédite sur le bordereau CNSS (compte 4441), fidèle au recouvrement réel
+   * par la CNSS pour l'OFPPT — à activer explicitement si l'on préfère cette présentation. Le compte
+   * de CHARGE 61671 est présent dans les deux cas.
    */
   tfpInCnss?: boolean;
 }
@@ -95,11 +97,12 @@ export function buildPayrollEntry(
   month: number,
   opts: PayrollEntryOptions = {},
 ): JournalEntry {
-  const tfpInCnss = opts.tfpInCnss ?? true;
+  const tfpInCnss = opts.tfpInCnss ?? false;
   const date = endOfMonthIso(year, month); // fin de mois (sans décalage de fuseau)
   const ref = `PAIE-${year}-${String(month).padStart(2, "0")}`;
   const L = ACCOUNT_LABELS;
-  // 4441 = CNSS + AMO + AF (sal. + patr.) ; + TFP par défaut (recouvrement CNSS/OFPPT).
+  // 4441 = CNSS + AMO + AF (sal. + patr.). Par défaut la TFP en est EXCLUE (isolée en 4457, État) ;
+  // elle n'y est ajoutée que si tfpInCnss = true (présentation « recouvrement CNSS/OFPPT »).
   const organismesBase = totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af;
   const cnssTotal = round2(organismesBase + (tfpInCnss ? totals.tfp : 0));
   return finalize({
@@ -129,13 +132,13 @@ export function buildSettlementEntry(
   month: number,
   opts: PayrollEntryOptions = {},
 ): JournalEntry {
-  const tfpInCnss = opts.tfpInCnss ?? true;
+  const tfpInCnss = opts.tfpInCnss ?? false;
   const date = endOfMonthIso(year, month);
   const ref = `REGL-${year}-${String(month).padStart(2, "0")}`;
   const L = ACCOUNT_LABELS;
   const organismesBase = totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af;
   const cnssTotal = round2(organismesBase + (tfpInCnss ? totals.tfp : 0));
-  // CNSS (→CNSS, TFP incluse par défaut) et IR (→DGI) sont des versements distincts.
+  // Versements distincts : CNSS (bordereau), TFP (→OFPPT, isolée en 4457 par défaut) et IR (→DGI).
   const total = round2(totals.netAPayer + cnssTotal + (tfpInCnss ? 0 : totals.tfp) + totals.ir);
   return finalize({
     journal: "BQ",

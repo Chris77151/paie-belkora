@@ -29,36 +29,36 @@ describe("Écriture de paie (journal OD)", () => {
     const l = entry.lines.find((x) => x.account === "4432");
     expect(l?.credit).toBe(4135.52);
   });
-  it("crédit 4441 = CNSS+AMO+AF+TFP 953,80 (TFP incluse par défaut)", () => {
+  it("crédit 4441 = CNSS+AMO+AF 898,96 (TFP EXCLUE — isolée en 4457 par défaut)", () => {
     const l = entry.lines.find((x) => x.account === "4441");
-    expect(l?.credit).toBe(953.8); // 898,96 + 54,84
+    expect(l?.credit).toBe(898.96);
   });
-  it("aucune ligne 4457 par défaut (TFP recouvrée par la CNSS)", () => {
-    expect(entry.lines.find((x) => x.account === "4457")).toBeUndefined();
+  it("crédit 4457 = TFP 54,84 par défaut (compte d'État distinct, conforme au référentiel)", () => {
+    expect(entry.lines.find((x) => x.account === "4457")?.credit).toBe(54.84);
   });
   it("ligne IR à 0 est éliminée", () => {
     expect(entry.lines.find((x) => x.account === "44525")).toBeUndefined();
   });
 });
 
-describe("Écriture de paie — TFP isolée (option tfpInCnss=false)", () => {
+describe("Écriture de paie — TFP sur bordereau CNSS (option tfpInCnss=true)", () => {
   const totals = sumResults([computePayslip(aboubi)]);
-  const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { tfpInCnss: false });
+  const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { tfpInCnss: true });
 
   it("reste équilibrée", () => {
     expect(entry.balanced).toBe(true);
     expect(entry.totalDebit).toBe(5089.32);
   });
-  it("crédit 4441 = 898,96 (hors TFP) et 4457 = 54,84", () => {
-    expect(entry.lines.find((x) => x.account === "4441")?.credit).toBe(898.96);
-    expect(entry.lines.find((x) => x.account === "4457")?.credit).toBe(54.84);
+  it("crédit 4441 = 953,80 (TFP incluse) et aucune ligne 4457", () => {
+    expect(entry.lines.find((x) => x.account === "4441")?.credit).toBe(953.8); // 898,96 + 54,84
+    expect(entry.lines.find((x) => x.account === "4457")).toBeUndefined();
   });
 });
 
 describe("Invariants d'écriture (contrôle bloquant)", () => {
   const totals = sumResults([computePayslip(aboubi)]);
 
-  it("les 3 invariants passent en mode par défaut (TFP en 4441)", () => {
+  it("les 3 invariants passent en mode par défaut (TFP isolée en 4457)", () => {
     const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7);
     const inv = checkPayrollEntryInvariants(entry, totals, DEFAULT_ACCOUNTS);
     expect(inv.ok).toBe(true);
@@ -66,8 +66,8 @@ describe("Invariants d'écriture (contrôle bloquant)", () => {
     for (const r of inv.results) expect(Math.abs(r.delta)).toBeLessThan(0.01);
   });
 
-  it("les 3 invariants passent aussi en TFP isolée (4441+4457)", () => {
-    const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { tfpInCnss: false });
+  it("les 3 invariants passent aussi avec TFP en 4441 (option tfpInCnss=true)", () => {
+    const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { tfpInCnss: true });
     expect(checkPayrollEntryInvariants(entry, totals, DEFAULT_ACCOUNTS).ok).toBe(true);
   });
 
