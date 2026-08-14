@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Save, ShieldX, Users, ScrollText, Building2, ImageUp, RotateCcw,
   Plus, Trash2, Check, Plug, Loader2, UserPlus, KeyRound, ShieldAlert,
-  Cloud, Database, Copy, CloudOff, History, LogIn, LogOut, CircleSlash,
+  Cloud, Database, Copy, CloudOff, History, LogIn, LogOut, CircleSlash, CalendarDays,
 } from "lucide-react";
 import {
   useStore, currentFirm, actions, uid,
@@ -13,7 +13,7 @@ import {
   isSupabaseConfigured, type SupabaseConfig,
 } from "@/lib/supabase";
 import { useT } from "@/lib/i18n";
-import { odooTestConnection, odooListCompanies } from "@/lib/odoo";
+import { odooTestConnection, odooListCompanies, odooFetchLeaveBalances } from "@/lib/odoo";
 import { hashPassword, useSession, ROLE_LABELS } from "@/lib/auth";
 import type { AppUser, OdooConfig } from "@/data/types";
 import {
@@ -38,7 +38,7 @@ import { paletteForFirm, dominantColorFromImage, DEFAULT_PALETTE } from "@/lib/b
 import { getParams, AVAILABLE_YEARS } from "@/lib/params";
 import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
 import { hashPin, isValidPin } from "@/lib/pin";
-import type { AppRole, Firm, Regime } from "@/data/types";
+import type { AppRole, Employee, Firm, Regime } from "@/data/types";
 
 const ROLES: { role: AppRole; label: string; desc: string; tone: Parameters<typeof Badge>[0]["tone"] }[] = [
   { role: "super_admin", label: "Super administrateur", desc: "Accès total, gestion des sociétés et des utilisateurs.", tone: "destructive" },
@@ -99,6 +99,46 @@ export default function Settings() {
     setDraft(next);
     actions.upsertFirm(next);
     setPin1(""); setPin2(""); setPinMsg({ ok: true, text: "Code supprimé." });
+  }
+
+  // Congés du bulletin — source (décompte app / Odoo) + import des soldes Odoo.
+  const leaveSource = draft.payslip_leave_source ?? "app";
+  function setLeaveSource(src: "app" | "odoo") {
+    const next: Firm = { ...draft, payslip_leave_source: src };
+    setDraft(next);
+    actions.upsertFirm(next);
+  }
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  const [leaveMsg, setLeaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  async function importOdooLeaves() {
+    setLeaveMsg(null);
+    if (!s.odoo?.url || !s.odoo.apiKey?.trim()) { setLeaveMsg({ ok: false, text: "Configurez d'abord la connexion Odoo (ci-dessous)." }); return; }
+    if (!firm.odoo_company_id) { setLeaveMsg({ ok: false, text: "Renseignez l'« ID société Odoo » (section Connexion Odoo)." }); return; }
+    setLeaveBusy(true);
+    try {
+      const balances = await odooFetchLeaveBalances(s.odoo, firm.odoo_company_id);
+      const byOdoo = new Map(balances.map((b) => [b.odoo_id, b]));
+      const emps = s.employees.filter((e) => e.firm_id === firm.id);
+      const now = new Date().toISOString().slice(0, 10);
+      let matched = 0;
+      for (const e of emps) {
+        const oid = (e as Employee)._odoo_id;
+        const b = oid != null ? byOdoo.get(oid) : undefined;
+        if (b) {
+          actions.upsertEmployee({ ...e, odoo_leave: { allocated: b.allocated, taken: b.taken, remaining: b.remaining, fetched_at: now } });
+          matched += 1;
+        }
+      }
+      setLeaveMsg(
+        matched > 0
+          ? { ok: true, text: `${matched} salarié(s) mis à jour (soldes de congés Odoo).` }
+          : { ok: false, text: "Aucun salarié apparié. Importez d'abord les salariés depuis Odoo (page Salariés) pour créer le lien." },
+      );
+    } catch (e) {
+      setLeaveMsg({ ok: false, text: `Congés Odoo : ${(e as Error).message}` });
+    } finally {
+      setLeaveBusy(false);
+    }
   }
 
   function onLogoFile(file: File | undefined) {
@@ -336,6 +376,45 @@ export default function Settings() {
               </Button>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>
+            <span className="inline-flex items-center gap-2">
+              <CalendarDays size={16} className="text-sage" />
+              Congés sur le bulletin de paie
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Choisissez la <b>source des congés</b> affichée (en synthèse acquis / pris / solde) sur les bulletins.
+            Repli automatique sur le décompte de l'application si un salarié n'a pas de solde Odoo.
+          </p>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="radio" name="leaveSrc" checked={leaveSource === "app"} onChange={() => setLeaveSource("app")} />
+              Décompte de l'application <span className="text-muted-foreground">(art. 231-232)</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="leaveSrc" checked={leaveSource === "odoo"} onChange={() => setLeaveSource("odoo")} />
+              Soldes importés d'Odoo
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => void importOdooLeaves()} disabled={leaveBusy}>
+              {leaveBusy ? <Loader2 size={15} className="animate-spin" /> : <Plug size={15} />} Importer les soldes de congés (Odoo)
+            </Button>
+            {leaveMsg && <span className={`text-xs ${leaveMsg.ok ? "text-success" : "text-destructive"}`}>{leaveMsg.text}</span>}
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Odoo lu (<code className="font-mono">hr.employee</code>) : jours alloués / pris / restants
+            (<code className="font-mono">allocation_count</code>, <code className="font-mono">allocation_used_count</code>,
+            <code className="font-mono"> remaining_leaves</code>, détectés selon la version). Apparie les salariés déjà
+            importés d'Odoo (lien <code className="font-mono">_odoo_id</code>).
+          </p>
         </CardContent>
       </Card>
 

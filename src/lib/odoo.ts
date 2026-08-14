@@ -195,6 +195,72 @@ export async function odooImportEmployees(
 }
 
 /* ============================================================================
+ * CONGÉS — lecture (read-only) des soldes de congés depuis Odoo (hr.employee).
+ * Les noms de champs varient d'une version à l'autre : on détecte par fields_get
+ * puis on lit ceux qui existent (allocation_count / allocation_used_count /
+ * remaining_leaves) et on en déduit acquis / pris / solde. ODOO FAIT FOI.
+ * ========================================================================== */
+
+/** Solde de congés d'un salarié tel que lu dans Odoo (jours). */
+export interface OdooLeaveBalance {
+  odoo_id: number;
+  /** Jours alloués (allocation_count). */
+  allocated: number;
+  /** Jours pris (allocation_used_count, sinon alloué − restant). */
+  taken: number;
+  /** Jours restants (remaining_leaves, sinon alloué − pris). */
+  remaining: number;
+}
+
+/** Ligne hr.employee partielle (congés) — champs optionnels selon la version Odoo. */
+export interface OdooLeaveRow {
+  id: number;
+  allocation_count?: number | false;
+  allocation_used_count?: number | false;
+  remaining_leaves?: number | false;
+}
+
+/**
+ * Déduit (acquis / pris / solde) d'une ligne hr.employee, en gérant l'absence de tel ou tel champ
+ * selon la version Odoo. PURE & testable. Priorité : valeurs Odoo explicites, sinon complément par
+ * différence (alloué − pris = restant, et réciproquement).
+ */
+export function mapOdooLeave(r: OdooLeaveRow): OdooLeaveBalance {
+  const n = (v: number | false | undefined) => (typeof v === "number" && isFinite(v) ? v : undefined);
+  const allocated = n(r.allocation_count) ?? 0;
+  const usedGiven = n(r.allocation_used_count);
+  const remainGiven = n(r.remaining_leaves);
+  const taken = usedGiven ?? (remainGiven != null ? Math.max(0, allocated - remainGiven) : 0);
+  const remaining = remainGiven ?? Math.max(0, allocated - taken);
+  return { odoo_id: r.id, allocated: round2(allocated), taken: round2(taken), remaining: round2(remaining) };
+}
+
+/**
+ * Lit les soldes de congés des salariés d'une société Odoo (hr.employee). Détecte les champs
+ * disponibles (fields_get) pour rester compatible entre versions. LECTURE SEULE.
+ */
+export async function odooFetchLeaveBalances(config: OdooConfig, odooCompanyId: number): Promise<OdooLeaveBalance[]> {
+  const userId = await odooAuthenticate(config);
+  const candidates = ["allocation_count", "allocation_used_count", "remaining_leaves"];
+  let available: Set<string>;
+  try {
+    const fg: Record<string, unknown> = await jsonRpc(config, "object", "execute_kw", [
+      config.db, userId, config.apiKey, "hr.employee", "fields_get", [candidates], { attributes: ["type"] },
+    ]);
+    available = new Set(Object.keys(fg ?? {}));
+  } catch {
+    available = new Set(candidates); // repli : on tente les champs standard
+  }
+  const fields = ["id", ...candidates.filter((f) => available.has(f))];
+  const rows: OdooLeaveRow[] = await jsonRpc(config, "object", "execute_kw", [
+    config.db, userId, config.apiKey, "hr.employee", "search_read",
+    [[["company_id", "=", odooCompanyId]]],
+    { fields, limit: 2000 },
+  ]);
+  return rows.map(mapOdooLeave);
+}
+
+/* ============================================================================
  * SYNCHRONISATION app -> Odoo (écriture) — lecture-avant-écriture, dry-run,
  * confirmation. Principe directeur : ODOO FAIT FOI. On ne remplace jamais une
  * valeur Odoo existante ; on ne comble QUE les trous (champ Odoo vide + valeur

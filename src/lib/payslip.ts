@@ -12,7 +12,7 @@ import { amountToWordsFr, asciiSpaces, dateFr, periodLabel } from "./format";
 import { firmDescriptor, firmLegalLine } from "./firm-legal";
 import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
 import { firmLogoPath, loadLogo } from "./pdf-kit";
-import type { LeaveBalance } from "./leave-balance";
+import type { LeaveBalance, LeaveSource } from "./leave-balance";
 
 export interface PayslipView {
   firm: Firm;
@@ -26,6 +26,8 @@ export interface PayslipView {
    * Optionnel : absent → la ligne congés n'apparaît pas.
    */
   leave?: LeaveBalance;
+  /** Source des congés affichés (`odoo` → l'en-tête le signale). Défaut : décompte de l'application. */
+  leaveSource?: LeaveSource;
   /**
    * Afficher la « Partie réservée à l'employeur » (charges patronales + coût total employeur).
    * Défaut : `true` (comportement historique). Mettre à `false` pour un bulletin remis au salarié
@@ -241,10 +243,12 @@ export async function buildPayslipDoc(v: PayslipView): Promise<jsPDF> {
   );
 
   // Congés payés — synthèse COMPACTE (acquis / pris / solde), sans le détail des congés posés.
+  // L'en-tête signale la source (Odoo ou décompte de l'application) choisie dans Paramètres.
   if (v.leave) {
+    const src = v.leaveSource === "odoo" ? " (Odoo)" : "";
     y = grid(
       y,
-      ["Congés payés acquis", "Congés pris", "Solde congés (jours)"],
+      [`Congés payés acquis${src}`, "Congés pris", "Solde congés (jours)"],
       [fdays(v.leave.acquired), fdays(v.leave.taken), fdays(v.leave.balance)],
       [full / 3, full / 3, full / 3],
     );
@@ -428,7 +432,7 @@ export function buildPayslipHtml(v: PayslipView): string {
    <tr style="text-align:center"><td>${dateFr(e.birth_date)}</td><td>${dateFr(e.hire_date)}</td><td>${e.marital_status ?? "—"}</td><td>${e.dependents}</td><td>${e.cin ?? "—"}</td><td>${e.cnss_number ?? "EN COURS (DAMANCOM)"}</td></tr></table>
  <table><tr><th>Jours ouvrés</th><th>Jours travaillés</th><th>Absences</th><th>Maladie</th><th>H. supp.</th></tr>
    <tr style="text-align:center"><td>${joursOuvres}</td><td>${inp.days_worked}</td><td>${absences}</td><td>0</td><td>${inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100}</td></tr></table>
- ${v.leave ? `<table><tr><th>Congés payés acquis</th><th>Congés pris</th><th>Solde congés (jours)</th></tr>
+ ${v.leave ? `<table><tr><th>Congés payés acquis${v.leaveSource === "odoo" ? " (Odoo)" : ""}</th><th>Congés pris</th><th>Solde congés (jours)</th></tr>
    <tr style="text-align:center"><td>${fdays(v.leave.acquired)}</td><td>${fdays(v.leave.taken)}</td><td>${fdays(v.leave.balance)}</td></tr></table>` : ""}
  <table><tr><th style="text-align:left">LIBELLE</th><th>Nbre ou Base</th><th>TAUX</th><th>GAINS</th><th>RETENUES</th></tr>${mainTr}</table>
  ${v.showEmployerSection === false ? "" : `<table class="emp"><tr><th style="text-align:left">Partie réservée à l'employeur — charges patronales</th><th>Base</th><th>Taux %</th><th>Plafond</th><th>Montant</th></tr>${empTr}</table>`}

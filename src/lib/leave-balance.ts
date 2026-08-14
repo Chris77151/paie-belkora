@@ -53,3 +53,24 @@ export function leaveBalance(emp: Employee, leaves: Leave[], at: Date): LeaveBal
     .reduce((a, l) => a + l.days, 0);
   return { acquired, taken, balance: acquired - taken };
 }
+
+/** Source des congés du bulletin. */
+export type LeaveSource = "app" | "odoo";
+
+/**
+ * Choisit la source des congés affichés sur le bulletin : décompte interne (`app`) ou soldes
+ * importés d'Odoo (`odoo`). Si `odoo` est demandé mais qu'aucun solde Odoo n'a été importé pour le
+ * salarié, on RETOMBE proprement sur le décompte de l'application (jamais d'affichage vide). PURE.
+ */
+export function payslipLeave(
+  emp: Employee,
+  leaves: Leave[],
+  at: Date,
+  source: LeaveSource | undefined,
+): { balance: LeaveBalance; source: LeaveSource } {
+  if (source === "odoo" && emp.odoo_leave) {
+    const o = emp.odoo_leave;
+    return { balance: { acquired: o.allocated, taken: o.taken, balance: o.remaining }, source: "odoo" };
+  }
+  return { balance: leaveBalance(emp, leaves, at), source: "app" };
+}

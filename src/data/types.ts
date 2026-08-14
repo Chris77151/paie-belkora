@@ -59,6 +59,12 @@ export interface Firm {
    * comptables. Ne contient JAMAIS le code en clair. Absent = aucun code exigé.
    */
   validation_pin_hash?: string;
+  /**
+   * Source des congés affichés sur le BULLETIN de paie : `app` = décompte interne
+   * (`leave-balance.ts`, art. 231-232), `odoo` = soldes importés d'Odoo (`Employee.odoo_leave`).
+   * Défaut (absent) : `app`. Choisi dans Paramètres.
+   */
+  payslip_leave_source?: "app" | "odoo";
 }
 
 /** Paramètres de connexion à l'API Odoo (JSON-RPC). */
@@ -109,6 +115,10 @@ export interface Employee {
   exit_date?: string;
   /** Motif de la sortie — même nomenclature que le calcul de solde de tout compte. */
   exit_reason?: DepartureReason;
+  /** Lien vers l'enregistrement hr.employee d'Odoo (renseigné à l'import / à la synchro). */
+  _odoo_id?: number;
+  /** Soldes de congés importés d'Odoo (jours). Sert de source alternative au décompte de l'app. */
+  odoo_leave?: { allocated: number; taken: number; remaining: number; fetched_at: string };
 }
 
 export interface PayrollPeriod {

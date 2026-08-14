@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Employee, Leave } from "@/data/types";
-import { acquiredLeaveDays, leaveBalance } from "./leave-balance";
+import { acquiredLeaveDays, leaveBalance, payslipLeave } from "./leave-balance";
+import { mapOdooLeave } from "./odoo";
 
 const emp = (o: Partial<Employee>): Employee => ({
   id: "e1", firm_id: "f1", first_name: "A", last_name: "B",
@@ -46,5 +47,36 @@ describe("leave-balance — solde de congés payés", () => {
     const b = leaveBalance(e, [], new Date(2026, 0, 1));
     expect(b.taken).toBe(0);
     expect(b.balance).toBe(b.acquired);
+  });
+
+  it("mapOdooLeave : déduit acquis/pris/solde selon les champs présents (compat versions)", () => {
+    // Tous présents.
+    expect(mapOdooLeave({ id: 1, allocation_count: 26, allocation_used_count: 10, remaining_leaves: 16 }))
+      .toEqual({ odoo_id: 1, allocated: 26, taken: 10, remaining: 16 });
+    // Alloué + restant → pris déduit.
+    expect(mapOdooLeave({ id: 2, allocation_count: 26, remaining_leaves: 16 }).taken).toBe(10);
+    // Alloué + pris → restant déduit.
+    expect(mapOdooLeave({ id: 3, allocation_count: 26, allocation_used_count: 10 }).remaining).toBe(16);
+    // Champs false (version sans ces champs) → tout à zéro, jamais NaN.
+    expect(mapOdooLeave({ id: 4, allocation_count: false })).toEqual({ odoo_id: 4, allocated: 0, taken: 0, remaining: 0 });
+  });
+
+  it("payslipLeave : source Odoo si demandée et disponible, sinon repli sur le décompte app", () => {
+    const at = new Date(2026, 0, 1);
+    const withOdoo = emp({ hire_date: "2024-01-01", odoo_leave: { allocated: 20, taken: 8, remaining: 12, fetched_at: "2026-01-01" } });
+    const noOdoo = emp({ hire_date: "2024-01-01" });
+
+    const odoo = payslipLeave(withOdoo, [], at, "odoo");
+    expect(odoo.source).toBe("odoo");
+    expect(odoo.balance).toEqual({ acquired: 20, taken: 8, balance: 12 });
+
+    // Odoo demandé mais aucun solde importé → repli propre sur le décompte de l'app.
+    const fallback = payslipLeave(noOdoo, [], at, "odoo");
+    expect(fallback.source).toBe("app");
+    expect(fallback.balance.acquired).toBeGreaterThan(0);
+
+    // Source app (ou absente) → toujours le décompte de l'app.
+    expect(payslipLeave(withOdoo, [], at, "app").source).toBe("app");
+    expect(payslipLeave(withOdoo, [], at, undefined).source).toBe("app");
   });
 });
