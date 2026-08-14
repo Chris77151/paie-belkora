@@ -174,6 +174,23 @@ function block(
   if (c.comptes.length) txt(`Comptes PCGE : ${c.comptes.join(", ")}`, M + 2, { size: 8 });
   txt(`Problème : ${c.detail}`, M + 2, { size: 8 });
   txt(`Correction : ${c.recommandation}`, M + 2, { size: 8 });
+  if (c.correction) {
+    txt(`Comprendre : ${c.correction.comprendre}`, M + 2, { size: 8, color: grey });
+    if (c.correction.etapes.length) {
+      txt("Étapes :", M + 2, { size: 8, bold: true });
+      c.correction.etapes.forEach((s, i) => txt(`  ${i + 1}. ${s}`, M + 2, { size: 8 }));
+    }
+    const e = c.correction.ecriture;
+    if (e) {
+      txt(`Écriture de correction (journal ${e.journal}) — ${e.libelle} :`, M + 2, { size: 8, bold: true });
+      for (const l of e.lignes) {
+        const mont = l.debit ? `Débit ${fmt(l.debit)}` : `Crédit ${fmt(l.credit)}`;
+        txt(`  ${l.compte}  —  ${l.libelle}  —  ${mont} DH`, M + 2, { size: 7.5 });
+      }
+      txt(`  Total : Débit ${fmt(e.totalDebit)} = Crédit ${fmt(e.totalCredit)} DH${e.equilibre ? "" : "  (DÉSÉQUILIBRE)"}`, M + 2, { size: 7.5, bold: true });
+      if (e.note) txt(`  Note : ${e.note}`, M + 2, { size: 7, italic: true, color: grey });
+    }
+  }
   txt(`Base normative : ${c.reference_normative}`, M + 2, { size: 8 });
   txt(`Action Odoo : ${c.action_odoo}`, M + 2, { size: 8 });
   gap(2);

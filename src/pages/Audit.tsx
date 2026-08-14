@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import {
   ShieldCheck, Sparkles, Loader2, AlertTriangle, ChevronDown, CheckCircle2,
   ScrollText, Scale, LayoutList, Wrench, BookMarked, FileDown, DatabaseZap,
+  Lightbulb, ListChecks, BookText,
 } from "lucide-react";
 import {
   Badge, Button, Card, CardContent, Field, PageHeader, Select,
@@ -12,7 +13,7 @@ import { useT } from "@/lib/i18n";
 import { MONTHS_FR, mad } from "@/lib/format";
 import {
   buildAuditSnapshot, runFullAudit, buildRemediationPlan,
-  type AuditReport, type AuditFinding, type Gravite,
+  type AuditReport, type AuditFinding, type Gravite, type CorrectionEntry,
 } from "@/lib/audit-engine";
 import { buildRemediationReportPdf } from "@/lib/remediation-report";
 import {
@@ -316,12 +317,82 @@ function FindingRow({ c }: { c: AuditFinding }) {
         )}
         <Detail label="Problème détecté" value={c.detail} />
         <Detail label="Recommandation" value={c.recommandation} icon={<CheckCircle2 size={13} className="text-sage" />} />
+
+        {c.correction && (
+          <div className="space-y-3 rounded-md border border-primary/25 bg-primary/[0.04] p-3">
+            <Detail label="Comprendre l'anomalie" value={c.correction.comprendre} icon={<Lightbulb size={13} className="text-warning" />} />
+            {c.correction.etapes.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                  <ListChecks size={13} className="text-sage" /> Étapes de correction
+                </div>
+                <ol className="ml-4 list-decimal space-y-0.5 leading-relaxed">
+                  {c.correction.etapes.map((s, i) => <li key={i}>{s}</li>)}
+                </ol>
+              </div>
+            )}
+            {c.correction.ecriture ? (
+              <EcritureTable e={c.correction.ecriture} />
+            ) : (
+              <p className="text-xs italic text-muted-foreground">
+                Pas d'écriture automatique : la correction dépend d'une analyse au cas par cas (voir les étapes).
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <Detail label="Référence normative (Maroc)" value={c.reference_normative} icon={<BookMarked size={13} className="text-muted-foreground" />} />
           <Detail label="Action Odoo" value={c.action_odoo} icon={<Wrench size={13} className="text-muted-foreground" />} />
         </div>
       </div>
     </details>
+  );
+}
+
+/** Écriture de correction proposée, rendue en table (Compte / Libellé / Débit / Crédit + totaux). */
+function EcritureTable({ e }: { e: CorrectionEntry }) {
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+        <BookText size={13} className="text-primary" /> Écriture de correction — journal {e.journal}
+      </div>
+      <div className="overflow-x-auto rounded border border-border/60 bg-card">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="bg-muted/40 text-muted-foreground">
+              <th className="px-2 py-1 text-left font-medium">Compte</th>
+              <th className="px-2 py-1 text-left font-medium">Libellé</th>
+              <th className="px-2 py-1 text-right font-medium">Débit</th>
+              <th className="px-2 py-1 text-right font-medium">Crédit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {e.lignes.map((l, i) => (
+              <tr key={i} className="border-t border-border/50">
+                <td className="px-2 py-1 font-mono text-primary">{l.compte}</td>
+                <td className="px-2 py-1">{l.libelle}</td>
+                <td className="px-2 py-1 text-right num">{l.debit ? mad(l.debit) : ""}</td>
+                <td className="px-2 py-1 text-right num">{l.credit ? mad(l.credit) : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-border font-semibold">
+              <td className="px-2 py-1" />
+              <td className="px-2 py-1 text-right">Total</td>
+              <td className="px-2 py-1 text-right num">{mad(e.totalDebit)}</td>
+              <td className="px-2 py-1 text-right num">{mad(e.totalCredit)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p className="mt-1 text-[11px] italic text-muted-foreground">
+        {e.libelle}
+        {!e.equilibre && <span className="text-destructive"> — ⚠ écriture déséquilibrée</span>}
+        {e.note ? ` · ${e.note}` : ""}
+      </p>
+    </div>
   );
 }
 

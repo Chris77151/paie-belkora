@@ -13,8 +13,9 @@
  */
 import { currentFirm, employeesOfFirm, getState, payslipsOfPeriod } from "@/data/store";
 import type { Employee } from "@/data/types";
-import type { PayrollResult } from "@/lib/payroll-engine";
+import { round2, type PayrollResult } from "@/lib/payroll-engine";
 import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
+import { leaveBalance } from "@/lib/leave-balance";
 import {
   buildPayrollEntry, buildSettlementEntry, sumResults, type JournalEntry,
 } from "@/lib/payroll-accounting";
@@ -25,6 +26,36 @@ import { fetchOdooAccounting, type OdooAccountingData } from "@/lib/odoo-account
 
 export type AssertionCategory = "flux" | "soldes" | "presentation";
 export type Gravite = "critique" | "eleve" | "moyen" | "info";
+
+/** Une ligne d'écriture de correction proposée (partie double). */
+export interface CorrectionLine {
+  compte: string; // n° PCGE
+  libelle: string;
+  debit: number;
+  credit: number;
+}
+
+/** Écriture comptable de correction prête à passer (proposition, jamais appliquée en aveugle). */
+export interface CorrectionEntry {
+  journal: string; // "OD" (divers), "BQ" (banque)…
+  libelle: string; // narration de l'écriture
+  lignes: CorrectionLine[];
+  totalDebit: number;
+  totalCredit: number;
+  equilibre: boolean;
+  /** Réserve/précision (ex. « montant à ajuster selon l'inventaire des congés »). */
+  note?: string;
+}
+
+/** Bloc « correction » enrichi attaché à un constat : compréhension + étapes + écriture. */
+export interface FindingCorrection {
+  /** Ce que l'anomalie SIGNIFIE et son impact comptable/fiscal (compréhension). */
+  comprendre: string;
+  /** Étapes concrètes de correction (checklist). */
+  etapes: string[];
+  /** Écriture comptable proposée, si une écriture est le bon remède (sinon null). */
+  ecriture?: CorrectionEntry | null;
+}
 
 export interface AuditFinding {
   categorie_assertion: AssertionCategory;
@@ -38,6 +69,21 @@ export interface AuditFinding {
   action_odoo: string;
   /** Numéros de compte PCGE concernés (extraits du constat, allowlist — sans faux positif). */
   comptes: string[];
+  /** Compréhension approfondie + écriture de correction prête à passer (si applicable). */
+  correction?: FindingCorrection;
+}
+
+/** Assemble une écriture de correction équilibrée (arrondi 2 déc., calcul des totaux + équilibre). */
+export function mkEntry(journal: string, libelle: string, lignes: CorrectionLine[], note?: string): CorrectionEntry {
+  const rl = lignes.map((l) => ({ ...l, debit: round2(l.debit), credit: round2(l.credit) }));
+  const totalDebit = round2(rl.reduce((s, l) => s + l.debit, 0));
+  const totalCredit = round2(rl.reduce((s, l) => s + l.credit, 0));
+  return { journal, libelle, lignes: rl, totalDebit, totalCredit, equilibre: Math.abs(totalDebit - totalCredit) < 0.01, note };
+}
+
+/** Attache un bloc de correction à un constat (helper immuable). */
+export function withCorrection(f: AuditFinding, correction: FindingCorrection): AuditFinding {
+  return { ...f, correction };
 }
 
 export interface AuditReport {
@@ -141,6 +187,19 @@ export function localPayrollFindings(year: number, month: number): AuditFinding[
   const periodStart = new Date(year, month - 1, 1);
   const periodEnd = new Date(year, month, 0);
 
+  // Bases des écritures de correction (calculées une fois).
+  const cnssTotal = round2(totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af);
+  const totalPatronalRate = p.cnssEmployerRate + p.familyAllocRate + p.amoEmployerRate + p.tfpRate;
+  // Provision congés payés = Σ (solde de congés acquis non pris × salaire journalier) + charges patronales.
+  const congesBase = round2(
+    active.reduce((sum, e) => {
+      const solde = Math.max(0, leaveBalance(e, s.leaves, periodEnd).balance);
+      const sj = ((e.base_hourly_rate || 0) * (e.monthly_hours || 0)) / 26; // salaire journalier (26 j)
+      return sum + solde * sj;
+    }, 0),
+  );
+  const congesCharges = round2(congesBase * totalPatronalRate);
+
   const out: AuditFinding[] = [];
 
   const noRate = active.filter((e) => !e.base_hourly_rate || e.base_hourly_rate <= 0);
@@ -168,11 +227,25 @@ export function localPayrollFindings(year: number, month: number): AuditFinding[
       "hr.contract : paramétrer le temps de travail (resource.calendar)."));
 
   if (totals.salaireBrut > 0 && (totals.cnssPatronal === 0 || totals.af === 0 || totals.tfp === 0))
-    out.push(F("flux", "Exhaustivité", "dettes sociales", "critique", "Charges patronales incomplètes",
-      `Salaires bruts comptabilisés (${dh(totals.salaireBrut)}) mais une charge patronale est nulle (CNSS ${dh(totals.cnssPatronal)} / AF ${dh(totals.af)} / TFP ${dh(totals.tfp)}).`,
-      "Comptabiliser l'intégralité des charges patronales (CNSS, AMO, AF, TFP).",
-      "CGNC (exhaustivité) ; CNSS (cotisation patronale obligatoire).",
-      "Vérifier les taxes de paie et leur comptabilisation dans account.move."));
+    out.push(withCorrection(
+      F("flux", "Exhaustivité", "dettes sociales", "critique", "Charges patronales incomplètes",
+        `Salaires bruts comptabilisés (${dh(totals.salaireBrut)}) mais une charge patronale est nulle (CNSS ${dh(totals.cnssPatronal)} / AF ${dh(totals.af)} / TFP ${dh(totals.tfp)}).`,
+        "Comptabiliser l'intégralité des charges patronales (CNSS, AMO, AF, TFP).",
+        "CGNC (exhaustivité) ; CNSS (cotisation patronale obligatoire).",
+        "Vérifier les taxes de paie et leur comptabilisation dans account.move."),
+      {
+        comprendre:
+          "Une charge patronale nulle alors qu'il y a du brut = soit une exonération LÉGITIME (dispositif ANAPEC/stage), "
+          + "soit une OMISSION (charges sous-évaluées, dette organisme minorée, risque de rappel + majorations). "
+          + "À qualifier AVANT toute écriture : ne pas constater une charge qui est légalement exonérée.",
+        etapes: [
+          "Vérifier si les salariés concernés sont exonérés (ANAPEC/TAHFIZ/stage) — dans ce cas, aucune écriture.",
+          "Si omission réelle : recalculer chaque charge manquante = assiette × taux (part patronale).",
+          "Passer D 617411/617412/61744 (charge) / C 4441, et D 61671 / C 4457 pour la TFP.",
+        ],
+        ecriture: null, // pas d'écriture automatique : le 0 peut être une exonération légitime — à qualifier d'abord.
+      },
+    ));
 
   const cddNoEnd = active.filter((e) => e.contract_type === "CDD" && !e.contract_end);
   if (cddNoEnd.length)
@@ -207,10 +280,26 @@ export function localPayrollFindings(year: number, month: number): AuditFinding[
 
   const acc = DEFAULT_ACCOUNTS;
   if (acc.etatTfp === acc.cnssOrganisme)
-    out.push(F("flux", "Classification", "paie", "eleve", "TFP imputée avec les organismes sociaux",
-      "La TFP (taxe) est comptabilisée dans le compte CNSS au lieu d'un compte d'État (4457).",
-      "Reclasser la TFP en 4457 (État – impôts et taxes).", "PCGE (classification).",
-      "Mapper la taxe TFP sur le compte 4457 (plan l10n_ma)."));
+    out.push(withCorrection(
+      F("flux", "Classification", "paie", "eleve", "TFP imputée avec les organismes sociaux",
+        "La TFP (taxe) est comptabilisée dans le compte CNSS au lieu d'un compte d'État (4457).",
+        "Reclasser la TFP en 4457 (État – impôts et taxes).", "PCGE (classification).",
+        "Mapper la taxe TFP sur le compte 4457 (plan l10n_ma)."),
+      {
+        comprendre:
+          "La TFP est une TAXE due à l'État (OFPPT), pas une cotisation sociale. Logée avec la CNSS (4441), "
+          + "elle fausse le solde des organismes sociaux et le rapprochement du bordereau CNSS.",
+        etapes: [
+          "Isoler le montant de TFP inclus dans le compte 4441.",
+          "Passer l'OD de reclassement D 4441 / C 4457.",
+          "Corriger le plan de comptes (mapper la TFP sur 4457) pour éviter la récidive.",
+        ],
+        ecriture: mkEntry("OD", "Reclassement de la TFP (organismes sociaux → État)", [
+          { compte: "4441", libelle: "CNSS — organismes sociaux", debit: totals.tfp, credit: 0 },
+          { compte: "4457", libelle: "État — TFP à payer", debit: 0, credit: totals.tfp },
+        ]),
+      },
+    ));
 
   const noCnss = active.filter((e) => !e.cnss_number);
   if (noCnss.length)
@@ -235,21 +324,79 @@ export function localPayrollFindings(year: number, month: number): AuditFinding[
       "L'IF n'est pas renseigné, indispensable aux déclarations fiscales.",
       "Renseigner l'IF de l'entité.", "CGI (identification fiscale).", "res.company : identifiant fiscal."));
 
-  out.push(F("soldes", "Exhaustivité", "paie", "moyen", "Provision pour congés payés non constatée",
-    "L'application ne comptabilise pas la provision pour congés payés (1,5 j/mois) ni les charges sociales afférentes.",
-    "Constituer une provision congés payés à la clôture (dette envers le personnel).",
-    "CGNC (spécialisation, prudence).", "OD de provision datée à la clôture ; contre-passation à l'ouverture."));
+  const congesTotal = round2(congesBase + congesCharges);
+  out.push(withCorrection(
+    F("soldes", "Exhaustivité", "paie", "moyen", "Provision pour congés payés non constatée",
+      "L'application ne comptabilise pas la provision pour congés payés (1,5 j/mois) ni les charges sociales afférentes.",
+      "Constituer une provision congés payés à la clôture (dette envers le personnel).",
+      "CGNC (spécialisation, prudence).", "OD de provision datée à la clôture ; contre-passation à l'ouverture."),
+    {
+      comprendre:
+        `Les congés acquis non pris sont une DETTE CERTAINE envers le personnel (+ charges patronales), rattachable à l'exercice. `
+        + `Non constatée, elle minore les charges de personnel et surévalue le résultat et l'IS. `
+        + (congesBase > 0
+          ? `Estimation à fin ${snap.period} : base congés ${dh(congesBase)} + charges patronales (${(totalPatronalRate * 100).toFixed(2)} %) ${dh(congesCharges)} = ${dh(congesTotal)}.`
+          : `Aucun solde de congés à provisionner sur les salariés actifs à fin ${snap.period}.`),
+      etapes: [
+        "Arrêter le solde de congés acquis non pris par salarié (volet Congés).",
+        "Base = Σ (solde jours × salaire journalier 1/26) ; charges patronales = base × taux patronal.",
+        "Passer l'OD de dotation à la clôture, puis la CONTRE-PASSER au 1er jour de l'exercice suivant.",
+      ],
+      ecriture: congesBase > 0
+        ? mkEntry("OD", "Dotation — provision congés payés (clôture)", [
+            { compte: "6171", libelle: "Rémunérations — congés payés à payer", debit: congesBase, credit: 0 },
+            { compte: "617x", libelle: "Charges patronales sur congés (CNSS/AMO/AF/TFP)", debit: congesCharges, credit: 0 },
+            { compte: "4437", libelle: "Charges de personnel à payer (congés)", debit: 0, credit: congesTotal },
+          ],
+          `Méthode « charges à payer » (CGNC). Taux patronal ${(totalPatronalRate * 100).toFixed(2)} % (hors plafond CNSS — à ajuster si le plafond joue). À CONTRE-PASSER à l'ouverture : D 4437 / C 6171 & 617x. Ventiler 617x selon vos sous-comptes (617411/617412/61744/61671).`)
+        : null,
+    },
+  ));
 
-  out.push(F("soldes", "Évaluation et imputation", "dettes sociales", "info", "Rapprocher le solde 4441 avec le bordereau CNSS",
-    "Le solde des organismes sociaux (4441) à la clôture doit correspondre au bordereau CNSS du mois.",
-    "Rapprocher et lettrer le compte 4441 avec le bordereau et le paiement.",
-    "CNSS ; CGNC (évaluation).", "Lettrage des account.move.line 4441."));
+  out.push(withCorrection(
+    F("soldes", "Évaluation et imputation", "dettes sociales", "info", "Rapprocher le solde 4441 avec le bordereau CNSS",
+      "Le solde des organismes sociaux (4441) à la clôture doit correspondre au bordereau CNSS du mois.",
+      "Rapprocher et lettrer le compte 4441 avec le bordereau et le paiement.",
+      "CNSS ; CGNC (évaluation).", "Lettrage des account.move.line 4441."),
+    {
+      comprendre:
+        `Le solde 4441 (${dh(cnssTotal)} : CNSS + AMO + AF, parts salariale et patronale) doit être réglé à la CNSS (DAMANCOM) `
+        + `et correspondre au bordereau du mois. Un écart = cotisation oubliée, double comptabilisation ou TFP encore logée en 4441.`,
+      etapes: [
+        "Rapprocher le solde 4441 au montant du bordereau CNSS du mois.",
+        "Télédéclarer et télépayer via DAMANCOM dans le délai légal.",
+        "Lettrer le règlement ; un résidu = la TFP si elle n'a pas été reclassée en 4457.",
+      ],
+      ecriture: cnssTotal > 0
+        ? mkEntry("BQ", "Règlement des cotisations CNSS (bordereau)", [
+            { compte: "4441", libelle: "CNSS — organismes sociaux", debit: cnssTotal, credit: 0 },
+            { compte: "5141", libelle: "Banque", debit: 0, credit: cnssTotal },
+          ])
+        : null,
+    },
+  ));
 
   if (totals.ir > 0)
-    out.push(F("soldes", "Existence", "dettes fiscales", "info", "IR retenu (44525) à verser le mois suivant",
-      `IR salarial retenu : ${dh(totals.ir)}. Versement à la DGI dû avant la fin du mois suivant.`,
-      "Verser l'IR retenu dans le délai légal (éviter les pénalités).",
-      "CGI (retenue à la source sur salaires).", "Lettrer le versement (account.move.line 44525)."));
+    out.push(withCorrection(
+      F("soldes", "Existence", "dettes fiscales", "info", "IR retenu (44525) à verser le mois suivant",
+        `IR salarial retenu : ${dh(totals.ir)}. Versement à la DGI dû avant la fin du mois suivant.`,
+        "Verser l'IR retenu dans le délai légal (éviter les pénalités).",
+        "CGI (retenue à la source sur salaires).", "Lettrer le versement (account.move.line 44525)."),
+      {
+        comprendre:
+          `IR retenu à la source sur salaires (${dh(totals.ir)}) : c'est une dette envers l'État à décaisser `
+          + `(télépaiement SIMPL-IR) avant la fin du mois suivant. Retard = majorations de retard.`,
+        etapes: [
+          "Rapprocher l'IR retenu du cumul des bulletins du mois.",
+          "Télépayer l'IR à la DGI (SIMPL-IR) dans le délai légal.",
+          "Solder le compte 44525 après paiement (lettrage).",
+        ],
+        ecriture: mkEntry("BQ", "Versement de l'IR retenu à la source (DGI)", [
+          { compte: "44525", libelle: "État — IR retenu à la source", debit: totals.ir, credit: 0 },
+          { compte: "5141", libelle: "Banque", debit: 0, credit: totals.ir },
+        ]),
+      },
+    ));
 
   const unbalanced = entries.filter((e) => !e.balanced);
   if (unbalanced.length)
@@ -325,12 +472,30 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
 
   // Classification : charges (classe 6) au solde créditeur / produits (classe 7) au solde débiteur.
   const chargesAbn = d.balances.filter((b) => b.code.startsWith("6") && b.balance < -0.01);
-  if (chargesAbn.length)
-    out.push(F("flux", "Classification", "achats/charges", "eleve",
-      `${chargesAbn.length} compte(s) de charges au solde créditeur`,
-      `Solde anormal (créditeur) sur des comptes de classe 6 : ${chargesAbn.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}.`,
-      "Vérifier l'imputation (avoir mal classé, produit en charge, écriture inversée).",
-      "PCGE (classification).", "Grand livre du compte ; reclasser via OD."));
+  if (chargesAbn.length) {
+    const totalAbn = round2(chargesAbn.reduce((s, b) => s + -b.balance, 0));
+    out.push(withCorrection(
+      F("flux", "Classification", "achats/charges", "eleve",
+        `${chargesAbn.length} compte(s) de charges au solde créditeur`,
+        `Solde anormal (créditeur) sur des comptes de classe 6 : ${chargesAbn.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}.`,
+        "Vérifier l'imputation (avoir mal classé, produit en charge, écriture inversée).",
+        "PCGE (classification).", "Grand livre du compte ; reclasser via OD."),
+      {
+        comprendre:
+          "Une charge (classe 6) est débitrice par nature. Un solde CRÉDITEUR révèle un avoir mal classé, un produit "
+          + "logé en charge, ou une écriture inversée → charges minorées et résultat (donc IS) surévalué.",
+        etapes: [
+          "Sortir le grand-livre de chaque compte pour identifier l'écriture anormale.",
+          "Solder provisoirement en compte d'attente 471, puis réimputer au bon compte (produit 7xxx, tiers…).",
+          "Documenter la cause pour éviter la récidive.",
+        ],
+        ecriture: mkEntry("OD", "Mise en attente des charges au solde créditeur (à réimputer)", [
+          ...chargesAbn.map((b) => ({ compte: b.code, libelle: `${b.name}`.slice(0, 58), debit: round2(-b.balance), credit: 0 })),
+          { compte: "471", libelle: "Compte d'attente — à réimputer après analyse", debit: 0, credit: totalAbn },
+        ], "Écriture de MISE EN ATTENTE : le compte définitif dépend de l'analyse pièce par pièce. Réimputer depuis 471 vers le bon compte."),
+      },
+    ));
+  }
   const produitsAbn = d.balances.filter((b) => b.code.startsWith("7") && b.balance > 0.01);
   if (produitsAbn.length)
     out.push(F("flux", "Classification", "ventes/produits", "eleve",
@@ -341,30 +506,79 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
 
   // Existence / Évaluation : clients créditeurs (342x) / fournisseurs débiteurs (441x).
   const clientsCred = d.balances.filter((b) => startsWithAny(b.code, ["342", "3421"]) && b.balance < -0.01);
-  if (clientsCred.length)
-    out.push(F("soldes", "Existence", "ventes/clients", "moyen",
-      `${clientsCred.length} compte(s) client au solde créditeur`,
-      `Clients (342x) au solde créditeur : ${clientsCred.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}. Avances/avoirs ou erreur d'imputation.`,
-      "Analyser et lettrer ; reclasser les avances en 4421 si nécessaire.",
-      "CGNC (existence, évaluation).", "Lettrage des écritures clients ; reclassement des avances."));
+  if (clientsCred.length) {
+    const totalCred = round2(clientsCred.reduce((s, b) => s + -b.balance, 0));
+    out.push(withCorrection(
+      F("soldes", "Existence", "ventes/clients", "moyen",
+        `${clientsCred.length} compte(s) client au solde créditeur`,
+        `Clients (342x) au solde créditeur : ${clientsCred.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}. Avances/avoirs ou erreur d'imputation.`,
+        "Analyser et lettrer ; reclasser les avances en 4421 si nécessaire.",
+        "CGNC (existence, évaluation).", "Lettrage des écritures clients ; reclassement des avances."),
+      {
+        comprendre:
+          "Un compte client créditeur = une AVANCE reçue (ou un avoir) logée à l'actif. Le bilan ne peut compenser "
+          + "actif et passif : cette avance doit figurer au passif (4421), sinon les créances clients sont sous-évaluées.",
+        etapes: [
+          "Analyser chaque solde créditeur (avance réelle vs erreur d'imputation).",
+          "Reclasser les avances en 4421 (Clients — avances et acomptes reçus).",
+          "Contre-passer à l'ouverture N+1 lorsque l'avance se dénoue par facturation.",
+        ],
+        ecriture: mkEntry("OD", "Reclassement des avances clients (soldes créditeurs)", [
+          ...clientsCred.map((b) => ({ compte: b.code, libelle: `Client ${b.name}`.slice(0, 58), debit: round2(-b.balance), credit: 0 })),
+          { compte: "4421", libelle: "Clients — avances et acomptes reçus", debit: 0, credit: totalCred },
+        ]),
+      },
+    ));
+  }
   const fournDeb = d.balances.filter((b) => startsWithAny(b.code, ["441", "4411"]) && b.balance > 0.01);
-  if (fournDeb.length)
-    out.push(F("soldes", "Existence", "achats/fournisseurs", "moyen",
-      `${fournDeb.length} compte(s) fournisseur au solde débiteur`,
-      `Fournisseurs (441x) au solde débiteur : ${fournDeb.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}. Avances/avoirs ou erreur d'imputation.`,
-      "Analyser et lettrer ; reclasser les avances en 3411 si nécessaire.",
-      "CGNC (existence, évaluation).", "Lettrage des écritures fournisseurs ; reclassement des avances."));
+  if (fournDeb.length) {
+    const totalDeb = round2(fournDeb.reduce((s, b) => s + b.balance, 0));
+    out.push(withCorrection(
+      F("soldes", "Existence", "achats/fournisseurs", "moyen",
+        `${fournDeb.length} compte(s) fournisseur au solde débiteur`,
+        `Fournisseurs (441x) au solde débiteur : ${fournDeb.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}. Avances/avoirs ou erreur d'imputation.`,
+        "Analyser et lettrer ; reclasser les avances en 3411 si nécessaire.",
+        "CGNC (existence, évaluation).", "Lettrage des écritures fournisseurs ; reclassement des avances."),
+      {
+        comprendre:
+          "Un compte fournisseur débiteur = une AVANCE versée (ou un avoir) logée au passif. Elle doit figurer à l'actif "
+          + "(3411), sinon les dettes fournisseurs sont sous-évaluées et la présentation du bilan est faussée.",
+        etapes: [
+          "Analyser chaque solde débiteur (avance réelle vs erreur d'imputation).",
+          "Reclasser les avances en 3411 (Fournisseurs — avances et acomptes versés).",
+          "Contre-passer à l'ouverture N+1 au dénouement (réception de la facture).",
+        ],
+        ecriture: mkEntry("OD", "Reclassement des avances fournisseurs (soldes débiteurs)", [
+          { compte: "3411", libelle: "Fournisseurs — avances et acomptes versés", debit: totalDeb, credit: 0 },
+          ...fournDeb.map((b) => ({ compte: b.code, libelle: `Fournisseur ${b.name}`.slice(0, 58), debit: 0, credit: round2(b.balance) })),
+        ]),
+      },
+    ));
+  }
 
   // Évaluation : comptes d'attente / transitoires non soldés.
   const suspense = d.balances.filter(
     (b) => (/attente|suspens|transit|transfert|à\s*r[ée]gulariser/i.test(b.name) || startsWithAny(b.code, ["471", "472", "3491", "4491"])) && Math.abs(b.balance) > 0.01,
   );
   if (suspense.length)
-    out.push(F("soldes", "Évaluation et imputation", "comptabilité générale", "eleve",
-      `${suspense.length} compte(s) d'attente non soldé(s)`,
-      `Comptes transitoires avec un solde résiduel : ${suspense.slice(0, 6).map((b) => `${b.code} ${b.name} (${dh(b.balance)})`).join(", ")}.`,
-      "Solder les comptes d'attente avant clôture (imputation définitive).",
-      "CGNC (évaluation) ; comptes de régularisation.", "Grand livre ; réimputer via OD, lettrer."));
+    out.push(withCorrection(
+      F("soldes", "Évaluation et imputation", "comptabilité générale", "eleve",
+        `${suspense.length} compte(s) d'attente non soldé(s)`,
+        `Comptes transitoires avec un solde résiduel : ${suspense.slice(0, 6).map((b) => `${b.code} ${b.name} (${dh(b.balance)})`).join(", ")}.`,
+        "Solder les comptes d'attente avant clôture (imputation définitive).",
+        "CGNC (évaluation) ; comptes de régularisation.", "Grand livre ; réimputer via OD, lettrer."),
+      {
+        comprendre:
+          "Un compte d'attente (471/472) doit être VIDE à la clôture. Un solde résiduel = opération non qualifiée : "
+          + "charge/produit potentiellement non rattaché à l'exercice → réserve d'audit.",
+        etapes: [
+          "Lister les mouvements non soldés des comptes 471/472.",
+          "Qualifier chaque ligne (charge, produit, immobilisation, tiers…).",
+          "Réimputer au compte définitif : si 471 débiteur → C 471 / D compte définitif ; si 472 créditeur → D 472 / C compte définitif.",
+        ],
+        ecriture: null, // pas d'écriture automatique : le compte de contrepartie exige une analyse humaine.
+      },
+    ));
 
   // TVA : cohérence collectée (4455) vs déductible (3455).
   const tvaColl = d.balances.filter((b) => b.code.startsWith("4455"));
@@ -373,11 +587,37 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
     const coll = -sum(tvaColl); // TVA facturée = compte créditeur → montant positif = -balance
     const ded = sum(tvaDed);    // TVA déductible = compte débiteur → balance positive
     const due = Math.round((coll - ded) * 100) / 100;
-    out.push(F("presentation", "Exactitude et évaluation", "dettes fiscales", "info",
-      "TVA — rapprochement collectée / déductible",
-      `TVA collectée (4455) ≈ ${dh(coll)} ; TVA déductible (3455) ≈ ${dh(ded)} ; TVA due estimée ≈ ${dh(due)} sur ${d.year}.`,
-      "Rapprocher avec les déclarations de TVA déposées ; vérifier le régime (encaissements/débits).",
-      "CGI (TVA) ; CGNC.", "États de TVA Odoo ; rapprocher les déclarations."));
+    // Écriture de liquidation : TVA due (4456, passif) si positif ; crédit de TVA (3456, actif) sinon.
+    const tvaEcriture = due >= 0
+      ? mkEntry("OD", "Liquidation de la TVA — TVA due", [
+          { compte: "4455", libelle: "État — TVA facturée (collectée)", debit: coll, credit: 0 },
+          { compte: "3455", libelle: "État — TVA récupérable (déductible)", debit: 0, credit: ded },
+          { compte: "4456", libelle: "État — TVA due (à décaisser)", debit: 0, credit: due },
+        ], "Paiement ensuite : D 4456 / C 5141 (échéance mensuelle SIMPL-TVA, à confirmer selon le régime).")
+      : mkEntry("OD", "Liquidation de la TVA — crédit reportable", [
+          { compte: "4455", libelle: "État — TVA facturée (collectée)", debit: coll, credit: 0 },
+          { compte: "3456", libelle: "État — crédit de TVA (report)", debit: round2(-due), credit: 0 },
+          { compte: "3455", libelle: "État — TVA récupérable (déductible)", debit: 0, credit: ded },
+        ], "Crédit de TVA reportable sur la période suivante — ne jamais compenser d'un mois à l'autre sans report explicite.");
+    out.push(withCorrection(
+      F("presentation", "Exactitude et évaluation", "dettes fiscales", "info",
+        "TVA — rapprochement collectée / déductible",
+        `TVA collectée (4455) ≈ ${dh(coll)} ; TVA déductible (3455) ≈ ${dh(ded)} ; TVA due estimée ≈ ${dh(due)} sur ${d.year}.`,
+        "Rapprocher avec les déclarations de TVA déposées ; vérifier le régime (encaissements/débits).",
+        "CGI (TVA) ; CGNC.", "États de TVA Odoo ; rapprocher les déclarations."),
+      {
+        comprendre:
+          `Confronter la TVA collectée (${dh(coll)}) et déductible (${dh(ded)}) donne la TVA ${due >= 0 ? "DUE" : "en CRÉDIT"} `
+          + `(${dh(Math.abs(due))}). Une liquidation non passée fausse la dette fiscale et le résultat de trésorerie prévisionnel. `
+          + `Rappel CGNC : la TVA DUE est un passif (4456), le CRÉDIT de TVA un actif (3456).`,
+        etapes: [
+          "Rapprocher les soldes 4455/3455 avec les déclarations de TVA déposées.",
+          `Router le net vers ${due >= 0 ? "4456 (TVA due à décaisser)" : "3456 (crédit reportable)"}.`,
+          due >= 0 ? "Décaisser la TVA due (D 4456 / C 5141) à l'échéance." : "Reporter le crédit sur la déclaration suivante.",
+        ],
+        ecriture: (coll > 0 || ded > 0) ? tvaEcriture : null,
+      },
+    ));
     const collAbn = tvaColl.filter((b) => b.balance > 0.01);
     if (collAbn.length)
       out.push(F("flux", "Classification", "dettes fiscales", "moyen",
@@ -486,6 +726,26 @@ export function buildRegularisationDossier(report: AuditReport, firmName: string
     if (c.comptes.length) lines.push(`- Comptes PCGE : ${c.comptes.join(", ")}`);
     lines.push(`- Problème : ${c.detail}`);
     lines.push(`- Correction proposée : ${c.recommandation}`);
+    if (c.correction) {
+      lines.push(`- Comprendre : ${c.correction.comprendre}`);
+      if (c.correction.etapes.length) {
+        lines.push(`- Étapes :`);
+        c.correction.etapes.forEach((s, k) => lines.push(`  ${k + 1}. ${s}`));
+      }
+      const e = c.correction.ecriture;
+      if (e) {
+        lines.push(`- Écriture de correction (journal ${e.journal}) — ${e.libelle} :`);
+        lines.push("");
+        lines.push("  | Compte | Libellé | Débit | Crédit |");
+        lines.push("  |---|---|---:|---:|");
+        for (const l of e.lignes) {
+          lines.push(`  | ${l.compte} | ${l.libelle} | ${l.debit ? l.debit.toFixed(2) : ""} | ${l.credit ? l.credit.toFixed(2) : ""} |`);
+        }
+        lines.push(`  | | **Total** | **${e.totalDebit.toFixed(2)}** | **${e.totalCredit.toFixed(2)}** |`);
+        lines.push("");
+        if (e.note) lines.push(`  > ${e.note}`);
+      }
+    }
     lines.push(`- Référence : ${c.reference_normative}`);
     lines.push(`- Action Odoo : ${c.action_odoo}`);
     lines.push("");

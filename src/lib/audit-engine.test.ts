@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { extractComptes, buildRegularisationDossier, type AuditReport } from "./audit-engine";
+import { extractComptes, buildRegularisationDossier, mkEntry, odooFindings, type AuditReport } from "./audit-engine";
+import type { OdooAccountingData } from "./odoo-accounting";
+
+/** Données comptables Odoo minimales pour les tests (soldes fournis, reste neutre). */
+function mkData(balances: { code: string; name: string; balance: number }[]): OdooAccountingData {
+  return {
+    year: 2026, totalDebit: 0, totalCredit: 0, postedMoves: 5, draftMoves: 0,
+    journals: [], journalsWithPosted: new Set<number>(), balances,
+    postedByType: [],
+  } as unknown as OdooAccountingData;
+}
 
 describe("audit-engine — extraction des comptes PCGE (allowlist, zéro faux positif)", () => {
   it("extrait les comptes réellement cités", () => {
@@ -45,5 +55,41 @@ describe("audit-engine — dossier de régularisation", () => {
     expect(md).toContain("PROPOSITION de régularisation (non appliquée)");
     expect(md).toContain("Comptes PCGE : 4441");
     expect(md).toContain("odoo-correction-anomalies");
+  });
+});
+
+describe("audit-engine — écritures de correction", () => {
+  it("mkEntry calcule les totaux et l'équilibre (partie double)", () => {
+    const e = mkEntry("OD", "test", [
+      { compte: "6171", libelle: "x", debit: 100, credit: 0 },
+      { compte: "4437", libelle: "y", debit: 0, credit: 100 },
+    ]);
+    expect(e.totalDebit).toBe(100);
+    expect(e.totalCredit).toBe(100);
+    expect(e.equilibre).toBe(true);
+    expect(mkEntry("OD", "z", [{ compte: "6", libelle: "", debit: 100, credit: 0 }]).equilibre).toBe(false);
+  });
+
+  it("TVA due : écriture équilibrée créditant 4456 (TVA due, passif)", () => {
+    // 4455 collectée = 1000 (compte créditeur → balance −1000) ; 3455 déductible = 300.
+    const f = odooFindings(mkData([
+      { code: "4455", name: "TVA collectée", balance: -1000 },
+      { code: "3455", name: "TVA déductible", balance: 300 },
+    ]));
+    const tva = f.find((c) => c.titre.startsWith("TVA — rapprochement"));
+    expect(tva?.correction?.ecriture).toBeTruthy();
+    const e = tva!.correction!.ecriture!;
+    expect(e.equilibre).toBe(true);
+    const due = e.lignes.find((l) => l.compte === "4456");
+    expect(due?.credit).toBe(700); // 1000 − 300
+  });
+
+  it("client au solde créditeur : reclassement en 4421 (avances reçues), équilibré", () => {
+    const f = odooFindings(mkData([{ code: "3421", name: "Client X", balance: -500 }]));
+    const cli = f.find((c) => c.titre.includes("compte(s) client au solde créditeur"));
+    const e = cli!.correction!.ecriture!;
+    expect(e.equilibre).toBe(true);
+    expect(e.lignes.find((l) => l.compte === "3421")?.debit).toBe(500);
+    expect(e.lignes.find((l) => l.compte === "4421")?.credit).toBe(500);
   });
 });
