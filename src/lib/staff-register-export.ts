@@ -39,6 +39,7 @@ import {
   tableStyles,
   type Cursor,
 } from "./pdf-kit";
+import { DOC_TITLES } from "./doc-titles";
 
 /** Nom de fichier normalisé (ASCII) : Registre_Personnel_<du>_<au>. */
 export function registerFileName(r: StaffRegister, ext: string): string {
@@ -184,7 +185,7 @@ export async function buildRegisterPdf(
   const logo = await loadLogo(firmLogoPath(firm));
   const cur: Cursor = { doc, firm, pal, y: drawFullHeader(doc, firm, logo, pal), page: 1 };
 
-  cur.y = drawTitleBox(doc, pal, "Registre des mouvements de main-d'œuvre", cur.y) + 8;
+  cur.y = drawTitleBox(doc, pal, DOC_TITLES.registreMouvements, cur.y) + 8;
 
   doc.setFont(FONT, "normal").setFontSize(FS.note).setTextColor(...pal.ink);
   doc.text(

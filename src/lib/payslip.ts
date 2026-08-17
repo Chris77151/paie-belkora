@@ -12,6 +12,7 @@ import { amountToWordsFr, asciiSpaces, dateFr, periodLabel } from "./format";
 import { firmDescriptor, firmLegalLine } from "./firm-legal";
 import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
 import { firmLogoPath, loadLogo } from "./pdf-kit";
+import { DOC_TITLES } from "./doc-titles";
 import type { LeaveBalance, LeaveSource } from "./leave-balance";
 
 export interface PayslipView {
@@ -193,7 +194,7 @@ export async function buildPayslipDoc(v: PayslipView): Promise<jsPDF> {
   doc.setDrawColor(...OLIVE).setLineWidth(0.4);
   doc.rect(M, 42, 92, 13);
   doc.setFont("helvetica", "bold").setFontSize(15).setTextColor(...INK);
-  doc.text("BULLETIN DE PAIE", M + 46, 50.5, { align: "center" });
+  doc.text(DOC_TITLES.bulletin, M + 46, 50.5, { align: "center" });
   doc.rect(W - M - 76, 42, 76, 13);
   doc.setFontSize(9).setTextColor(...INK);
   doc.text("Période de paie", W - M - 38, 47.5, { align: "center" });
@@ -423,7 +424,7 @@ export function buildPayslipHtml(v: PayslipView): string {
    </div>
  </div>
  <div class="titlerow">
-   <div class="box title">BULLETIN DE PAIE</div>
+   <div class="box title">${DOC_TITLES.bulletin}</div>
    <div class="box per"><b>Période de paie</b><br><span>du ${dateFr(start.toISOString())} au ${dateFr(end.toISOString())}</span></div>
  </div>
  <table><tr><th>Matricule</th><th>Nom et prénom de l'employé</th><th>Poste</th><th>Affaire</th></tr>
@@ -501,7 +502,7 @@ export function buildPayslipLatex(v: PayslipView, template?: string): string {
 \\begin{document}\\pagestyle{empty}
 \\noindent{\\Large\\bfseries ${esc(firm.name.toUpperCase())}}\\\\[-2pt]{\\small ICE/ID : ${esc(firm.ice ?? "--")}}
 \\vspace{4pt}
-\\begin{center}\\fbox{\\Large\\bfseries BULLETIN DE PAIE}\\quad\\fbox{\\parbox{6cm}{\\centering\\textbf{Période de paie}\\\\ du ${dateFr(start.toISOString())} au ${dateFr(end.toISOString())}}}\\end{center}
+\\begin{center}\\fbox{\\Large\\bfseries ${DOC_TITLES.bulletin}}\\quad\\fbox{\\parbox{6cm}{\\centering\\textbf{Période de paie}\\\\ du ${dateFr(start.toISOString())} au ${dateFr(end.toISOString())}}}\\end{center}
 \\vspace{2pt}
 \\noindent\\textbf{Matricule :} ${esc(e.matricule ?? "--")} \\quad \\textbf{Nom :} ${esc(e.first_name + " " + e.last_name)} \\quad \\textbf{Poste :} ${esc(e.position ?? "--")} \\quad \\textbf{Affaire :} ${esc(e.site ?? "--")}\\\\
 \\textbf{CIN :} ${esc(e.cin ?? "--")} \\quad \\textbf{CNSS :} ${esc(e.cnss_number ?? "EN COURS")} \\quad \\textbf{Déduction :} ${e.dependents} \\quad \\textbf{Jours travaillés :} ${defaults(v).days_worked}

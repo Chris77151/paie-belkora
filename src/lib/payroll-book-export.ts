@@ -25,6 +25,7 @@ import {
   tableStyles,
   type Cursor,
 } from "./pdf-kit";
+import { DOC_TITLES } from "./doc-titles";
 import type { PayrollBook } from "./payroll-book";
 
 /** Libellé du périmètre : « juillet 2026 » (mois filtré) ou « Année 2026 » (tout). */
@@ -51,7 +52,7 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
   const logo = await loadLogo(firmLogoPath(b.firm));
   const cur: Cursor = { doc, firm: b.firm, pal, y: drawFullHeader(doc, b.firm, logo, pal), page: 1 };
 
-  cur.y = drawTitleBox(doc, pal, "Livre de paie", cur.y) + 8;
+  cur.y = drawTitleBox(doc, pal, DOC_TITLES.livrePaie, cur.y) + 8;
 
   doc.setFont(FONT, "normal").setFontSize(FS.note).setTextColor(...pal.ink);
   doc.text(asciiSpaces(`${scopeLabel(b)}  —  ${b.totals.count} bulletin(s)`), M, cur.y);

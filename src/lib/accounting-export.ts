@@ -23,6 +23,7 @@ import {
   tableStyles,
   type Cursor,
 } from "./pdf-kit";
+import { DOC_TITLES } from "./doc-titles";
 
 const n2 = (v: number) => v.toFixed(2);
 const nFr = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/,/g, " ");
@@ -147,7 +148,7 @@ export function buildEntriesDoc(entries: JournalEntry[], firm: Firm, period: str
   // En-tête sans logo : cette fonction reste synchrone (chargement du logo = asynchrone).
   const cur: Cursor = { doc, firm, pal, y: drawFullHeader(doc, firm, null, pal), page: 1 };
 
-  cur.y = drawTitleBox(doc, pal, "Écritures comptables de paie", cur.y) + 7;
+  cur.y = drawTitleBox(doc, pal, DOC_TITLES.ecritures, cur.y) + 7;
   doc.setFont(FONT, "normal").setFontSize(FS.note).setTextColor(...pal.muted);
   doc.text(asciiSpaces(`Période ${period}`), M, cur.y);
   doc.text("PCGE/CGNC — à valider avant intégration comptable.", W - M, cur.y, { align: "right" });

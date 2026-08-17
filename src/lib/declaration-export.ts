@@ -32,6 +32,7 @@ import {
   tableStyles,
   type Cursor,
 } from "./pdf-kit";
+import { DOC_TITLES } from "./doc-titles";
 
 /** Une ligne du bordereau (un salarié). Montants déjà arrêtés — aucun recalcul ici. */
 export interface DeclarationRow {
@@ -98,7 +99,7 @@ export async function buildDeclarationPdf(firm: Firm, d: DeclarationData): Promi
   const logo = await loadLogo(firmLogoPath(firm));
   const cur: Cursor = { doc, firm, pal, y: drawFullHeader(doc, firm, logo, pal), page: 1 };
 
-  cur.y = drawTitleBox(doc, pal, "Bordereau de déclaration CNSS", cur.y) + 8;
+  cur.y = drawTitleBox(doc, pal, DOC_TITLES.bordereauCnss, cur.y) + 8;
 
   // Ligne de contexte : période, effectif, état (validé / brouillon).
   doc.setFont(FONT, "normal").setFontSize(FS.note).setTextColor(...pal.ink);
