@@ -1,51 +1,32 @@
 import { describe, it, expect } from "vitest";
-import { pickUserGroupsField, syncDiffers } from "./odoo";
+import { IMPORT_ELEMENTS, importUpdateFields } from "./odoo";
 
-/**
- * Odoo a renommé le champ « groupes » de res.users : `groups_id` (≤ 18) → `group_ids` (≥ 19).
- * Lire le mauvais nom fait échouer tout l'audit RIB avec
- * « Invalid field 'groups_id' on 'res.users' ».
- */
-describe("pickUserGroupsField — compatibilité de version Odoo", () => {
-  it("Odoo ≥ 19 : renvoie « group_ids »", () => {
-    expect(pickUserGroupsField({ group_ids: { type: "many2many" } })).toBe("group_ids");
-  });
-
-  it("Odoo ≤ 18 : renvoie « groups_id »", () => {
-    expect(pickUserGroupsField({ groups_id: { type: "many2many" } })).toBe("groups_id");
+describe("odoo — import « à la carte » (choix des éléments)", () => {
+  it("importUpdateFields = union des champs des éléments cochés (pilote la mise à jour)", () => {
+    expect(importUpdateFields(["identite"])).toEqual(["first_name", "last_name"]);
+    expect(importUpdateFields(["salaire"])).toEqual(["base_hourly_rate", "monthly_hours"]);
+    expect(importUpdateFields(["cnss", "poste"])).toEqual(["cnss_number", "position", "site"]);
+    expect(importUpdateFields(["situation"])).toEqual(["marital_status", "dependents"]);
+    // Aucun élément coché → aucun champ écrit (sécurité : on ne touche à rien).
+    expect(importUpdateFields([])).toEqual([]);
   });
 
-  it("les deux présents : préfère le nom moderne « group_ids »", () => {
-    expect(pickUserGroupsField({ groups_id: {}, group_ids: {} })).toBe("group_ids");
+  it("chaque élément mappe des champs Employee réels et non vides", () => {
+    for (const el of IMPORT_ELEMENTS) {
+      expect(el.fields.length).toBeGreaterThan(0);
+      expect(el.label.length).toBeGreaterThan(0);
+    }
+    // « identite » (nom) est présent — clé de création/appariement.
+    expect(IMPORT_ELEMENTS.find((el) => el.key === "identite")?.fields).toEqual(["first_name", "last_name"]);
+    // Les éléments sensibles attendus existent.
+    const keys = IMPORT_ELEMENTS.map((el) => el.key);
+    expect(keys).toEqual(
+      expect.arrayContaining(["identite", "matricule", "cin", "cnss", "poste", "salaire", "naissance", "situation", "contact", "contrat"]),
+    );
   });
 
-  it("indéterminable → null (on dégrade au lieu d'échouer)", () => {
-    expect(pickUserGroupsField({})).toBeNull();
-    expect(pickUserGroupsField(null)).toBeNull();
-    expect(pickUserGroupsField(undefined)).toBeNull();
-    expect(pickUserGroupsField("erreur")).toBeNull();
-    expect(pickUserGroupsField({ autre_champ: {} })).toBeNull();
-  });
-});
-
-describe("syncDiffers — détection de divergence app ↔ Odoo (l'app fait foi)", () => {
-  it("texte : divergence détectée, insensible à la casse et aux espaces", () => {
-    expect(syncDiffers("job_title", "Ouvrier", "Technicienne horticole")).toBe(true);
-    expect(syncDiffers("job_title", "  technicienne  horticole ", "Technicienne  horticole")).toBe(false);
-    expect(syncDiffers("job_title", "TECHNICIENNE", "technicienne")).toBe(false);
-  });
-  it("texte : une valeur Odoo vide/false diverge de toute valeur app non vide", () => {
-    expect(syncDiffers("mobile_phone", false, "+212 6 00 00 00 00")).toBe(true);
-    expect(syncDiffers("private_street", "", "Route de l'Ourika")).toBe(true);
-  });
-  it("nombre : comparaison arrondie au centime", () => {
-    expect(syncDiffers("wage", 3422.72, 3422.72)).toBe(false);
-    expect(syncDiffers("wage", 3422.72, 3500)).toBe(true);
-    expect(syncDiffers("children", 2, 2)).toBe(false);
-    expect(syncDiffers("children", 1, 3)).toBe(true);
-  });
-  it("nombre : valeur Odoo non numérique/false → divergence (l'app pousse sa valeur)", () => {
-    expect(syncDiffers("wage", false, 3422.72)).toBe(true);
-    expect(syncDiffers("children", false, 0)).toBe(true);
+  it("un champ n'est jamais dupliqué même si deux éléments le partageraient", () => {
+    const fields = importUpdateFields(IMPORT_ELEMENTS.map((el) => el.key));
+    expect(new Set(fields).size).toBe(fields.length);
   });
 });

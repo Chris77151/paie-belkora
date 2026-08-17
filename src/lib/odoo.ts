@@ -120,12 +120,51 @@ function splitName(raw: string): { first: string; last: string } {
   return { first: parts[0], last: parts.slice(1).join(" ") };
 }
 
-/** Importe les salariés d'une société Odoo et les mappe vers le modèle de l'application. */
+/**
+ * Éléments importables depuis Odoo, à cocher dans le dialogue d'import. Chaque élément regroupe
+ * un ou plusieurs champs du salarié. « identite » (nom) est toujours importé (clé de création).
+ * Le choix pilote CE QUI EST ÉCRIT dans l'app : un élément décoché n'est jamais appliqué aux
+ * salariés existants (import non destructif).
+ */
+export type ImportElement =
+  | "identite" | "matricule" | "cin" | "cnss" | "poste" | "salaire" | "naissance" | "situation" | "contact" | "contrat";
+
+export const IMPORT_ELEMENTS: { key: ImportElement; label: string; fields: (keyof Employee)[]; hint?: string }[] = [
+  { key: "identite", label: "Identité (nom, prénom)", fields: ["first_name", "last_name"], hint: "Toujours importé — nécessaire à la création." },
+  { key: "matricule", label: "Matricule", fields: ["matricule"] },
+  { key: "cin", label: "CIN", fields: ["cin"] },
+  { key: "cnss", label: "N° CNSS", fields: ["cnss_number"] },
+  { key: "poste", label: "Poste & département", fields: ["position", "site"] },
+  { key: "salaire", label: "Salaire (→ taux horaire)", fields: ["base_hourly_rate", "monthly_hours"] },
+  { key: "naissance", label: "Date de naissance", fields: ["birth_date"] },
+  { key: "situation", label: "Situation familiale & personnes à charge", fields: ["marital_status", "dependents"] },
+  { key: "contact", label: "Téléphone", fields: ["phone"] },
+  { key: "contrat", label: "Type de contrat (employé / stagiaire)", fields: ["contract_type"] },
+];
+
+/** Champs Employee réellement écrits pour la sélection donnée (= union, sans doublon, des champs cochés). */
+export function importUpdateFields(selection: ImportElement[]): (keyof Employee)[] {
+  const set = new Set(selection);
+  const fields = IMPORT_ELEMENTS.filter((el) => set.has(el.key)).flatMap((el) => el.fields);
+  return Array.from(new Set(fields));
+}
+
+const ALL_IMPORT_ELEMENTS = IMPORT_ELEMENTS.map((el) => el.key);
+
+/**
+ * Importe les salariés d'une société Odoo et les mappe vers le modèle de l'application.
+ * `selection` = éléments à importer (défaut : tous). Les champs des éléments NON cochés reçoivent
+ * une valeur par défaut sûre (utile à la création d'un nouveau salarié) mais ne sont PAS écrits sur
+ * un salarié existant — c'est la fusion (`mergeEmployees`) qui n'applique que les champs choisis.
+ * Les clés de rapprochement (_odoo_id, matricule, CIN, nom) sont toujours portées pour l'appariement.
+ */
 export async function odooImportEmployees(
   config: OdooConfig,
   odooCompanyId: number,
   firmId: string,
+  selection: ImportElement[] = ALL_IMPORT_ELEMENTS,
 ): Promise<Employee[]> {
+  const has = (el: ImportElement) => selection.includes(el);
   const userId = await odooAuthenticate(config);
   const fields = [
     "name", "identification_id", "l10n_ma_cin_number", "registration_number",
@@ -170,27 +209,34 @@ export async function odooImportEmployees(
       baseHourlyRate = isStagiaire ? 0 : p.smigHourly;
     }
 
-    return {
+    // Clés d'appariement (matricule, CIN, nom) et champs obligatoires : TOUJOURS portés — la
+    // fusion (`mergeEmployees`) n'écrira que les champs des éléments cochés sur un salarié existant.
+    const emp: Employee & { _odoo_id: number } = {
       id: uid("emp"),
       firm_id: firmId,
-      matricule: val(r.registration_number) ?? `ODOO-${r.id}`,
+      _odoo_id: r.id,
       first_name: first,
       last_name: last || first,
+      matricule: val(r.registration_number) ?? `ODOO-${r.id}`,
       cin: val(r.identification_id) ?? val(r.l10n_ma_cin_number),
-      cnss_number: val(r.l10n_ma_cnss_number) ?? val(r.registration_number),
-      birth_date: val(r.birthday),
       hire_date: new Date().toISOString().slice(0, 10), // à compléter (date de version Odoo)
-      contract_type: isStagiaire ? "Stagiaire" : "CDI",
-      position: jobTitle,
-      site: r.department_id ? r.department_id[1] : undefined,
-      base_hourly_rate: baseHourlyRate,
       monthly_hours: monthlyHours,
-      marital_status: r.marital ? MARITAL[r.marital] ?? undefined : undefined,
-      dependents: r.children ?? 0,
-      phone: val(r.work_phone),
       is_active: true,
-      _odoo_id: r.id,
-    } as Employee & { _odoo_id: number };
+      // Défauts sûrs pour une création ; valeur Odoo appliquée seulement si l'élément est coché.
+      contract_type: has("contrat") ? (isStagiaire ? "Stagiaire" : "CDI") : "CDI",
+      base_hourly_rate: has("salaire") ? baseHourlyRate : (isStagiaire ? 0 : p.smigHourly),
+      dependents: has("situation") ? (r.children ?? 0) : 0,
+    };
+    // Champs optionnels : importés UNIQUEMENT si l'élément correspondant est coché.
+    if (has("cnss")) emp.cnss_number = val(r.l10n_ma_cnss_number) ?? val(r.registration_number);
+    if (has("poste")) {
+      emp.position = jobTitle;
+      emp.site = r.department_id ? r.department_id[1] : undefined;
+    }
+    if (has("naissance")) emp.birth_date = val(r.birthday);
+    if (has("situation")) emp.marital_status = r.marital ? MARITAL[r.marital] ?? undefined : undefined;
+    if (has("contact")) emp.phone = val(r.work_phone);
+    return emp;
   });
 }
 

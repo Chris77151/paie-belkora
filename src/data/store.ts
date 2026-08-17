@@ -395,19 +395,40 @@ export const actions = {
       }
     });
   },
-  /** Fusionne des salariés importés : met à jour l'existant (clé matricule ou CIN), sinon ajoute. */
-  mergeEmployees(list: Employee[]): { added: number; updated: number } {
+  /**
+   * Fusionne des salariés importés. Appariement par priorité : lien Odoo (_odoo_id), puis matricule,
+   * puis CIN. `updateFields` (import « à la carte ») restreint la mise à jour d'un salarié EXISTANT
+   * aux SEULS champs choisis, et NON DESTRUCTIVE (une valeur Odoo vide n'écrase jamais l'app). Sans
+   * `updateFields`, comportement historique (tous les champs importés). Un nouveau salarié est ajouté
+   * en entier dans les deux cas.
+   */
+  mergeEmployees(list: Employee[], updateFields?: (keyof Employee)[]): { added: number; updated: number } {
     let added = 0;
     let updated = 0;
     set((s) => {
       for (const emp of list) {
+        const oid = (emp as Employee & { _odoo_id?: number })._odoo_id;
         const i = s.employees.findIndex(
           (e) =>
             e.firm_id === emp.firm_id &&
-            ((emp.matricule && e.matricule === emp.matricule) || (emp.cin && e.cin === emp.cin)),
+            ((oid != null && (e as Employee & { _odoo_id?: number })._odoo_id === oid) ||
+              (emp.matricule && e.matricule === emp.matricule) ||
+              (emp.cin && e.cin === emp.cin)),
         );
         if (i >= 0) {
-          s.employees[i] = { ...s.employees[i], ...emp, id: s.employees[i].id };
+          const existing = s.employees[i];
+          if (updateFields && updateFields.length) {
+            // Mise à jour SÉLECTIVE et non destructive : uniquement les champs cochés et non vides.
+            const patch: Partial<Employee> = {};
+            for (const f of updateFields) {
+              const v = emp[f];
+              if (v !== undefined && v !== null && v !== "") (patch as Record<string, unknown>)[f] = v;
+            }
+            if (oid != null) (patch as Employee & { _odoo_id?: number })._odoo_id = oid; // mémoriser le lien Odoo
+            s.employees[i] = { ...existing, ...patch, id: existing.id };
+          } else {
+            s.employees[i] = { ...existing, ...emp, id: existing.id };
+          }
           updated += 1;
         } else {
           s.employees.push(emp);

@@ -2,14 +2,14 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Plus, Search, Pencil, UserRound, X, Trash2, DownloadCloud, UploadCloud, Loader2,
-  ArrowRight, AlertTriangle, CheckCircle2,
+  ArrowRight, AlertTriangle, CheckCircle2, ShieldCheck,
 } from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, uid, useStore } from "@/data/store";
 import { useCanWrite, useSession } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import {
   odooImportEmployees, buildEmployeeSyncPlan, applyEmployeeSyncPlan,
-  odooReadiness, odooErrorHint,
+  odooReadiness, odooErrorHint, IMPORT_ELEMENTS, importUpdateFields, type ImportElement,
 } from "@/lib/odoo";
 import type { SyncPlan } from "@/lib/odoo";
 import type { ContractType, Employee } from "@/data/types";
@@ -51,6 +51,9 @@ export default function Employees() {
   const [importing, setImporting] = useState(false);
   const [syncPlan, setSyncPlan] = useState<SyncPlan | null>(null);
   const [syncing, setSyncing] = useState(false);
+  // Import « à la carte » : dialogue de choix des éléments à importer depuis Odoo.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSel, setImportSel] = useState<ImportElement[]>(() => IMPORT_ELEMENTS.map((el) => el.key));
 
   const sites = useMemo(() => Array.from(new Set(all.map((e) => e.site).filter(Boolean))) as string[], [all]);
 
@@ -72,16 +75,26 @@ export default function Employees() {
     }
   }
 
-  async function importFromOdoo() {
+  /** Ouvre le dialogue de choix des éléments à importer (après contrôle de la config Odoo). */
+  function openImport() {
     const cfgErr = odooReadiness(s.odoo, firm);
     if (cfgErr || !s.odoo || !firm.odoo_company_id) {
       alert(cfgErr ?? "Configuration Odoo incomplète.");
       return;
     }
+    setImportOpen(true);
+  }
+
+  /** Lance l'import selon la sélection : mise à jour SÉLECTIVE et non destructive des salariés. */
+  async function runImport() {
+    if (!s.odoo || !firm.odoo_company_id) return;
     setImporting(true);
     try {
-      const imported = await odooImportEmployees(s.odoo, firm.odoo_company_id, firm.id);
-      const { added, updated } = actions.mergeEmployees(imported);
+      // « identite » toujours inclus (nom nécessaire à la création / à l'appariement).
+      const selection = Array.from(new Set<ImportElement>(["identite", ...importSel]));
+      const imported = await odooImportEmployees(s.odoo, firm.odoo_company_id, firm.id, selection);
+      const { added, updated } = actions.mergeEmployees(imported, importUpdateFields(selection));
+      setImportOpen(false);
       alert(`Import Odoo terminé : ${added} ajouté(s), ${updated} mis à jour (société « ${firm.name} »).`);
     } catch (e) {
       alert(`Échec de l'import Odoo : ${odooErrorHint((e as Error).message)}`);
@@ -151,7 +164,7 @@ export default function Employees() {
     <div>
       <PageHeader title={t("page.employees.title")} subtitle={`${all.length} ${t("page.employees.count")} · ${firm.name}`}>
         {isSuperAdmin && (
-          <Button variant="outline" onClick={importFromOdoo} disabled={importing || !canEdit}>
+          <Button variant="outline" onClick={openImport} disabled={importing || !canEdit}>
             {importing ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} {t("emp.importOdoo")}
           </Button>
         )}
@@ -290,6 +303,96 @@ export default function Employees() {
           onClose={() => setSyncPlan(null)}
         />
       )}
+      {importOpen && (
+        <OdooImportDialog
+          selection={importSel}
+          setSelection={setImportSel}
+          firmName={firm.name}
+          importing={importing}
+          onClose={() => setImportOpen(false)}
+          onRun={runImport}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Dialogue d'import « à la carte » Odoo -> app ---------------- */
+function OdooImportDialog({
+  selection, setSelection, firmName, importing, onClose, onRun,
+}: {
+  selection: ImportElement[];
+  setSelection: (s: ImportElement[]) => void;
+  firmName: string;
+  importing: boolean;
+  onClose: () => void;
+  onRun: () => void;
+}) {
+  const toggle = (key: ImportElement, on: boolean) =>
+    setSelection(on ? Array.from(new Set([...selection, key])) : selection.filter((k) => k !== key));
+  const optional = IMPORT_ELEMENTS.filter((el) => el.key !== "identite");
+  const allOn = optional.every((el) => selection.includes(el.key));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-lg bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="inline-flex items-center gap-2 text-lg font-display">
+            <DownloadCloud size={18} className="text-primary" /> Importer depuis Odoo
+          </h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X size={18} /></Button>
+        </div>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Société « {firmName} ». Cochez les <b>éléments à importer</b>. L'import est <b>non destructif</b> :
+          seuls les éléments cochés sont écrits, et une valeur vide côté Odoo n'écrase jamais une donnée existante.
+        </p>
+
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Éléments</span>
+          <button
+            type="button"
+            className="text-xs text-primary hover:underline"
+            onClick={() => setSelection(allOn ? ["identite"] : IMPORT_ELEMENTS.map((el) => el.key))}
+          >
+            {allOn ? "Tout décocher" : "Tout cocher"}
+          </button>
+        </div>
+
+        <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+          {IMPORT_ELEMENTS.map((el) => {
+            const forced = el.key === "identite";
+            const checked = forced || selection.includes(el.key);
+            return (
+              <label key={el.key} className={`flex items-start gap-2 rounded-md border p-2 text-sm ${forced ? "opacity-70" : "cursor-pointer"}`}>
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={checked}
+                  disabled={forced}
+                  onChange={(e) => toggle(el.key, e.target.checked)}
+                />
+                <span>
+                  {el.label}
+                  {el.hint && <span className="block text-xs text-muted-foreground">{el.hint}</span>}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 flex items-start gap-1.5 rounded-md bg-sage/8 p-2 text-xs text-muted-foreground">
+          <ShieldCheck size={14} className="mt-0.5 shrink-0 text-sage" />
+          Appariement par lien Odoo, matricule puis CIN. Les salariés existants ne sont mis à jour que sur les
+          champs cochés ; les autres champs de l'app restent intacts.
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button onClick={onRun} disabled={importing}>
+            {importing ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} Importer
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
