@@ -134,7 +134,7 @@ export default function Settings() {
     if (!firm.odoo_company_id) { setLeaveMsg({ ok: false, text: "Renseignez l'« ID société Odoo » (section Connexion Odoo)." }); return; }
     setLeaveBusy(true);
     try {
-      const balances = await odooFetchLeaveBalances(s.odoo, firm.odoo_company_id);
+      const { balances, leaveRecordsRead } = await odooFetchLeaveBalances(s.odoo, firm.odoo_company_id);
       const emps = s.employees.filter((e) => e.firm_id === firm.id);
       // Reconnaissance DÉTERMINISTE : _odoo_id → matricule → CIN → CNSS → nom (aucune invention).
       const { matches, unmatched } = matchOdooLeaves(emps, balances);
@@ -152,14 +152,21 @@ export default function Settings() {
       }
       const byMethod = matches.reduce<Record<string, number>>((acc, m) => ((acc[m.method] = (acc[m.method] ?? 0) + 1), acc), {});
       const detail = Object.entries(byMethod).map(([k, v]) => `${v} par ${k}`).join(", ");
+      // Diagnostic congés : combien de congés validés (hr.leave) ont été lus, et total « pris » importé.
+      const takenTotal = matches.reduce((s2, m) => s2 + m.balance.taken, 0);
+      const leaveDiag =
+        leaveRecordsRead == null
+          ? " ⚠ Congés « pris » : hr.leave illisible (droits/version) → repli sur les compteurs Odoo."
+          : ` Congés validés lus : ${leaveRecordsRead} · total « pris » importé : ${takenTotal.toFixed(2).replace(/\.00$/, "")} j.` +
+            (leaveRecordsRead === 0 ? " (aucun congé à l'état « Validé/Approuvé » n'a été trouvé.)" : "");
       if (matches.length > 0) {
         const warnNom = byMethod["nom"] ? ` — dont ${byMethod["nom"]} par nom (à vérifier)` : "";
         const rest = unmatched.length ? ` · ${unmatched.length} non apparié(s)` : "";
-        setLeaveMsg({ ok: true, text: `${matches.length} salarié(s) appariés (${detail})${warnNom} et mis à jour${rest}.` });
+        setLeaveMsg({ ok: true, text: `${matches.length} salarié(s) appariés (${detail})${warnNom} et mis à jour${rest}.${leaveDiag}` });
       } else {
         setLeaveMsg({
           ok: false,
-          text: `Aucun salarié apparié sur ${balances.length} fiche(s) Odoo lue(s). Vérifiez que les salariés de l'app ont un matricule, une CIN, un N° CNSS ou un nom correspondant à Odoo (ou importez-les depuis la page Salariés).`,
+          text: `Aucun salarié apparié sur ${balances.length} fiche(s) Odoo lue(s). Vérifiez que les salariés de l'app ont un matricule, une CIN, un N° CNSS ou un nom correspondant à Odoo (ou importez-les depuis la page Salariés).${leaveDiag}`,
         });
       }
     } catch (e) {

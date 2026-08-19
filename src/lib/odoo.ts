@@ -373,41 +373,47 @@ export function matchOdooLeaves(employees: Employee[], balances: OdooLeaveBalanc
   return { matches, unmatched };
 }
 
+/** Résultat de la lecture des congés réels : cumul par salarié + nb d'enregistrements lus (diagnostic). */
+interface LeaveSum {
+  /** Jours cumulés par `employee_id` Odoo. */
+  byEmp: Map<number, number>;
+  /** Nb d'enregistrements `hr.leave` réellement lus (diagnostic import). */
+  records: number;
+}
+
 /**
- * Somme (jours) des enregistrements VALIDÉS d'un modèle de congés (`hr.leave` = pris,
- * `hr.leave.allocation` = alloué), regroupée par salarié via `read_group`. C'est la SOURCE FIABLE :
- * elle capte les congés que les compteurs résumés de `hr.employee` (`allocation_used_count`,
- * `remaining_leaves`) ignorent — congés d'un type « sans allocation », validés hors périmètre du
- * compteur, etc. (cause du congé de 9 jours non extrait). LECTURE SEULE.
+ * Somme (jours) des congés `hr.leave` VALIDÉS d'un ensemble de salariés, via **`search_read`** (méthode
+ * stable sur TOUTES les versions d'Odoo — contrairement à `read_group`, modifié/déprécié en Odoo 17+).
+ * C'est la SOURCE FIABLE : elle capte les congés que le compteur résumé `allocation_used_count`
+ * ignore (types « sans allocation », etc. — cause du congé de 9 j non extrait). LECTURE SEULE.
  *
- * Renvoie `null` si le modèle n'est pas lisible (droits/version) → l'appelant retombe alors
- * proprement sur les compteurs résumés, sans jamais perdre l'affichage.
+ * Renvoie `null` si `hr.leave` n'est pas lisible (droits/version) → l'appelant retombe proprement sur
+ * les compteurs résumés, sans jamais perdre l'affichage.
  */
-async function odooSumLeaveDaysByEmployee(
+async function odooSumLeaveDays(
   config: OdooConfig,
   userId: number,
-  model: "hr.leave" | "hr.leave.allocation",
   employeeIds: number[],
-): Promise<Map<number, number> | null> {
-  if (!employeeIds.length) return new Map();
+): Promise<LeaveSum | null> {
+  if (!employeeIds.length) return { byEmp: new Map(), records: 0 };
   try {
-    const groups: Array<{ employee_id?: [number, string] | false; number_of_days?: number | false }> =
+    const recs: Array<{ employee_id?: [number, string] | false; number_of_days?: number | false }> =
       await jsonRpc(config, "object", "execute_kw", [
-        config.db, userId, config.apiKey, model, "read_group",
-        [[["employee_id", "in", employeeIds], ["state", "=", "validate"]], ["number_of_days:sum"], ["employee_id"]],
-        { lazy: false },
+        config.db, userId, config.apiKey, "hr.leave", "search_read",
+        [[["employee_id", "in", employeeIds], ["state", "=", "validate"]]],
+        { fields: ["employee_id", "number_of_days"], limit: 10000 },
       ]);
-    const map = new Map<number, number>();
-    for (const g of groups) {
-      const emp = g.employee_id;
+    const byEmp = new Map<number, number>();
+    for (const r of recs) {
+      const emp = r.employee_id;
       if (Array.isArray(emp) && typeof emp[0] === "number") {
-        const days = typeof g.number_of_days === "number" && isFinite(g.number_of_days) ? g.number_of_days : 0;
-        map.set(emp[0], round2((map.get(emp[0]) ?? 0) + days));
+        const days = typeof r.number_of_days === "number" && isFinite(r.number_of_days) ? r.number_of_days : 0;
+        byEmp.set(emp[0], round2((byEmp.get(emp[0]) ?? 0) + days));
       }
     }
-    return map;
+    return { byEmp, records: recs.length };
   } catch {
-    return null; // modèle indisponible / droits insuffisants → repli sur les compteurs résumés
+    return null; // hr.leave indisponible / droits insuffisants → repli sur les compteurs résumés
   }
 }
 
@@ -439,14 +445,22 @@ export function combineOdooLeave(
   });
 }
 
+/** Soldes de congés lus dans Odoo + diagnostic de lecture (pour un message d'import explicite). */
+export interface OdooLeaveFetch {
+  balances: OdooLeaveBalance[];
+  /** Nb d'enregistrements `hr.leave` validés lus, ou `null` si `hr.leave` illisible (repli compteurs). */
+  leaveRecordsRead: number | null;
+}
+
 /**
  * Lit les soldes de congés des salariés d'une société Odoo. Combine deux sources :
- *  1) `hr.employee` — identité (appariement) + compteurs résumés (REPLI) ;
- *  2) `hr.leave` / `hr.leave.allocation` VALIDÉS, sommés par salarié — SOURCE FIABLE qui capte les
- *     congés manqués par les compteurs résumés (congés « sans allocation », etc.).
+ *  1) `hr.employee` — identité (appariement) + `allocation_count` (alloué, fiable) et compteurs
+ *     résumés `allocation_used_count`/`remaining_leaves` (REPLI seulement) ;
+ *  2) `hr.leave` VALIDÉS sommés par salarié (`search_read`, stable toutes versions) — SOURCE FIABLE
+ *     du « pris », qui capte les congés que `allocation_used_count` manque.
  * Détecte les champs disponibles (fields_get) pour rester compatible entre versions. LECTURE SEULE.
  */
-export async function odooFetchLeaveBalances(config: OdooConfig, odooCompanyId: number): Promise<OdooLeaveBalance[]> {
+export async function odooFetchLeaveBalances(config: OdooConfig, odooCompanyId: number): Promise<OdooLeaveFetch> {
   const userId = await odooAuthenticate(config);
   // Champs de congés + identité (pour l'appariement sans _odoo_id). Détectés par fields_get :
   // ceux qui n'existent pas sur l'instance (module l10n_ma absent, version) sont simplement ignorés.
@@ -471,11 +485,13 @@ export async function odooFetchLeaveBalances(config: OdooConfig, odooCompanyId: 
   ]);
   const base = rows.map(mapOdooLeave);
 
-  // « Pris » = somme réelle des hr.leave VALIDÉS par salarié (source fiable qui capte les congés
-  // ignorés par allocation_used_count). Tolérant aux pannes : échec → null → repli sur le compteur.
+  // « Pris » = somme réelle des hr.leave VALIDÉS par salarié. Tolérant aux pannes : échec → null → repli.
   const ids = rows.map((r) => r.id);
-  const takenByEmp = await odooSumLeaveDaysByEmployee(config, userId, "hr.leave", ids);
-  return combineOdooLeave(base, takenByEmp);
+  const sum = await odooSumLeaveDays(config, userId, ids);
+  return {
+    balances: combineOdooLeave(base, sum ? sum.byEmp : null),
+    leaveRecordsRead: sum ? sum.records : null,
+  };
 }
 
 /* ============================================================================
