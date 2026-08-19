@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, type OdooLeaveBalance } from "./odoo";
+import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, type OdooLeaveBalance } from "./odoo";
 import type { Employee } from "@/data/types";
 
 const emp = (o: Partial<Employee>): Employee => ({
@@ -82,5 +82,41 @@ describe("odoo — appariement des soldes de congés (reconnaissance déterminis
     const { matches, unmatched } = matchOdooLeaves([emp({ id: "x", matricule: "ZZ", first_name: "Zied", last_name: "Zahra" })], [bal({ odoo_id: 5, matricule: "M1", name: "Ahmed Alaoui" })]);
     expect(matches).toHaveLength(0);
     expect(unmatched).toHaveLength(1);
+  });
+
+  it("apparie le nom même si Odoo inverse l'ordre des mots (« Fadwa Semlani » ↔ « SEMLANI Fadwa »)", () => {
+    const employees = [emp({ id: "fadwa", matricule: "", first_name: "Fadwa", last_name: "Semlani" })];
+    const { matches, unmatched } = matchOdooLeaves(employees, [bal({ odoo_id: 20, name: "SEMLANI Fadwa" })]);
+    expect(unmatched).toHaveLength(0);
+    expect(matches[0].odoo_id).toBe(20);
+    expect(matches[0].method).toBe("nom");
+    expect(matches[0].confidence).toBe("faible");
+  });
+});
+
+describe("odoo — congés : « pris » depuis les hr.leave réels vs compteurs résumés", () => {
+  it("la somme réelle des hr.leave PRIME sur allocation_used_count (capte le congé de 9 j manqué)", () => {
+    // Fadwa : le compteur résumé hr.employee dit 0 pris ; hr.leave validé dit 9 j.
+    const base = [bal({ odoo_id: 20, allocated: 18, taken: 0, remaining: 18, name: "Fadwa Semlani" })];
+    const [r] = combineOdooLeave(base, new Map([[20, 9]]));
+    expect(r.taken).toBe(9);        // le congé de 9 j apparaît enfin
+    expect(r.allocated).toBe(18);   // l'alloué reste celui du compteur résumé (fiable)
+    expect(r.remaining).toBe(9);    // 18 − 9
+  });
+
+  it("un salarié sans hr.leave = 0 pris (et non la valeur résumée) quand la requête a réussi", () => {
+    const base = [bal({ odoo_id: 30, allocated: 26, taken: 12, remaining: 14 })];
+    const [r] = combineOdooLeave(base, new Map()); // requête OK, aucun congé validé
+    expect(r.taken).toBe(0);
+    expect(r.allocated).toBe(26);   // alloué conservé
+    expect(r.remaining).toBe(26);   // 26 − 0
+  });
+
+  it("repli sur le compteur résumé « pris » si la requête hr.leave échoue (Map = null)", () => {
+    const base = [bal({ odoo_id: 40, allocated: 26, taken: 10, remaining: 16 })];
+    const [r] = combineOdooLeave(base, null);
+    expect(r.taken).toBe(10);       // compteur résumé
+    expect(r.allocated).toBe(26);
+    expect(r.remaining).toBe(16);
   });
 });

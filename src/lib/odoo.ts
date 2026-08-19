@@ -330,12 +330,14 @@ export function matchOdooLeaves(employees: Employee[], balances: OdooLeaveBalanc
   const byCin = new Map<string, OdooLeaveBalance>();
   const byCnss = new Map<string, OdooLeaveBalance>();
   const byName = new Map<string, OdooLeaveBalance>();
+  const byNameSorted = new Map<string, OdooLeaveBalance>(); // nom insensible à l'ordre des mots
   for (const b of balances) {
     if (!byId.has(b.odoo_id)) byId.set(b.odoo_id, b);
     const reg = norm(b.matricule); if (reg && !byReg.has(reg)) byReg.set(reg, b);
     const cin = norm(b.cin); if (cin && !byCin.has(cin)) byCin.set(cin, b);
     const cnss = norm(b.cnss); if (cnss && !byCnss.has(cnss)) byCnss.set(cnss, b);
     const nm = normName(b.name); if (nm && !byName.has(nm)) byName.set(nm, b);
+    const nms = normNameSorted(b.name); if (nms && !byNameSorted.has(nms)) byNameSorted.set(nms, b);
   }
 
   const claimed = new Set<number>(); // un solde Odoo n'est apparié qu'une fois
@@ -353,8 +355,12 @@ export function matchOdooLeaves(employees: Employee[], balances: OdooLeaveBalanc
     else if (norm(e.cin) && byCin.has(norm(e.cin))) { b = byCin.get(norm(e.cin)); method = "cin"; }
     else if (norm(e.cnss_number) && byCnss.has(norm(e.cnss_number))) { b = byCnss.get(norm(e.cnss_number)); method = "cnss"; }
     else {
-      const nm = normName(`${e.first_name ?? ""} ${e.last_name ?? ""}`);
+      const full = `${e.first_name ?? ""} ${e.last_name ?? ""}`;
+      const nm = normName(full);
+      const nms = normNameSorted(full);
       if (nm && byName.has(nm)) { b = byName.get(nm); method = "nom"; confidence = "faible"; }
+      // Repli insensible à l'ordre : « Fadwa Semlani » (app) ↔ « SEMLANI Fadwa » (Odoo).
+      else if (nms && byNameSorted.has(nms)) { b = byNameSorted.get(nms); method = "nom"; confidence = "faible"; }
     }
 
     if (b && method && !claimed.has(b.odoo_id)) {
@@ -368,8 +374,77 @@ export function matchOdooLeaves(employees: Employee[], balances: OdooLeaveBalanc
 }
 
 /**
- * Lit les soldes de congés des salariés d'une société Odoo (hr.employee). Détecte les champs
- * disponibles (fields_get) pour rester compatible entre versions. LECTURE SEULE.
+ * Somme (jours) des enregistrements VALIDÉS d'un modèle de congés (`hr.leave` = pris,
+ * `hr.leave.allocation` = alloué), regroupée par salarié via `read_group`. C'est la SOURCE FIABLE :
+ * elle capte les congés que les compteurs résumés de `hr.employee` (`allocation_used_count`,
+ * `remaining_leaves`) ignorent — congés d'un type « sans allocation », validés hors périmètre du
+ * compteur, etc. (cause du congé de 9 jours non extrait). LECTURE SEULE.
+ *
+ * Renvoie `null` si le modèle n'est pas lisible (droits/version) → l'appelant retombe alors
+ * proprement sur les compteurs résumés, sans jamais perdre l'affichage.
+ */
+async function odooSumLeaveDaysByEmployee(
+  config: OdooConfig,
+  userId: number,
+  model: "hr.leave" | "hr.leave.allocation",
+  employeeIds: number[],
+): Promise<Map<number, number> | null> {
+  if (!employeeIds.length) return new Map();
+  try {
+    const groups: Array<{ employee_id?: [number, string] | false; number_of_days?: number | false }> =
+      await jsonRpc(config, "object", "execute_kw", [
+        config.db, userId, config.apiKey, model, "read_group",
+        [[["employee_id", "in", employeeIds], ["state", "=", "validate"]], ["number_of_days:sum"], ["employee_id"]],
+        { lazy: false },
+      ]);
+    const map = new Map<number, number>();
+    for (const g of groups) {
+      const emp = g.employee_id;
+      if (Array.isArray(emp) && typeof emp[0] === "number") {
+        const days = typeof g.number_of_days === "number" && isFinite(g.number_of_days) ? g.number_of_days : 0;
+        map.set(emp[0], round2((map.get(emp[0]) ?? 0) + days));
+      }
+    }
+    return map;
+  } catch {
+    return null; // modèle indisponible / droits insuffisants → repli sur les compteurs résumés
+  }
+}
+
+/**
+ * Fusionne le socle lu sur `hr.employee` avec la SOMME RÉELLE des congés validés (`hr.leave`).
+ *
+ * L'ALLOUÉ garde la valeur du compteur résumé `allocation_count` (fiable pour l'alloué). Le PRIS est
+ * remplacé par la somme réelle des `hr.leave` validés dès que la requête a réussi (`Map` non nulle) —
+ * c'est ce qui capte le congé de 9 j que `allocation_used_count` ignorait ; un salarié absent de la
+ * Map a alors 0 pris (absence d'enregistrement = 0 jour). Si la requête a échoué (`null`), on
+ * conserve le compteur résumé `taken`. `remaining = alloué − pris`. PURE & testable.
+ *
+ * Réserve : la somme porte sur TOUS les types de congés validés du salarié. Si l'instance Odoo suit
+ * des types non « congé payé » (maladie, sans solde…), ils entrent dans « pris ». Un filtrage par
+ * `holiday_status_id` nécessiterait de connaître l'id du type « congé payé » de l'instance.
+ */
+export function combineOdooLeave(
+  base: OdooLeaveBalance[],
+  takenByEmp: Map<number, number> | null,
+): OdooLeaveBalance[] {
+  return base.map((b) => {
+    const taken = takenByEmp ? (takenByEmp.get(b.odoo_id) ?? 0) : b.taken;
+    const allocated = b.allocated; // compteur résumé `allocation_count`, fiable pour l'alloué
+    return {
+      ...b,
+      taken: round2(taken),
+      remaining: round2(allocated - taken),
+    };
+  });
+}
+
+/**
+ * Lit les soldes de congés des salariés d'une société Odoo. Combine deux sources :
+ *  1) `hr.employee` — identité (appariement) + compteurs résumés (REPLI) ;
+ *  2) `hr.leave` / `hr.leave.allocation` VALIDÉS, sommés par salarié — SOURCE FIABLE qui capte les
+ *     congés manqués par les compteurs résumés (congés « sans allocation », etc.).
+ * Détecte les champs disponibles (fields_get) pour rester compatible entre versions. LECTURE SEULE.
  */
 export async function odooFetchLeaveBalances(config: OdooConfig, odooCompanyId: number): Promise<OdooLeaveBalance[]> {
   const userId = await odooAuthenticate(config);
@@ -394,7 +469,13 @@ export async function odooFetchLeaveBalances(config: OdooConfig, odooCompanyId: 
     [[["company_id", "=", odooCompanyId]]],
     { fields, limit: 2000 },
   ]);
-  return rows.map(mapOdooLeave);
+  const base = rows.map(mapOdooLeave);
+
+  // « Pris » = somme réelle des hr.leave VALIDÉS par salarié (source fiable qui capte les congés
+  // ignorés par allocation_used_count). Tolérant aux pannes : échec → null → repli sur le compteur.
+  const ids = rows.map((r) => r.id);
+  const takenByEmp = await odooSumLeaveDaysByEmployee(config, userId, "hr.leave", ids);
+  return combineOdooLeave(base, takenByEmp);
 }
 
 /* ============================================================================
@@ -477,6 +558,11 @@ function normName(raw: string | false | undefined): string {
     .replace(/_[A-Za-z]{1,4}\d+\s*$/, "")
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
     .toLowerCase().replace(/\s+/g, " ").trim();
+}
+/** Nom normalisé PUIS trié par mots : rend l'appariement insensible à l'ordre (« Prénom Nom » ↔ « Nom Prénom »). */
+function normNameSorted(raw: string | false | undefined): string {
+  const n = normName(raw);
+  return n ? n.split(" ").filter(Boolean).sort().join(" ") : "";
 }
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
