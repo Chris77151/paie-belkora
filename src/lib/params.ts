@@ -84,6 +84,16 @@ export interface PayrollParams {
   transportIntraUrbanCap: number; // 500 DH/mois
   transportOutsideUrbanCap: number; // 750 DH/mois
 
+  /**
+   * Plafond mensuel de retenue d'une AVANCE / prêt employeur = 1/10 du salaire échu
+   * (art. 386 du Code du travail — « retenues successives ne dépassant pas le dixième »).
+   * L'ACOMPTE (salaire déjà gagné, art. 385/386) N'EST PAS soumis à ce plafond.
+   * Base retenue par l'app : le net à payer du mois. Réserve : pour les bas salaires, le barème
+   * de la quotité cessible (art. 387 CT / art. 488 CPC) peut offrir un plafond plus protecteur —
+   * à confirmer par le conseil juridique avant tout durcissement automatique.
+   */
+  advanceMonthlyCapRate: number; // 0,10 (le dixième)
+
   /** Congés payés (Code du travail, art. 231-232). */
   paidLeavePerMonth: number; // 1,5 jour ouvrable/mois (art. 231) — 18 j/an
   paidLeaveMinorPerMonth: number; // 2 jours/mois pour les salariés de moins de 18 ans (art. 231) — 24 j/an
@@ -257,6 +267,8 @@ const PARAMS_2026: PayrollParams = {
   panierPerDayCapFactor: 2,
   transportIntraUrbanCap: 500,
   transportOutsideUrbanCap: 750,
+
+  advanceMonthlyCapRate: 0.1, // art. 386 CT — le dixième du salaire échu
 
   paidLeavePerMonth: 1.5,
   paidLeaveMinorPerMonth: 2,

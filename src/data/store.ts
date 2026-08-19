@@ -15,6 +15,7 @@ import type {
   Employee,
   Firm,
   Leave,
+  SalaryAdvance,
   LoginEvent,
   Payslip,
   PayrollPeriod,
@@ -549,6 +550,20 @@ export const actions = {
   removeLeave(id: string) {
     set((s) => {
       s.leaves = (s.leaves ?? []).filter((x) => x.id !== id);
+    });
+  },
+  /* ---- Avances / acomptes sur salaire ---- */
+  upsertSalaryAdvance(a: SalaryAdvance) {
+    set((s) => {
+      s.salaryAdvances = s.salaryAdvances ?? [];
+      const i = s.salaryAdvances.findIndex((x) => x.id === a.id);
+      if (i >= 0) s.salaryAdvances[i] = a;
+      else s.salaryAdvances.push(a);
+    });
+  },
+  removeSalaryAdvance(id: string) {
+    set((s) => {
+      s.salaryAdvances = (s.salaryAdvances ?? []).filter((x) => x.id !== id);
     });
   },
   /* ---- Clôture comptable (validation/verrou d'une période) ---- */

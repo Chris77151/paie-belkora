@@ -165,6 +165,29 @@ export interface Leave {
   cnss_ipe: boolean;
 }
 
+/**
+ * Avance sur salaire au personnel. Deux natures :
+ *  - `acompte` : paiement anticipé d'un salaire pour un travail DÉJÀ effectué le mois courant
+ *    → retenu EN UNE FOIS sur la paie du mois (échappe au plafond de la quotité cessible) ;
+ *  - `avance` : somme prêtée, remboursée par retenues successives sur les mois suivants
+ *    → échelonnée (`months`) et plafonnée à la quotité cessible du net.
+ */
+export interface SalaryAdvance {
+  id: string;
+  firm_id: string;
+  employee_id: string;
+  kind: "acompte" | "avance";
+  /** Date d'octroi (ISO « AAAA-MM-JJ »). */
+  date: string;
+  /** Montant accordé (DH). */
+  amount: number;
+  /** Nombre d'échéances de remboursement (1 = soldé en une fois). Pour un acompte : 1. */
+  months: number;
+  /** Mois de la 1re retenue (ISO « AAAA-MM »). Défaut : le mois de `date`. */
+  start_month?: string;
+  reason?: string;
+}
+
 export interface ComplianceAlert {
   id: string;
   firm_id: string;
@@ -361,6 +384,8 @@ export interface AppState {
   periods: PayrollPeriod[];
   payslips: Payslip[];
   leaves: Leave[];
+  /** Avances / acomptes sur salaire (registre par salarié, remboursement échelonné). */
+  salaryAdvances?: SalaryAdvance[];
   /** Registre des accidents du travail. */
   workAccidents?: WorkAccident[];
   /** Clôtures comptables validées (verrou + snapshot par période). */

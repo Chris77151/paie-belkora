@@ -1,20 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Calculator, FileDown, FileText, Printer, Lock, Unlock, CheckCircle2, X, SlidersHorizontal, Info,
+  Trash2, AlertTriangle,
 } from "lucide-react";
 import {
   actions, currentFirm, employeesOfFirm, getState, payslipsOfPeriod, uid, useStore,
 } from "@/data/store";
 import { useT } from "@/lib/i18n";
-import type { DocFormat, Employee, Payslip, PayslipInput } from "@/data/types";
+import type { DocFormat, Employee, Payslip, PayslipInput, SalaryAdvance } from "@/data/types";
 import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
 import type { PayrollResult } from "@/lib/payroll-engine";
+import {
+  advanceBalanceAfter, advanceDueForPeriod, advanceOutstanding, advanceStartMonth, cappedAdvanceDeduction,
+} from "@/lib/advance-engine";
 import {
   Badge, Button, Card, CardContent, Field, Input, PageHeader, Select, StatusBadge, Table, Td, Th,
 } from "@/components/ui/kit";
 import { MONTHS_FR, mad, num, periodLabel } from "@/lib/format";
 import { exportPayslipPdf, downloadTex, openHtmlPayslip, type PayslipView } from "@/lib/payslip";
-import { SELECTABLE_YEARS } from "@/lib/params";
+import { getParams, SELECTABLE_YEARS } from "@/lib/params";
 import { payslipLeave } from "@/lib/leave-balance";
 import { PinPrompt } from "@/components/PinPrompt";
 
@@ -374,6 +378,14 @@ function InputEditor({
           {t("pay.f.transportOutside")}
         </label>
 
+        <AdvancesPanel
+          emp={emp}
+          year={period.year}
+          month={period.month}
+          net={r.netAPayer}
+          onApply={(v) => set({ advances: v })}
+        />
+
         <div className="mt-5 rounded-lg bg-muted/60 p-4 text-sm space-y-1.5">
           <Line label={t("pay.l.gross")} value={mad(r.salaireBrut)} />
           <Line label={t("pay.l.sbi")} value={mad(r.sbi)} />
@@ -400,6 +412,154 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
   return (
     <div className={`flex justify-between ${strong ? "font-semibold text-primary" : "text-muted-foreground"}`}>
       <span>{label}</span><span className="num">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Registre des avances / acomptes du salarié, intégré au bulletin. Une avance est saisie UNE fois ;
+ * le moteur (`advance-engine`) en déduit l'échéance du mois, le solde restant et l'écrêtement au 1/10
+ * du net (art. 386 CT, taux depuis `params.ts`). Le bouton « Appliquer » reporte la retenue effective
+ * dans le champ `advances` du bulletin (net final = net − avances dans le livre de paie).
+ */
+function AdvancesPanel({
+  emp, year, month, net, onApply,
+}: {
+  emp: Employee;
+  year: number;
+  month: number;
+  net: number;
+  onApply: (value: number) => void;
+}) {
+  const t = useT();
+  const s = useStore();
+  const capRate = getParams(year).advanceMonthlyCapRate;
+  const list = useMemo(
+    () => (s.salaryAdvances ?? []).filter((a) => a.employee_id === emp.id),
+    [s.salaryAdvances, emp.id],
+  );
+  const ded = cappedAdvanceDeduction(list, emp.id, year, month, net, capRate);
+  const outstanding = advanceOutstanding(list, emp.id, year, month);
+
+  const [open, setOpen] = useState(false);
+  const defMonth = `${year}-${String(month).padStart(2, "0")}`;
+  const [form, setForm] = useState<{ kind: "acompte" | "avance"; amount: string; months: string; start_month: string; reason: string }>(
+    { kind: "avance", amount: "", months: "1", start_month: defMonth, reason: "" },
+  );
+
+  function add() {
+    const amount = +form.amount;
+    if (!(amount > 0)) return;
+    const a: SalaryAdvance = {
+      id: uid(),
+      firm_id: emp.firm_id,
+      employee_id: emp.id,
+      kind: form.kind,
+      date: `${form.start_month}-01`,
+      amount,
+      months: form.kind === "acompte" ? 1 : Math.max(1, Math.round(+form.months || 1)),
+      start_month: form.start_month,
+      reason: form.reason.trim() || undefined,
+    };
+    actions.upsertSalaryAdvance(a);
+    setForm({ kind: "avance", amount: "", months: "1", start_month: defMonth, reason: "" });
+    setOpen(false);
+  }
+
+  return (
+    <div className="mt-5 rounded-lg border border-border/70 p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">{t("adv.title")}</h3>
+        <span className="text-xs text-muted-foreground">{t("adv.outstanding")} : <span className="num font-medium">{mad(outstanding)}</span></span>
+      </div>
+
+      {list.length === 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">{t("adv.none")}</p>
+      ) : (
+        <ul className="mt-2 space-y-1.5">
+          {list.map((a) => {
+            const due = advanceDueForPeriod(a, year, month);
+            const bal = advanceBalanceAfter(a, year, month);
+            return (
+              <li key={a.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs">
+                <div className="min-w-0">
+                  <span className={`mr-1.5 rounded px-1.5 py-0.5 text-[10px] font-medium ${a.kind === "acompte" ? "bg-sky-100 text-sky-700" : "bg-amber-100 text-amber-700"}`}>
+                    {a.kind === "acompte" ? t("adv.kind.acompte").split(" ")[0] : t("adv.kind.avance").split(" ")[0]}
+                  </span>
+                  <span className="num font-medium">{mad(a.amount)}</span>
+                  {a.kind === "avance" && <span className="text-muted-foreground"> · {a.months} {t("adv.months").toLowerCase()}</span>}
+                  <span className="text-muted-foreground"> · {advanceStartMonth(a)}</span>
+                  {a.reason && <span className="block truncate text-muted-foreground">{a.reason}</span>}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-right">
+                    {due > 0 && <span className="num font-medium">{mad(due)}</span>}
+                    <span className="block text-[10px] text-muted-foreground">{t("adv.remaining")} {num(bal)}</span>
+                  </span>
+                  <button type="button" className="text-muted-foreground hover:text-destructive" title={t("adv.delete")} onClick={() => actions.removeSalaryAdvance(a.id)}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {ded.due > 0 && (
+        <div className="mt-3 rounded-md bg-primary/5 p-2.5 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">{t("adv.dueThisMonth")}</span>
+            <span className="num font-semibold text-primary">{mad(ded.applied)}</span>
+          </div>
+          {ded.capApplied && (
+            <p className="mt-1 flex gap-1 text-[11px] text-amber-700">
+              <AlertTriangle size={13} className="mt-px shrink-0" />
+              <span>{t("adv.capNote")} ({t("adv.dueThisMonth").toLowerCase()} {num(ded.avance)} → {num(ded.avanceApplied)}, {t("adv.installment").toLowerCase()} ≤ {num(ded.cap)})</span>
+            </p>
+          )}
+          <div className="mt-2 flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => onApply(ded.applied)}>{t("adv.apply")}</Button>
+          </div>
+        </div>
+      )}
+
+      {open ? (
+        <div className="mt-3 space-y-2 rounded-md border border-border/70 p-3">
+          <div className="grid grid-cols-2 gap-2">
+            <Field label={t("adv.kind")}>
+              <Select value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value as "acompte" | "avance" }))}>
+                <option value="avance">{t("adv.kind.avance")}</option>
+                <option value="acompte">{t("adv.kind.acompte")}</option>
+              </Select>
+            </Field>
+            <Field label={t("adv.amount")}>
+              <Input type="number" step="0.01" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+            </Field>
+            {form.kind === "avance" && (
+              <Field label={t("adv.months")}>
+                <Input type="number" min="1" step="1" value={form.months} onChange={(e) => setForm((f) => ({ ...f, months: e.target.value }))} />
+              </Field>
+            )}
+            <Field label={t("adv.startMonth")}>
+              <Input type="month" value={form.start_month} onChange={(e) => setForm((f) => ({ ...f, start_month: e.target.value }))} />
+            </Field>
+            <div className="col-span-2">
+              <Field label={t("adv.reason")}>
+                <Input value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} />
+              </Field>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>{t("btn.cancel")}</Button>
+            <Button size="sm" onClick={add}>{t("adv.save")}</Button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="mt-3 text-xs font-medium text-primary hover:underline" onClick={() => setOpen(true)}>
+          {t("adv.add")}
+        </button>
+      )}
     </div>
   );
 }
