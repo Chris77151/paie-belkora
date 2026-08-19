@@ -82,6 +82,8 @@ function migrate(s: AppState): AppState {
   if (!Array.isArray(s.docGenerations)) s.docGenerations = [];
   if (!Array.isArray(s.workAccidents)) s.workAccidents = [];
   if (!Array.isArray(s.accountingClosures)) s.accountingClosures = [];
+  if (!Array.isArray(s.salaryAdvances)) s.salaryAdvances = [];
+  if (!Array.isArray(s.extraYears)) s.extraYears = [];
   // Comptes utilisateurs : garantir la présence ET les credentials du super utilisateur.
   // Le compte racine est « indestructible » (cf. seed.ts) : par conception anti-lockout,
   // ses identifiants documentés font autorité. On réaffirme donc depuis le seed son
@@ -326,6 +328,22 @@ export const actions = {
       const i = s.firms.findIndex((f) => f.id === firm.id);
       if (i >= 0) s.firms[i] = firm;
       else s.firms.push(firm);
+    });
+  },
+  /** Ajoute une année aux sélecteurs (Paie, Livre de paie, Écritures, Déclarations, Audit). */
+  addSelectableYear(year: number) {
+    set((s) => {
+      if (!Number.isFinite(year)) return;
+      const y = Math.round(year);
+      if (y < 1900 || y > 2200) return; // garde-fou : plage plausible
+      s.extraYears = s.extraYears ?? [];
+      if (!s.extraYears.includes(y)) s.extraYears.push(y);
+    });
+  },
+  /** Retire une année ajoutée manuellement (n'affecte pas la plage standard). */
+  removeSelectableYear(year: number) {
+    set((s) => {
+      s.extraYears = (s.extraYears ?? []).filter((y) => y !== year);
     });
   },
   upsertEmployee(emp: Employee) {

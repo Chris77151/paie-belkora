@@ -21,9 +21,7 @@ import {
   type ReconcileOutcome,
 } from "@/lib/odoo";
 import { cn } from "@/lib/cn";
-import { SELECTABLE_YEARS } from "@/lib/params";
-
-const YEARS = SELECTABLE_YEARS;
+import { YearSelect } from "@/components/YearSelect";
 
 const CAT = {
   flux: { label: "Flux — Compte de résultat", icon: ScrollText },
@@ -173,9 +171,7 @@ export default function Audit() {
       <Card className="mb-4">
         <CardContent className="pt-5 flex flex-wrap items-end gap-3">
           <Field label="Année">
-            <Select value={year} onChange={(e) => { setYear(+e.target.value); setReport(null); }} className="w-28">
-              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-            </Select>
+            <YearSelect value={year} onChange={(y) => { setYear(y); setReport(null); }} />
           </Field>
           <Field label="Mois">
             <Select value={month} onChange={(e) => { setMonth(+e.target.value); setReport(null); }} className="w-40">

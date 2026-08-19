@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/kit";
 import { dateFr, num } from "@/lib/format";
 import { countLeaveDays } from "@/lib/holidays-maroc";
-import { acquiredLeaveDays } from "@/lib/leave-balance";
+import { payslipLeave } from "@/lib/leave-balance";
 import type { Leave, LeaveType } from "@/data/types";
 
 const LEAVE_LABEL_KEY: Record<LeaveType, TKey> = {
@@ -78,19 +78,24 @@ export default function Leaves() {
     .reduce((a, l) => a + l.days, 0);
   const nbMaladie = leaves.filter((l) => l.type === "maladie").length;
 
+  // Source des soldes affichés : décompte de l'app OU soldes importés d'Odoo (réglage société,
+  // le même que le bulletin). Repli automatique sur l'app pour un salarié sans solde Odoo.
+  const leaveSource = firm.payslip_leave_source ?? "app";
   const soldes = useMemo(
     () =>
       employees
         .filter((e) => e.is_active)
         .map((e) => {
-          const acquis = acquiredLeaveDays(e, today);
-          const pris = leaves
-            .filter((l) => l.employee_id === e.id && l.type === "conge_paye")
-            .reduce((a, l) => a + l.days, 0);
-          return { emp: e, acquis, pris, solde: acquis - pris };
+          const { balance, source } = payslipLeave(e, leaves, today, leaveSource);
+          return { emp: e, acquis: balance.acquired, pris: balance.taken, solde: balance.balance, source };
         }),
-    [employees, leaves],
+    [employees, leaves, leaveSource],
   );
+  const odooCount = soldes.filter((r) => r.source === "odoo").length;
+  const lastOdooFetch = useMemo(() => {
+    const dates = employees.map((e) => e.odoo_leave?.fetched_at).filter((d): d is string => !!d).sort();
+    return dates.length ? dates[dates.length - 1] : null;
+  }, [employees]);
 
   return (
     <div>
@@ -188,7 +193,16 @@ export default function Leaves() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>{t("lv.balances")}</CardTitle>
+          <CardTitle>
+            <span className="inline-flex flex-wrap items-center gap-2">
+              {t("lv.balances")}
+              {leaveSource === "odoo" ? (
+                <Badge tone="primary">{t("lv.src.odoo")}{odooCount > 0 ? ` · ${odooCount}` : ""}</Badge>
+              ) : (
+                <Badge tone="muted">{t("lv.src.app")}</Badge>
+              )}
+            </span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
@@ -199,10 +213,11 @@ export default function Leaves() {
                 <Th className="text-right">{t("lv.col.acquired")}</Th>
                 <Th className="text-right">{t("lv.col.taken")}</Th>
                 <Th className="text-right">{t("lv.col.balance")}</Th>
+                <Th>{t("lv.col.source")}</Th>
               </tr>
             </thead>
             <tbody>
-              {soldes.map(({ emp, acquis, pris, solde }) => (
+              {soldes.map(({ emp, acquis, pris, solde, source }) => (
                 <tr key={emp.id}>
                   <Td>
                     {emp.first_name} {emp.last_name}
@@ -215,12 +230,26 @@ export default function Leaves() {
                       {num(solde)}
                     </span>
                   </Td>
+                  <Td>
+                    {source === "odoo" ? (
+                      <Badge tone="primary">Odoo</Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">{t("lv.src.appShort")}</span>
+                    )}
+                  </Td>
                 </tr>
               ))}
             </tbody>
           </Table>
           <p className="mt-3 text-xs text-muted-foreground">
-            {t("lv.acquisitionNote")}
+            {leaveSource === "odoo" ? (
+              <>
+                {t("lv.src.odooNote")}
+                {lastOdooFetch ? ` (${dateFr(lastOdooFetch)})` : ""}
+              </>
+            ) : (
+              t("lv.acquisitionNote")
+            )}
           </p>
         </CardContent>
       </Card>

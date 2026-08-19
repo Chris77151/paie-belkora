@@ -18,11 +18,10 @@ import {
 } from "@/components/ui/kit";
 import { MONTHS_FR, mad, num, periodLabel } from "@/lib/format";
 import { exportPayslipPdf, downloadTex, openHtmlPayslip, type PayslipView } from "@/lib/payslip";
-import { getParams, SELECTABLE_YEARS } from "@/lib/params";
+import { getParams } from "@/lib/params";
+import { YearSelect } from "@/components/YearSelect";
 import { payslipLeave } from "@/lib/leave-balance";
 import { PinPrompt } from "@/components/PinPrompt";
-
-const YEARS = SELECTABLE_YEARS;
 
 export default function Payroll() {
   const s = useStore();
@@ -171,9 +170,7 @@ export default function Payroll() {
       <Card className="mb-4">
         <CardContent className="pt-5 flex flex-wrap items-end gap-3">
           <Field label={t("pay.year")}>
-            <Select value={year} onChange={(e) => setYear(+e.target.value)} className="w-28">
-              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-            </Select>
+            <YearSelect value={year} onChange={setYear} />
           </Field>
           <Field label={t("pay.month")}>
             <Select value={month} onChange={(e) => setMonth(+e.target.value)} className="w-40">

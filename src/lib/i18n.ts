@@ -332,6 +332,9 @@ export const DICT = {
 
   // Page Paie
   "pay.year": { fr: "Année", ar: "السنة" },
+  "year.add": { fr: "Ajouter une année", ar: "إضافة سنة" },
+  "year.confirm": { fr: "Valider l'année", ar: "تأكيد السنة" },
+  "year.placeholder": { fr: "AAAA", ar: "سسسس" },
   "pay.month": { fr: "Mois", ar: "الشهر" },
   "pay.exportGroup": { fr: "Export groupé PDF", ar: "تصدير جماعي PDF" },
   "pay.validate": { fr: "Valider la période", ar: "المصادقة على الفترة" },
@@ -417,6 +420,11 @@ export const DICT = {
   "lv.col.acquired": { fr: "Acquis (j)", ar: "المكتسب (يوم)" },
   "lv.col.taken": { fr: "Pris (j)", ar: "المأخوذ (يوم)" },
   "lv.col.balance": { fr: "Solde (j)", ar: "الرصيد (يوم)" },
+  "lv.col.source": { fr: "Source", ar: "المصدر" },
+  "lv.src.odoo": { fr: "Soldes Odoo", ar: "أرصدة Odoo" },
+  "lv.src.app": { fr: "Décompte app", ar: "احتساب التطبيق" },
+  "lv.src.appShort": { fr: "app", ar: "التطبيق" },
+  "lv.src.odooNote": { fr: "Soldes issus d'Odoo (acquis / pris / restant), alignés sur les colonnes du volet ; repli sur le décompte de l'application pour un salarié sans solde Odoo. Import depuis Paramètres → « Congés sur le bulletin de paie ».", ar: "أرصدة مستخرجة من Odoo (المكتسب / المأخوذ / المتبقي)، متوافقة مع أعمدة اللوحة؛ مع الرجوع إلى احتساب التطبيق للأجير بدون رصيد في Odoo. الاستيراد من الإعدادات ← «الإجازات في بطاقة الأجر»." },
   "lv.acquisitionNote": { fr: "Acquisition de 1,5 jour ouvrable par mois de service — 2 jours/mois pour les salariés de moins de 18 ans (art. 231), majoration d'ancienneté incluse : +1,5 jour par tranche entière de 5 ans de service, plafonnée à 30 jours au total (art. 232).", ar: "اكتساب 1,5 يوم عمل عن كل شهر خدمة — يومان/شهر للأجراء دون 18 سنة (المادة 231)، مع زيادة الأقدمية: +1,5 يوم عن كل خمس سنوات خدمة كاملة، في حدود 30 يومًا إجمالًا (المادة 232)." },
   "lv.new": { fr: "Saisir une absence", ar: "تسجيل غياب" },
   "lv.noEmp": { fr: "Ajoutez d'abord un salarié pour pouvoir saisir une absence.", ar: "أضف أجيرًا أولًا لتتمكن من تسجيل غياب." },

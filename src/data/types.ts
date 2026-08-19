@@ -404,4 +404,10 @@ export interface AppState {
   bankAudit?: BankAuditEvent[];
   /** Base de référence des RIB validés (empreintes) pour la détection d'écart. */
   bankBaseline?: BankBaseline[];
+  /**
+   * Années ajoutées MANUELLEMENT par l'utilisateur aux sélecteurs (Paie, Livre de paie,
+   * Écritures, Déclarations, Audit) — au-delà de la plage standard 2000→année+1. Partagées
+   * par toutes les sociétés (simples options de sélection ; les données restent par société).
+   */
+  extraYears?: number[];
 }

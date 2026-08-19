@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getParams, AVAILABLE_YEARS } from "./params";
+import { getParams, AVAILABLE_YEARS, buildSelectableYears, SELECTABLE_YEARS } from "./params";
 import { computePayslip, amoActiveAt } from "./payroll-engine";
 
 const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
@@ -99,5 +99,32 @@ describe("cohérence interne des détails CNSS/AMO (le moteur agrège le DÉTAIL
       const sum = round4(p.amoEmployerBaseRate + p.amoEmployerSolidariteRate);
       expect(sum, `année ${y}`).toBe(round4(p.amoEmployerRate));
     }
+  });
+});
+
+describe("buildSelectableYears — sélecteurs sans trous + ajout manuel", () => {
+  it("la plage standard est CONTINUE (aucune année sautée) et décroissante", () => {
+    const ys = buildSelectableYears();
+    for (let i = 1; i < ys.length; i++) {
+      expect(ys[i - 1] - ys[i]).toBe(1); // pas de saut : 2026, 2025, 2024…
+    }
+    expect(ys).toEqual(SELECTABLE_YEARS);
+  });
+
+  it("fusionne les années de données manquantes SANS créer de trou (cas Livre de paie)", () => {
+    // Ahmed Belkora : données seulement 2016-2020 puis 2026 → la liste reste continue,
+    // 2021-2025 redeviennent sélectionnables.
+    const ys = buildSelectableYears([], [2016, 2017, 2018, 2019, 2020, 2026]);
+    for (const y of [2016, 2020, 2021, 2022, 2025, 2026]) expect(ys).toContain(y);
+    for (let i = 1; i < ys.length; i++) expect(ys[i - 1] - ys[i]).toBe(1);
+  });
+
+  it("ajoute les années manuelles hors plage (futures) et déduplique, trié décroissant", () => {
+    const ys = buildSelectableYears([2030, 2028, 2030], [2028]);
+    expect(ys[0]).toBe(2030);
+    expect(ys.indexOf(2028)).toBeGreaterThan(-1);
+    expect(ys.filter((y) => y === 2030)).toHaveLength(1); // dédupliqué
+    expect(ys.filter((y) => y === 2028)).toHaveLength(1);
+    expect([...ys]).toEqual([...ys].sort((a, b) => b - a));
   });
 });

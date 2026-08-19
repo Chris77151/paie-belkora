@@ -90,7 +90,25 @@ export default function Settings() {
     const next: Firm = { ...draft, validation_pin_hash: hash };
     setDraft(next);
     actions.upsertFirm(next);
-    setPin1(""); setPin2(""); setPinMsg({ ok: true, text: "Code enregistré. Il sera exigé pour valider la paie et les écritures." });
+    setPin1(""); setPin2(""); setPinMsg({ ok: true, text: `Code enregistré pour « ${firm.name} ». Il sera exigé pour valider la paie et les écritures.` });
+  }
+
+  /**
+   * Applique le même code à TOUTES les sociétés existantes. Chaque empreinte est salée par l'id de
+   * SA société (le même code produit une empreinte différente par société), puis reste modifiable
+   * individuellement. Rend le verrou opérationnel d'un coup pour Miya, Ahmed, etc.
+   */
+  async function applyPinToAll() {
+    if (!isValidPin(pin1)) { setPinMsg({ ok: false, text: "Le code doit comporter exactement 4 chiffres." }); return; }
+    if (pin1 !== pin2) { setPinMsg({ ok: false, text: "Les deux codes ne correspondent pas." }); return; }
+    for (const f of s.firms) {
+      const h = await hashPin(pin1, f.id);
+      actions.upsertFirm({ ...f, validation_pin_hash: h });
+    }
+    const curHash = await hashPin(pin1, firm.id);
+    setDraft((d) => ({ ...d, validation_pin_hash: curHash }));
+    setPin1(""); setPin2("");
+    setPinMsg({ ok: true, text: `Code appliqué à ${s.firms.length} société(s). Chaque société peut le modifier individuellement dans ses Paramètres.` });
   }
 
   function clearPin() {
@@ -348,7 +366,10 @@ export default function Settings() {
           <p className="mb-4 text-sm text-muted-foreground">
             Code à <b>4 chiffres</b> exigé pour <b>valider la paie</b> d'une période et <b>verrouiller les écritures
             comptables</b>. Garde-fou anti-erreur (double consentement) — le code est stocké <b>haché</b>, jamais en clair.
-            {" "}Statut actuel :{" "}
+            {" "}Le code est <b>propre à chaque société</b> : « Définir » l'enregistre pour <b>{draft.name}</b>,
+            « Appliquer à toutes les sociétés » l'active d'un coup pour toutes (Miya, Ahmed…), chacune restant
+            modifiable ensuite.
+            {" "}Statut pour {draft.name} :{" "}
             {hasPin ? <Badge tone="success">Code défini</Badge> : <Badge tone="warning">Aucun code — validation libre</Badge>}
           </p>
           <div className="grid gap-4 sm:grid-cols-2 max-w-lg">
@@ -378,8 +399,13 @@ export default function Settings() {
           )}
           <div className="mt-4 flex flex-wrap gap-2">
             <Button onClick={() => void savePin()} disabled={pin1.length !== 4 || pin2.length !== 4}>
-              <Save size={16} /> {hasPin ? "Modifier le code" : "Définir le code"}
+              <Save size={16} /> {hasPin ? `Modifier pour ${draft.name}` : `Définir pour ${draft.name}`}
             </Button>
+            {s.firms.length > 1 && (
+              <Button variant="sage" onClick={() => void applyPinToAll()} disabled={pin1.length !== 4 || pin2.length !== 4}>
+                <KeyRound size={16} /> Appliquer à toutes les sociétés ({s.firms.length})
+              </Button>
+            )}
             {hasPin && (
               <Button variant="outline" onClick={clearPin}>
                 <ShieldX size={16} /> Supprimer le code

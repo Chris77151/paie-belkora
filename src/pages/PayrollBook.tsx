@@ -9,25 +9,31 @@ import {
 import { mad, num, dateFr, MONTHS_FR } from "@/lib/format";
 import { buildPayrollBook, payrollBookYears } from "@/lib/payroll-book";
 import { exportPayrollBookPdf, exportPayrollBookXlsx } from "@/lib/payroll-book-export";
+import { YearSelect } from "@/components/YearSelect";
 
 export default function PayrollBook() {
   const s = useStore();
   const t = useT();
   const firm = currentFirm(s);
 
-  const years = useMemo(() => {
-    const ys = payrollBookYears(s, firm.id);
-    return ys.length ? ys : [new Date().getFullYear()];
-  }, [s, firm.id]);
+  // Années RÉELLEMENT présentes dans les données de la société (périodes) — fusionnées à la plage
+  // standard par le sélecteur, ce qui supprime les listes « à trous » (ex. 2016-2020 puis 2026).
+  const dataYears = useMemo(() => payrollBookYears(s, firm.id), [s, firm.id]);
 
-  const [year, setYear] = useState<number>(years[0]);
+  const [year, setYear] = useState<number>(() => dataYears[0] ?? new Date().getFullYear());
   // 0 = toute l'année, 1-12 = mois filtré.
   const [month, setMonth] = useState<number>(0);
 
-  const effectiveYear = years.includes(year) ? year : years[0];
+  // Au changement de société, se repositionner sur son année de données la plus récente.
+  const [trackedFirm, setTrackedFirm] = useState<string>(firm.id);
+  if (trackedFirm !== firm.id) {
+    setTrackedFirm(firm.id);
+    setYear(dataYears[0] ?? new Date().getFullYear());
+  }
+
   const book = useMemo(
-    () => buildPayrollBook(s, firm, effectiveYear, month === 0 ? null : month),
-    [s, firm, effectiveYear, month],
+    () => buildPayrollBook(s, firm, year, month === 0 ? null : month),
+    [s, firm, year, month],
   );
   const { rows, totals } = book;
 
@@ -35,11 +41,7 @@ export default function PayrollBook() {
     <div>
       <PageHeader title={t("page.livrePaie.title")} subtitle={t("page.livrePaie.sub")}>
         <Field label={t("pay.year")}>
-          <Select value={effectiveYear} onChange={(e) => setYear(Number(e.target.value))}>
-            {years.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </Select>
+          <YearSelect value={year} onChange={setYear} dataYears={dataYears} className="w-full" />
         </Field>
         <Field label={t("pay.month")}>
           <Select value={month} onChange={(e) => setMonth(Number(e.target.value))}>

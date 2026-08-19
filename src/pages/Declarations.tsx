@@ -20,11 +20,10 @@ import {
 import { mad, num, pct, dateFr, periodLabel, MONTHS_FR } from "@/lib/format";
 import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
 import { round2, type PayrollResult } from "@/lib/payroll-engine";
-import { SELECTABLE_YEARS, getParams } from "@/lib/params";
+import { getParams } from "@/lib/params";
 import { exportDeclarationPdf } from "@/lib/declaration-export";
 import { computeDeclarationPenalty } from "@/lib/declaration-penalty";
-
-const YEAR_OPTIONS = SELECTABLE_YEARS;
+import { YearSelect } from "@/components/YearSelect";
 
 export default function Declarations() {
   const s = useStore();
@@ -207,13 +206,7 @@ export default function Declarations() {
         subtitle={t("page.declarations.sub")}
       >
         <Field label={t("pay.year")}>
-          <Select value={year} onChange={(e) => setYear(Number(e.target.value))}>
-            {YEAR_OPTIONS.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </Select>
+          <YearSelect value={year} onChange={setYear} className="w-full" />
         </Field>
         <Field label={t("pay.month")}>
           <Select value={month} onChange={(e) => setMonth(Number(e.target.value))}>

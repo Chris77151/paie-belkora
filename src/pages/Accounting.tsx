@@ -12,10 +12,8 @@ import { DEFAULT_ACCOUNTS } from "@/lib/accounting-accounts";
 import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml, exportEntriesCsvSage } from "@/lib/accounting-export";
 import { Badge, Button, Card, CardContent, Field, PageHeader, Select, Table, Td, Th } from "@/components/ui/kit";
 import { MONTHS_FR, dateFr, mad, num, periodLabel } from "@/lib/format";
-import { SELECTABLE_YEARS } from "@/lib/params";
 import { PinPrompt } from "@/components/PinPrompt";
-
-const YEARS = SELECTABLE_YEARS;
+import { YearSelect } from "@/components/YearSelect";
 
 export default function Accounting() {
   const s = useStore();
@@ -116,9 +114,7 @@ export default function Accounting() {
       <Card className="mb-4">
         <CardContent className="pt-5 flex flex-wrap items-end gap-3">
           <Field label="Année">
-            <Select value={year} onChange={(e) => changeYear(+e.target.value)} className="w-28">
-              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-            </Select>
+            <YearSelect value={year} onChange={changeYear} />
           </Field>
           <Field label="Mois">
             <Select value={month} onChange={(e) => changeMonth(+e.target.value)} className="w-40">

@@ -477,3 +477,18 @@ export const SELECTABLE_YEARS: number[] = (() => {
   for (let y = last; y >= FIRST; y--) out.push(y);
   return out;
 })();
+
+/**
+ * Liste d'années sélectionnable EFFECTIVE d'un volet = plage standard (`SELECTABLE_YEARS`)
+ * ∪ années ajoutées manuellement (`extra`, persistées dans l'état) ∪ années réellement
+ * présentes dans les données (`data`, ex. périodes du Livre de paie). Dédupliquée, triée du
+ * plus récent au plus ancien. Corrige les listes « à trous » (années sautées) tout en
+ * autorisant l'ajout d'années hors plage (futures notamment). PURE.
+ */
+export function buildSelectableYears(extra: number[] = [], data: number[] = []): number[] {
+  const set = new Set<number>(SELECTABLE_YEARS);
+  for (const y of [...extra, ...data]) {
+    if (Number.isFinite(y)) set.add(Math.round(y));
+  }
+  return [...set].sort((a, b) => b - a);
+}
