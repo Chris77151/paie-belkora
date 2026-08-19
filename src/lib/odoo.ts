@@ -247,7 +247,7 @@ export async function odooImportEmployees(
  * remaining_leaves) et on en déduit acquis / pris / solde. ODOO FAIT FOI.
  * ========================================================================== */
 
-/** Solde de congés d'un salarié tel que lu dans Odoo (jours). */
+/** Solde de congés d'un salarié tel que lu dans Odoo (jours), + identité pour l'appariement. */
 export interface OdooLeaveBalance {
   odoo_id: number;
   /** Jours alloués (allocation_count). */
@@ -256,29 +256,115 @@ export interface OdooLeaveBalance {
   taken: number;
   /** Jours restants (remaining_leaves, sinon alloué − pris). */
   remaining: number;
+  /* --- identité Odoo (facultative selon la version/les modules) : sert à apparier sans _odoo_id --- */
+  name?: string;
+  matricule?: string;
+  cin?: string;
+  cnss?: string;
 }
 
-/** Ligne hr.employee partielle (congés) — champs optionnels selon la version Odoo. */
+/** Ligne hr.employee partielle (congés + identité) — champs optionnels selon la version Odoo. */
 export interface OdooLeaveRow {
   id: number;
   allocation_count?: number | false;
   allocation_used_count?: number | false;
   remaining_leaves?: number | false;
+  name?: string | false;
+  registration_number?: string | false;
+  identification_id?: string | false;
+  l10n_ma_cin_number?: string | false;
+  l10n_ma_cnss_number?: string | false;
 }
 
 /**
  * Déduit (acquis / pris / solde) d'une ligne hr.employee, en gérant l'absence de tel ou tel champ
  * selon la version Odoo. PURE & testable. Priorité : valeurs Odoo explicites, sinon complément par
- * différence (alloué − pris = restant, et réciproquement).
+ * différence (alloué − pris = restant, et réciproquement). Porte l'identité pour l'appariement.
  */
 export function mapOdooLeave(r: OdooLeaveRow): OdooLeaveBalance {
   const n = (v: number | false | undefined) => (typeof v === "number" && isFinite(v) ? v : undefined);
+  const str = (v: string | false | undefined) => (v ? String(v) : undefined);
   const allocated = n(r.allocation_count) ?? 0;
   const usedGiven = n(r.allocation_used_count);
   const remainGiven = n(r.remaining_leaves);
   const taken = usedGiven ?? (remainGiven != null ? Math.max(0, allocated - remainGiven) : 0);
   const remaining = remainGiven ?? Math.max(0, allocated - taken);
-  return { odoo_id: r.id, allocated: round2(allocated), taken: round2(taken), remaining: round2(remaining) };
+  return {
+    odoo_id: r.id,
+    allocated: round2(allocated),
+    taken: round2(taken),
+    remaining: round2(remaining),
+    name: str(r.name),
+    matricule: str(r.registration_number),
+    cin: str(r.identification_id) ?? str(r.l10n_ma_cin_number),
+    cnss: str(r.l10n_ma_cnss_number),
+  };
+}
+
+export type LeaveMatchMethod = "odoo_id" | "matricule" | "cin" | "cnss" | "nom";
+
+/** Un appariement salarié-app ↔ solde Odoo, avec la clé utilisée et le niveau de confiance. */
+export interface LeaveMatch {
+  employee_id: string;
+  odoo_id: number;
+  method: LeaveMatchMethod;
+  confidence: "forte" | "faible";
+  balance: OdooLeaveBalance;
+}
+
+export interface LeaveMatchResult {
+  matches: LeaveMatch[];
+  /** Salariés de l'app sans correspondance Odoo (jamais devinés). */
+  unmatched: Employee[];
+}
+
+/**
+ * Apparie les salariés de l'app aux soldes de congés Odoo par clés STABLES, sans rien inventer :
+ * `_odoo_id` → matricule → CIN → CNSS → nom normalisé (le nom marqué « faible »). Un solde Odoo
+ * déjà revendiqué n'est pas réutilisé (anti-doublon). PURE & testable — c'est la « reconnaissance »
+ * fiable des salariés (pas d'OCR : les données sont structurées, l'OCR introduirait des erreurs).
+ */
+export function matchOdooLeaves(employees: Employee[], balances: OdooLeaveBalance[]): LeaveMatchResult {
+  const byId = new Map<number, OdooLeaveBalance>();
+  const byReg = new Map<string, OdooLeaveBalance>();
+  const byCin = new Map<string, OdooLeaveBalance>();
+  const byCnss = new Map<string, OdooLeaveBalance>();
+  const byName = new Map<string, OdooLeaveBalance>();
+  for (const b of balances) {
+    if (!byId.has(b.odoo_id)) byId.set(b.odoo_id, b);
+    const reg = norm(b.matricule); if (reg && !byReg.has(reg)) byReg.set(reg, b);
+    const cin = norm(b.cin); if (cin && !byCin.has(cin)) byCin.set(cin, b);
+    const cnss = norm(b.cnss); if (cnss && !byCnss.has(cnss)) byCnss.set(cnss, b);
+    const nm = normName(b.name); if (nm && !byName.has(nm)) byName.set(nm, b);
+  }
+
+  const claimed = new Set<number>(); // un solde Odoo n'est apparié qu'une fois
+  const matches: LeaveMatch[] = [];
+  const unmatched: Employee[] = [];
+
+  for (const e of employees) {
+    const oid = (e as Employee & { _odoo_id?: number })._odoo_id;
+    let b: OdooLeaveBalance | undefined;
+    let method: LeaveMatchMethod | undefined;
+    let confidence: "forte" | "faible" = "forte";
+
+    if (oid != null && byId.has(oid)) { b = byId.get(oid); method = "odoo_id"; }
+    else if (norm(e.matricule) && byReg.has(norm(e.matricule))) { b = byReg.get(norm(e.matricule)); method = "matricule"; }
+    else if (norm(e.cin) && byCin.has(norm(e.cin))) { b = byCin.get(norm(e.cin)); method = "cin"; }
+    else if (norm(e.cnss_number) && byCnss.has(norm(e.cnss_number))) { b = byCnss.get(norm(e.cnss_number)); method = "cnss"; }
+    else {
+      const nm = normName(`${e.first_name ?? ""} ${e.last_name ?? ""}`);
+      if (nm && byName.has(nm)) { b = byName.get(nm); method = "nom"; confidence = "faible"; }
+    }
+
+    if (b && method && !claimed.has(b.odoo_id)) {
+      claimed.add(b.odoo_id);
+      matches.push({ employee_id: e.id, odoo_id: b.odoo_id, method, confidence, balance: b });
+    } else {
+      unmatched.push(e);
+    }
+  }
+  return { matches, unmatched };
 }
 
 /**
@@ -287,7 +373,12 @@ export function mapOdooLeave(r: OdooLeaveRow): OdooLeaveBalance {
  */
 export async function odooFetchLeaveBalances(config: OdooConfig, odooCompanyId: number): Promise<OdooLeaveBalance[]> {
   const userId = await odooAuthenticate(config);
-  const candidates = ["allocation_count", "allocation_used_count", "remaining_leaves"];
+  // Champs de congés + identité (pour l'appariement sans _odoo_id). Détectés par fields_get :
+  // ceux qui n'existent pas sur l'instance (module l10n_ma absent, version) sont simplement ignorés.
+  const candidates = [
+    "allocation_count", "allocation_used_count", "remaining_leaves",
+    "name", "registration_number", "identification_id", "l10n_ma_cin_number", "l10n_ma_cnss_number",
+  ];
   let available: Set<string>;
   try {
     const fg: Record<string, unknown> = await jsonRpc(config, "object", "execute_kw", [

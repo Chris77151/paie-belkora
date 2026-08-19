@@ -13,7 +13,7 @@ import {
   isSupabaseConfigured, type SupabaseConfig,
 } from "@/lib/supabase";
 import { useT } from "@/lib/i18n";
-import { odooTestConnection, odooListCompanies, odooFetchLeaveBalances } from "@/lib/odoo";
+import { odooTestConnection, odooListCompanies, odooFetchLeaveBalances, matchOdooLeaves } from "@/lib/odoo";
 import { hashPassword, useSession, ROLE_LABELS } from "@/lib/auth";
 import type { AppUser, OdooConfig } from "@/data/types";
 import {
@@ -117,23 +117,33 @@ export default function Settings() {
     setLeaveBusy(true);
     try {
       const balances = await odooFetchLeaveBalances(s.odoo, firm.odoo_company_id);
-      const byOdoo = new Map(balances.map((b) => [b.odoo_id, b]));
       const emps = s.employees.filter((e) => e.firm_id === firm.id);
+      // Reconnaissance DÉTERMINISTE : _odoo_id → matricule → CIN → CNSS → nom (aucune invention).
+      const { matches, unmatched } = matchOdooLeaves(emps, balances);
+      const empById = new Map(emps.map((e) => [e.id, e]));
       const now = new Date().toISOString().slice(0, 10);
-      let matched = 0;
-      for (const e of emps) {
-        const oid = (e as Employee)._odoo_id;
-        const b = oid != null ? byOdoo.get(oid) : undefined;
-        if (b) {
-          actions.upsertEmployee({ ...e, odoo_leave: { allocated: b.allocated, taken: b.taken, remaining: b.remaining, fetched_at: now } });
-          matched += 1;
-        }
+      for (const m of matches) {
+        const e = empById.get(m.employee_id);
+        if (!e) continue;
+        // On mémorise aussi le lien Odoo (_odoo_id) découvert → imports suivants directs.
+        actions.upsertEmployee({
+          ...e,
+          _odoo_id: m.odoo_id,
+          odoo_leave: { allocated: m.balance.allocated, taken: m.balance.taken, remaining: m.balance.remaining, fetched_at: now },
+        });
       }
-      setLeaveMsg(
-        matched > 0
-          ? { ok: true, text: `${matched} salarié(s) mis à jour (soldes de congés Odoo).` }
-          : { ok: false, text: "Aucun salarié apparié. Importez d'abord les salariés depuis Odoo (page Salariés) pour créer le lien." },
-      );
+      const byMethod = matches.reduce<Record<string, number>>((acc, m) => ((acc[m.method] = (acc[m.method] ?? 0) + 1), acc), {});
+      const detail = Object.entries(byMethod).map(([k, v]) => `${v} par ${k}`).join(", ");
+      if (matches.length > 0) {
+        const warnNom = byMethod["nom"] ? ` — dont ${byMethod["nom"]} par nom (à vérifier)` : "";
+        const rest = unmatched.length ? ` · ${unmatched.length} non apparié(s)` : "";
+        setLeaveMsg({ ok: true, text: `${matches.length} salarié(s) appariés (${detail})${warnNom} et mis à jour${rest}.` });
+      } else {
+        setLeaveMsg({
+          ok: false,
+          text: `Aucun salarié apparié sur ${balances.length} fiche(s) Odoo lue(s). Vérifiez que les salariés de l'app ont un matricule, une CIN, un N° CNSS ou un nom correspondant à Odoo (ou importez-les depuis la page Salariés).`,
+        });
+      }
     } catch (e) {
       setLeaveMsg({ ok: false, text: `Congés Odoo : ${(e as Error).message}` });
     } finally {
@@ -412,8 +422,11 @@ export default function Settings() {
           <p className="mt-2 text-[11px] text-muted-foreground">
             Odoo lu (<code className="font-mono">hr.employee</code>) : jours alloués / pris / restants
             (<code className="font-mono">allocation_count</code>, <code className="font-mono">allocation_used_count</code>,
-            <code className="font-mono"> remaining_leaves</code>, détectés selon la version). Apparie les salariés déjà
-            importés d'Odoo (lien <code className="font-mono">_odoo_id</code>).
+            <code className="font-mono"> remaining_leaves</code>, détectés selon la version). <b>Reconnaissance
+            automatique</b> des salariés par clés stables — <b>lien Odoo, matricule, CIN, N° CNSS puis nom</b>
+            (aucune invention ; le lien <code className="font-mono">_odoo_id</code> est mémorisé pour la suite). Les
+            salariés non appariés sont signalés, jamais devinés. Une fois importés, les soldes figurent sur le bulletin
+            en synthèse (acquis / pris / solde).
           </p>
         </CardContent>
       </Card>
