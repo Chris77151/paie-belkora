@@ -167,6 +167,69 @@ export function employerParagraph(firm: Firm): string {
   return `${body}, représentée par ${sig}, en sa qualité de ${role},`;
 }
 
+/* ------------------------------------------------------------------ assainissement typographique ------------------------------------------------------------------ */
+
+/**
+ * Assainit le texte d'un document RH : remplace les caractères « spéciaux » superflus qui
+ * trahissent une génération automatique (tiret cadratin « — », point médian « · » utilisé en
+ * séparateur, points de suspension typographiques « … », flèches « → ») par des équivalents
+ * sobres et universels, tout en CONSERVANT la typographie française légitime (guillemets « »,
+ * accents, apostrophes). PURE. Appliquée à TOUT le contenu rendu (voir `sanitizeLegalDoc`), donc
+ * valable pour tous les documents — contrats, attestations, kits — présents et futurs.
+ */
+export function sanitizeLegalText(s: string): string {
+  return asciiSpaces(s)
+    .replace(/[–—―]/g, "-")   // tirets moyen / cadratin / barre → trait d'union
+    .replace(/[•‣⁃◦]/g, "-")   // puces résiduelles dans le fil du texte
+    .replace(/·/g, "-")          // point médian employé comme séparateur
+    .replace(/…/g, "...")             // points de suspension → trois points ASCII
+    .replace(/\s*→\s*/g, " vers ")   // flèche « devient / vers »
+    .replace(/\s*←\s*/g, " - ")      // flèche inverse (rare)
+    .replace(/≤\s*/g, "au plus ")     // ≤ → « au plus »
+    .replace(/≥\s*/g, "au moins ");   // ≥ → « au moins »
+}
+
+const S = sanitizeLegalText;
+
+function cleanBlock(b: LegalBlock): LegalBlock {
+  switch (b.k) {
+    case "h": return { k: "h", t: S(b.t) };
+    case "p": return { k: "p", t: S(b.t) };
+    case "ul": return { k: "ul", items: b.items.map(S) };
+    case "check": return { k: "check", items: b.items.map(S), checked: b.checked };
+    case "center": return { k: "center", t: S(b.t), strong: b.strong };
+    case "sp": return b;
+    case "table": return { k: "table", head: b.head?.map(S), rows: b.rows.map((r) => r.map(S)), align: b.align };
+  }
+}
+const cleanMeta = (m: MetaLine): MetaLine => ({ label: S(m.label), value: S(m.value) });
+const cleanSig = (c: SignatureCol): SignatureCol => ({ title: S(c.title), lines: c.lines.map(S), caption: c.caption ? S(c.caption) : undefined });
+const cleanAr = (a: LegalDocAr): LegalDocAr => ({
+  heading: S(a.heading),
+  subheading: a.subheading ? S(a.subheading) : undefined,
+  meta: a.meta?.map(cleanMeta),
+  blocks: a.blocks.map(cleanBlock),
+  faitA: a.faitA ? S(a.faitA) : undefined,
+  legalNote: a.legalNote ? S(a.legalNote) : undefined,
+  signatures: a.signatures?.map(cleanSig),
+});
+
+/** Renvoie une COPIE du document dont tout le texte rendu est assaini (voir `sanitizeLegalText`). PURE. */
+export function sanitizeLegalDoc(d: LegalDoc): LegalDoc {
+  return {
+    ...d,
+    heading: S(d.heading),
+    subheading: d.subheading ? S(d.subheading) : undefined,
+    rightHeader: d.rightHeader ? S(d.rightHeader) : undefined,
+    meta: d.meta?.map(cleanMeta),
+    blocks: d.blocks.map(cleanBlock),
+    faitA: d.faitA ? S(d.faitA) : undefined,
+    legalNote: d.legalNote ? S(d.legalNote) : undefined,
+    signatures: d.signatures?.map(cleanSig),
+    ar: d.ar ? cleanAr(d.ar) : undefined,
+  };
+}
+
 /* ------------------------------------------------------------------ rendu PDF (multi-pages) ------------------------------------------------------------------ */
 /* Grille, en-tête, pied et pagination viennent du socle commun `pdf-kit.ts` : tous les
  * documents de l'application partagent ainsi exactement la même mise en page. */
@@ -259,7 +322,8 @@ function drawSignatures(ctx: Ctx, cols: SignatureCol[]) {
   ctx.y = startY + BLOCK;
 }
 
-export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
+export async function renderLegalPdf(firm: Firm, raw: LegalDoc): Promise<jsPDF> {
+  const d = sanitizeLegalDoc(raw); // supprime les caractères spéciaux superflus (rendu sobre)
   const pal = usePalette(firm); // couleurs dérivées de la société (défaut = vert Miya)
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   doc.setProperties({ title: d.fileTitle });
@@ -369,9 +433,9 @@ export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
     }
   }
 
-  // Signatures
+  // Signatures / émargement — espace après le « Fait à » pour aérer le bas de l'acte.
   if (d.signatures?.length) {
-    ctx.y += 4;
+    ctx.y += 8;
     drawSignatures(ctx, d.signatures);
   }
 
@@ -383,7 +447,8 @@ export async function renderLegalPdf(firm: Firm, d: LegalDoc): Promise<jsPDF> {
 /* ------------------------------------------------------------------ rendu HTML imprimable ------------------------------------------------------------------ */
 const esc = escapeHtml;
 
-export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr"): string {
+export function renderLegalHtml(firm: Firm, raw: LegalDoc, lang: "fr" | "ar" = "fr"): string {
+  const d = sanitizeLegalDoc(raw); // même assainissement typographique que le PDF
   const pal = paletteForFirm(firm.brand_color); // couleurs dérivées de la société (défaut = vert Miya)
   const ar = lang === "ar" && d.ar ? d.ar : null;
   const c = ar ?? d;
@@ -433,12 +498,12 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
   const sig = c.signatures?.length
     ? `<div class="sigs ${c.signatures.length === 2 ? "two" : "one"}">${c.signatures
         .map(
-          (c) =>
-            `<div class="sig"><b>${esc(c.title)}</b><div class="rule"></div>${c.lines
+          (col) =>
+            `<div class="sig"><b>${esc(col.title)}</b>${col.lines
               .map((l) => `<div>${esc(l)}</div>`)
-              .join("")}<div class="sline"></div>${
-              c.caption ? `<small>${esc(c.caption)}</small>` : ""
-            }</div>`,
+              .join("")}${
+              col.caption ? `<small>${esc(col.caption)}</small>` : ""
+            }<div class="sbox"></div></div>`,
         )
         .join("")}</div>`
     : "";
@@ -488,17 +553,20 @@ export function renderLegalHtml(firm: Firm, d: LegalDoc, lang: "fr" | "ar" = "fr
  table.dt{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 14px}
  table.dt th{background:var(--vf);color:#fff;font-weight:700;padding:5px 7px;border:1px solid #cfd4c7;text-align:left}
  table.dt td{padding:4px 7px;border:1px solid #dfe3d8}
- .faitA{text-align:center;font-weight:700;font-size:14px;margin:26px 0 4px}
+ .faitA{text-align:center;font-weight:700;font-size:14px;margin:30px 0 4px}
  .note{text-align:center;font-style:italic;color:var(--muted);font-size:11px;margin-bottom:14px}
- .sigs{display:flex;gap:32px;margin-top:30px}
+ /* Émargement : identité + libellé « (signature et cachet) » PUIS un espace de signature délimité
+    par un filet en bas. Le bloc reste d'un seul tenant et respire après le « Fait à ». */
+ .sigs{display:flex;gap:36px;margin-top:44px}
  .sigs.two .sig{flex:1}
  /* Signataire unique : bloc aligné à droite, comme le gabarit de référence. */
- .sigs.one{justify-content:flex-end}.sigs.one .sig{width:45%}
+ .sigs.one{justify-content:flex-end}.sigs.one .sig{width:46%}
+ .sig{break-inside:avoid;page-break-inside:avoid}
  .sig b{font-size:13.5px}
- .sig .rule{display:none}
  .sig div{font-size:12.5px;line-height:1.55}
- .sig .sline{border-top:.5px solid var(--muted);margin-top:42px;width:100%}
- .sig small{color:var(--muted);font-size:10.5px;font-style:italic}
+ .sig small{display:block;color:var(--muted);font-size:10.5px;font-style:italic;margin-top:2px}
+ /* Espace réservé à la signature manuscrite / au cachet, souligné d'un filet. */
+ .sig .sbox{height:52px;border-bottom:.6px solid var(--muted);margin-top:6px}
  .foot{position:absolute;left:48px;right:48px;bottom:24px;border-top:1px solid var(--olive);padding-top:7px;color:var(--muted);font-size:10px;line-height:1.6;text-align:center}
  .noprint{max-width:820px;margin:0 auto 14px}
  button{background:var(--lime);color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer}

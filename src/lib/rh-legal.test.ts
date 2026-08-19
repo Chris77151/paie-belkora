@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Employee, Firm } from "@/data/types";
-import { PH, val, valDate, legalFileName, employerParagraph, renderLegalHtml, renderLegalPdf, type LegalBlock } from "./rh-legal";
+import { PH, val, valDate, legalFileName, employerParagraph, renderLegalHtml, renderLegalPdf, sanitizeLegalText, sanitizeLegalDoc, type LegalBlock, type LegalDoc } from "./rh-legal";
 import {
   buildContractDoc,
   contractMissingFields,
@@ -480,5 +480,49 @@ describe("Kit disciplinaire — sanctions graduées", () => {
     const m = disciplineMissingFields(disc({ type: "decision-licenciement", employee: emp({ cin: undefined }) }));
     expect(m).toContain("N° CIN");
     expect(m).toContain("Date d'effet du licenciement");
+  });
+});
+
+describe("sanitizeLegalText — retrait des caractères « IA » superflus des documents", () => {
+  it("remplace tiret cadratin, point médian, points de suspension, flèche et ≤ par des équivalents sobres", () => {
+    expect(sanitizeLegalText("le salarié — ci-après « le Salarié » — reconnaît")).toBe("le salarié - ci-après « le Salarié » - reconnaît");
+    expect(sanitizeLegalText("Ouvrier · Nador · éloigné")).toBe("Ouvrier - Nador - éloigné");
+    expect(sanitizeLegalText("à définir…")).toBe("à définir...");
+    expect(sanitizeLegalText("CDD → CDI")).toBe("CDD vers CDI");
+    expect(sanitizeLegalText("mise à pied ≤ 8 jours")).toBe("mise à pied au plus 8 jours");
+  });
+
+  it("CONSERVE la typographie française légitime (guillemets, accents, apostrophe)", () => {
+    const s = "L'employeur « Miya Belkora » à Témara reste équitable.";
+    expect(sanitizeLegalText(s)).toBe(s);
+  });
+
+  it("le placeholder pointillé devient une ligne de points ASCII (forme à remplir)", () => {
+    expect(sanitizeLegalText(PH)).not.toMatch(/…/);
+    expect(sanitizeLegalText(PH)).toMatch(/^\.+$/);
+  });
+
+  it("sanitizeLegalDoc nettoie titres, blocs, signatures et variante arabe", () => {
+    const doc: LegalDoc = {
+      fileTitle: "t", heading: "CONTRAT — TRAVAIL", subheading: "Ouvrier · Nador",
+      blocks: [{ k: "p", t: "le salarié — présent" }, { k: "ul", items: ["clause →"] }],
+      faitA: "Fait à X, le …", signatures: [{ title: "Pour l'Employeur —", lines: ["A · B"], caption: "(Signature)" }],
+      ar: { heading: "عقد", blocks: [{ k: "p", t: "بند · مهم" }] },
+    };
+    const c = sanitizeLegalDoc(doc);
+    const joined = JSON.stringify(c);
+    for (const bad of ["—", "·", "…", "→"]) expect(joined).not.toContain(bad);
+    expect(c.ar!.blocks[0]).toEqual({ k: "p", t: "بند - مهم" });
+  });
+
+  it("le HTML rendu d'un document remplace les caractères spéciaux du corps", () => {
+    const doc: LegalDoc = {
+      fileTitle: "t", heading: "TEST", blocks: [{ k: "p", t: "abc — def · ghi… → jkl" }],
+      faitA: "Fait à Y, le 01/01/2026.",
+      signatures: [{ title: "Le Gérant", lines: ["Miya BELKORA"], caption: "(Signature et cachet)" }],
+    };
+    const html = renderLegalHtml(firm, doc);
+    expect(html).toContain("abc - def - ghi... vers jkl");
+    expect(html).not.toContain("abc — def");
   });
 });

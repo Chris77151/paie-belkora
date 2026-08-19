@@ -32,9 +32,9 @@ export type ContractModel = "cdd-chef" | "travail-determine" | "cdd-cdi";
 export type { Civility };
 
 export const CONTRACT_MODELS: { value: ContractModel; label: string; hint: string }[] = [
-  { value: "cdd-chef", label: "CDD chantier — chef de projet", hint: "Accroissement temporaire (art. 16-17) · 3 mois" },
-  { value: "travail-determine", label: "Contrat pour travail déterminé — ouvrier", hint: "Terme = achèvement des travaux (art. 16 al.1 & 33)" },
-  { value: "cdd-cdi", label: "CDD ouvrier — renouvelable, vocation CDI", hint: "Durée déterminée · renouvelable · évolution vers CDI (art. 16-17)" },
+  { value: "cdd-chef", label: "CDD chantier - chef de projet", hint: "Accroissement temporaire (art. 16-17), 3 mois" },
+  { value: "travail-determine", label: "Contrat pour travail déterminé - ouvrier", hint: "Terme = achèvement des travaux (art. 16 al.1 & 33)" },
+  { value: "cdd-cdi", label: "CDD ouvrier - renouvelable, vocation CDI", hint: "Durée déterminée, renouvelable, évolution vers CDI (art. 16-17)" },
 ];
 
 /**
@@ -99,7 +99,7 @@ export const CONTRACT_SCENARIOS: ContractScenario[] = [
     housing: true,
     dailyBasket: "47",
   },
-  { key: "cdd-cdi", label: "7. CDD → CDI — titularisation (renouvelable)", model: "cdd-cdi", projectKey: "gotion", dailyBasket: "27" },
+  { key: "cdd-cdi", label: "7. CDD vers CDI - titularisation (renouvelable)", model: "cdd-cdi", projectKey: "gotion", dailyBasket: "27" },
 ];
 
 /** Preset d'un projet chantier (préremplit lieu, juridiction, site de production, ville d'arrêté). */
