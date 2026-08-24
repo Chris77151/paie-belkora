@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { extractComptes, buildRegularisationDossier, mkEntry, odooFindings, type AuditReport } from "./audit-engine";
+import {
+  extractComptes, buildRegularisationDossier, mkEntry, odooFindings, findingRoute, withElements,
+  type AuditReport, type AuditFinding,
+} from "./audit-engine";
 import type { OdooAccountingData } from "./odoo-accounting";
 
 /** Données comptables Odoo minimales pour les tests (soldes fournis, reste neutre). */
@@ -92,5 +95,38 @@ describe("audit-engine — écritures de correction", () => {
     expect(e.equilibre).toBe(true);
     expect(e.lignes.find((l) => l.compte === "3421")?.debit).toBe(500);
     expect(e.lignes.find((l) => l.compte === "4421")?.credit).toBe(500);
+  });
+});
+
+describe("audit-engine — visibilité des comptes anormaux + lien de correction", () => {
+  it("les comptes RÉELLEMENT anormaux (code + montant) sont attachés au constat (elementsAnormaux)", () => {
+    // Compte de charge 6111 au solde CRÉDITEUR (anormal) — hors allowlist, invisible avant.
+    const f = odooFindings(mkData([{ code: "6111", name: "Achats de marchandises", balance: -1234.5 }]));
+    const ch = f.find((c) => c.titre.includes("charges au solde créditeur"))!;
+    expect(ch.source).toBe("odoo");
+    expect(ch.elementsAnormaux?.[0]).toMatchObject({ code: "6111", montant: -1234.5 });
+    expect(ch.comptes).toContain("6111"); // le n° de compte anormal est désormais dans les comptes concernés
+  });
+
+  it("findingRoute mappe chaque constat de paie vers le bon volet de correction", () => {
+    const mk = (titre: string, cycle: string): AuditFinding => ({
+      categorie_assertion: "flux", assertion: "x", cycle, gravite: "moyen", titre,
+      detail: "", recommandation: "", reference_normative: "", action_odoo: "", comptes: [],
+    });
+    expect(findingRoute(mk("2 salarié(s) sans CIN au dossier", "paie"))?.route).toBe("employees");
+    expect(findingRoute(mk("ICE manquant", "presentation"))?.route).toBe("settings");
+    expect(findingRoute(mk("Provision pour congés payés non constatée", "paie"))?.route).toBe("accounting");
+    expect(findingRoute(mk("Rapprocher le solde 4441 avec le bordereau CNSS", "dettes sociales"))?.route).toBe("accounting");
+  });
+
+  it("withElements fusionne les codes anormaux dans comptes et conserve les montants", () => {
+    const base: AuditFinding = {
+      categorie_assertion: "flux", assertion: "x", cycle: "achats", gravite: "eleve", titre: "t",
+      detail: "", recommandation: "", reference_normative: "", action_odoo: "", comptes: ["471"],
+    };
+    const out = withElements(base, [{ id: 9, code: "6111", name: "Achats", montant: -50 }]);
+    expect(out.comptes).toEqual(["471", "6111"]);
+    expect(out.elementsAnormaux).toHaveLength(1);
+    expect(out.elementsAnormaux![0].id).toBe(9);
   });
 });

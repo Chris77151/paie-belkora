@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import {
   ShieldCheck, Sparkles, Loader2, AlertTriangle, ChevronDown, CheckCircle2,
   ScrollText, Scale, LayoutList, Wrench, BookMarked, FileDown, DatabaseZap,
-  Lightbulb, ListChecks, BookText,
+  Lightbulb, ListChecks, BookText, ExternalLink, ArrowRight,
 } from "lucide-react";
 import {
   Badge, Button, Card, CardContent, Field, PageHeader, Select,
@@ -12,12 +12,12 @@ import { useSession } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { MONTHS_FR, mad } from "@/lib/format";
 import {
-  buildAuditSnapshot, runFullAudit, buildRemediationPlan, describeCompte, findingSteps, PCGE_LABELS,
+  buildAuditSnapshot, runFullAudit, buildRemediationPlan, findingSteps, findingRoute, PCGE_LABELS,
   type AuditReport, type AuditFinding, type Gravite, type CorrectionEntry,
 } from "@/lib/audit-engine";
 import { buildRemediationReportPdf } from "@/lib/remediation-report";
 import {
-  odooReadiness, odooErrorHint, odooReadOpenItems, groupReconcilable, odooApplyReconcile,
+  odooReadiness, odooErrorHint, odooReadOpenItems, groupReconcilable, odooApplyReconcile, odooRecordUrl,
   type ReconcileOutcome,
 } from "@/lib/odoo";
 import { cn } from "@/lib/cn";
@@ -269,7 +269,7 @@ export default function Audit() {
                 <div className="space-y-2">
                   {items
                     .sort((a, b) => order(a.gravite) - order(b.gravite))
-                    .map((c, i) => <FindingRow key={i} c={c} />)}
+                    .map((c, i) => <FindingRow key={i} c={c} odooUrl={s.odoo?.url} companyId={firm.odoo_company_id} />)}
                 </div>
               </div>
             );
@@ -290,7 +290,9 @@ export default function Audit() {
   );
 }
 
-function FindingRow({ c }: { c: AuditFinding }) {
+function FindingRow({ c, odooUrl, companyId }: { c: AuditFinding; odooUrl?: string; companyId?: number }) {
+  const route = findingRoute(c);
+  const odooReady = !!odooUrl?.trim();
   return (
     <details className="rounded-md border border-border/70 bg-card open:pb-3">
       <summary className="flex cursor-pointer items-center gap-2.5 px-4 py-2.5 select-none">
@@ -303,6 +305,40 @@ function FindingRow({ c }: { c: AuditFinding }) {
         <ChevronDown size={15} className="shrink-0 text-muted-foreground" />
       </summary>
       <div className="px-4 space-y-3 text-sm">
+        {/* Comptes RÉELLEMENT anormaux (Odoo) : n° + intitulé + montant + lien direct pour corriger. */}
+        {c.elementsAnormaux && c.elementsAnormaux.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+              <AlertTriangle size={13} className="text-warning" /> Comptes anormaux détectés
+            </div>
+            <div className="overflow-x-auto rounded border border-warning/30 bg-warning/[0.05]">
+              <table className="w-full text-[12px]">
+                <tbody>
+                  {c.elementsAnormaux.map((el) => (
+                    <tr key={el.code + (el.id ?? "")} className="border-t border-warning/20 first:border-t-0">
+                      <td className="px-2 py-1 font-mono font-medium text-primary whitespace-nowrap">{el.code}</td>
+                      <td className="px-2 py-1 text-muted-foreground">{el.name}</td>
+                      <td className="px-2 py-1 text-right num whitespace-nowrap">{mad(el.montant)}</td>
+                      <td className="px-2 py-1 text-right">
+                        {odooReady && el.id != null && (
+                          <a
+                            href={odooRecordUrl(odooUrl!, "account.account", el.id, companyId)}
+                            target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-primary hover:underline whitespace-nowrap"
+                            title="Ouvrir ce compte dans Odoo pour le corriger"
+                          >
+                            Ouvrir <ExternalLink size={12} />
+                          </a>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {c.comptes.length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
@@ -342,6 +378,30 @@ function FindingRow({ c }: { c: AuditFinding }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <Detail label="Référence normative (Maroc)" value={c.reference_normative} icon={<BookMarked size={13} className="text-muted-foreground" />} />
           <Detail label="Action Odoo" value={c.action_odoo} icon={<Wrench size={13} className="text-muted-foreground" />} />
+        </div>
+
+        {/* Lien DIRECT pour aller corriger l'anomalie : Odoo (constats compta) ou volet interne (paie). */}
+        <div className="flex flex-wrap gap-2 pt-1">
+          {c.source === "odoo" && odooReady ? (
+            <a
+              href={
+                c.elementsAnormaux?.find((e) => e.id != null)
+                  ? odooRecordUrl(odooUrl!, "account.account", c.elementsAnormaux.find((e) => e.id != null)!.id!, companyId)
+                  : `${odooUrl!.replace(/\/+$/, "").replace(/\/odoo$/i, "")}/web`
+              }
+              target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
+            >
+              <ExternalLink size={13} /> Corriger dans Odoo
+            </a>
+          ) : route ? (
+            <a
+              href={`#/${route.route}`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
+            >
+              <ArrowRight size={13} /> Corriger — {route.label}
+            </a>
+          ) : null}
         </div>
       </div>
     </details>

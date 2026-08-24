@@ -57,6 +57,18 @@ export interface FindingCorrection {
   ecriture?: CorrectionEntry | null;
 }
 
+/** Élément (compte) réellement anormal détecté, avec son montant et son id Odoo (pour lien direct). */
+export interface ElementAnormal {
+  /** id Odoo de account.account (ouvre le compte dans Odoo). */
+  id?: number;
+  /** N° de compte PCGE. */
+  code: string;
+  /** Intitulé du compte. */
+  name: string;
+  /** Montant anormal (solde, DH ; signé). */
+  montant: number;
+}
+
 export interface AuditFinding {
   categorie_assertion: AssertionCategory;
   assertion: string;
@@ -69,6 +81,10 @@ export interface AuditFinding {
   action_odoo: string;
   /** Numéros de compte PCGE concernés (extraits du constat, allowlist — sans faux positif). */
   comptes: string[];
+  /** Origine du constat : `paie` (local) ou `odoo` (comptabilité) — pilote le lien de correction. */
+  source?: "paie" | "odoo";
+  /** Comptes RÉELLEMENT anormaux (code + intitulé + montant + id Odoo), pour affichage et lien direct. */
+  elementsAnormaux?: ElementAnormal[];
   /** Compréhension approfondie + écriture de correction prête à passer (si applicable). */
   correction?: FindingCorrection;
 }
@@ -90,6 +106,33 @@ export function withCorrection(f: AuditFinding, correction: FindingCorrection): 
   const fromEcriture = correction.ecriture ? correction.ecriture.lignes.map((l) => l.compte) : [];
   const comptes = Array.from(new Set([...f.comptes, ...fromEcriture])).sort();
   return { ...f, comptes, correction };
+}
+
+/**
+ * Attache les COMPTES ANORMAUX réels (avec montant + id Odoo) à un constat et les ajoute à la liste
+ * des comptes concernés — pour que les numéros de compte des éléments en anomalie soient toujours
+ * VISIBLES (chips) et cliquables (lien direct vers Odoo), au lieu de rester noyés dans le texte.
+ */
+export function withElements(f: AuditFinding, elements: ElementAnormal[]): AuditFinding {
+  const codes = elements.map((e) => e.code).filter(Boolean);
+  const comptes = Array.from(new Set([...f.comptes, ...codes])).sort();
+  return { ...f, comptes, elementsAnormaux: elements };
+}
+
+/**
+ * Route INTERNE de l'app où corriger un constat de PAIE (déterministe, par mots-clés du titre/cycle).
+ * Les constats Odoo se corrigent dans Odoo (lien externe géré par l'UI), pas ici.
+ */
+export function findingRoute(f: AuditFinding): { route: string; label: string } | null {
+  const t = `${f.titre} ${f.cycle}`.toLowerCase();
+  if (/\bice\b|identifiant fiscal|\bif\b|affiliation cnss/.test(t)) return { route: "settings", label: "Ouvrir les Paramètres société" };
+  // Constats comptables (écriture, provision, dettes sociales/fiscales…) → volet Écritures — prioritaire
+  // sur « congés » car la provision pour congés payés se corrige par une écriture, pas dans le volet Congés.
+  if (/[ée]criture|charge|\btfp\b|provision|4441|\bir\b|\btva\b|classification|attente|balance|lettr|factur|fournisseur|client|organism|d[ée]s[ée]quilibr/.test(t))
+    return { route: "accounting", label: "Ouvrir les Écritures comptables" };
+  if (/taux|smig|heures|\bcdd\b|\bcin\b|immatricul|mineur|contrat|embauche/.test(t)) return { route: "employees", label: "Ouvrir le volet Salariés" };
+  if (/cong[ée]s/.test(t)) return { route: "leaves", label: "Ouvrir le volet Congés" };
+  return null;
 }
 
 export interface AuditReport {
@@ -480,7 +523,7 @@ export function localPayrollFindings(year: number, month: number): AuditFinding[
       "Retirer immédiatement le mineur du site dangereux (interdiction légale).",
       "Code du travail art. 143-147.", "hr.employee : contrôler l'âge et l'affectation."));
 
-  return out;
+  return out.map((f) => ({ ...f, source: "paie" as const }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -536,7 +579,7 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
   const chargesAbn = d.balances.filter((b) => b.code.startsWith("6") && b.balance < -0.01);
   if (chargesAbn.length) {
     const totalAbn = round2(chargesAbn.reduce((s, b) => s + -b.balance, 0));
-    out.push(withCorrection(
+    out.push(withElements(withCorrection(
       F("flux", "Classification", "achats/charges", "eleve",
         `${chargesAbn.length} compte(s) de charges au solde créditeur`,
         `Solde anormal (créditeur) sur des comptes de classe 6 : ${chargesAbn.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}.`,
@@ -556,12 +599,12 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
           { compte: "471", libelle: "Compte d'attente — à réimputer après analyse", debit: 0, credit: totalAbn },
         ], "Écriture de MISE EN ATTENTE : le compte définitif dépend de l'analyse pièce par pièce. Réimputer depuis 471 vers le bon compte."),
       },
-    ));
+    ), elts(chargesAbn)));
   }
   const produitsAbn = d.balances.filter((b) => b.code.startsWith("7") && b.balance > 0.01);
   if (produitsAbn.length) {
     const totalPrAbn = round2(produitsAbn.reduce((s, b) => s + b.balance, 0));
-    out.push(withCorrection(
+    out.push(withElements(withCorrection(
       F("flux", "Classification", "ventes/produits", "eleve",
         `${produitsAbn.length} compte(s) de produits au solde débiteur`,
         `Solde anormal (débiteur) sur des comptes de classe 7 : ${produitsAbn.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}.`,
@@ -581,14 +624,14 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
           ...produitsAbn.map((b) => ({ compte: b.code, libelle: `${b.name}`.slice(0, 58), debit: 0, credit: round2(b.balance) })),
         ], "Écriture de MISE EN ATTENTE : le compte définitif dépend de l'analyse pièce par pièce. Réimputer depuis 471 vers le bon compte."),
       },
-    ));
+    ), elts(produitsAbn)));
   }
 
   // Existence / Évaluation : clients créditeurs (342x) / fournisseurs débiteurs (441x).
   const clientsCred = d.balances.filter((b) => startsWithAny(b.code, ["342", "3421"]) && b.balance < -0.01);
   if (clientsCred.length) {
     const totalCred = round2(clientsCred.reduce((s, b) => s + -b.balance, 0));
-    out.push(withCorrection(
+    out.push(withElements(withCorrection(
       F("soldes", "Existence", "ventes/clients", "moyen",
         `${clientsCred.length} compte(s) client au solde créditeur`,
         `Clients (342x) au solde créditeur : ${clientsCred.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}. Avances/avoirs ou erreur d'imputation.`,
@@ -608,12 +651,12 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
           { compte: "4421", libelle: "Clients — avances et acomptes reçus", debit: 0, credit: totalCred },
         ]),
       },
-    ));
+    ), elts(clientsCred)));
   }
   const fournDeb = d.balances.filter((b) => startsWithAny(b.code, ["441", "4411"]) && b.balance > 0.01);
   if (fournDeb.length) {
     const totalDeb = round2(fournDeb.reduce((s, b) => s + b.balance, 0));
-    out.push(withCorrection(
+    out.push(withElements(withCorrection(
       F("soldes", "Existence", "achats/fournisseurs", "moyen",
         `${fournDeb.length} compte(s) fournisseur au solde débiteur`,
         `Fournisseurs (441x) au solde débiteur : ${fournDeb.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}. Avances/avoirs ou erreur d'imputation.`,
@@ -633,7 +676,7 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
           ...fournDeb.map((b) => ({ compte: b.code, libelle: `Fournisseur ${b.name}`.slice(0, 58), debit: 0, credit: round2(b.balance) })),
         ]),
       },
-    ));
+    ), elts(fournDeb)));
   }
 
   // Évaluation : comptes d'attente / transitoires non soldés.
@@ -641,7 +684,7 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
     (b) => (/attente|suspens|transit|transfert|à\s*r[ée]gulariser/i.test(b.name) || startsWithAny(b.code, ["471", "472", "3491", "4491"])) && Math.abs(b.balance) > 0.01,
   );
   if (suspense.length)
-    out.push(withCorrection(
+    out.push(withElements(withCorrection(
       F("soldes", "Évaluation et imputation", "comptabilité générale", "eleve",
         `${suspense.length} compte(s) d'attente non soldé(s)`,
         `Comptes transitoires avec un solde résiduel : ${suspense.slice(0, 6).map((b) => `${b.code} ${b.name} (${dh(b.balance)})`).join(", ")}.`,
@@ -658,7 +701,7 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
         ],
         ecriture: null, // pas d'écriture automatique : le compte de contrepartie exige une analyse humaine.
       },
-    ));
+    ), elts(suspense)));
 
   // TVA : cohérence collectée (4455) vs déductible (3455).
   const tvaColl = d.balances.filter((b) => b.code.startsWith("4455"));
@@ -700,10 +743,10 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
     ));
     const collAbn = tvaColl.filter((b) => b.balance > 0.01);
     if (collAbn.length)
-      out.push(F("flux", "Classification", "dettes fiscales", "moyen",
+      out.push(withElements(F("flux", "Classification", "dettes fiscales", "moyen",
         "TVA facturée (4455) au solde débiteur",
         `Solde anormal (débiteur) : ${collAbn.map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}.`,
-        "Vérifier l'imputation de la TVA collectée.", "CGI (TVA) ; PCGE.", "Grand livre 4455 ; corriger l'imputation."));
+        "Vérifier l'imputation de la TVA collectée.", "CGI (TVA) ; PCGE.", "Grand livre 4455 ; corriger l'imputation."), elts(collAbn)));
   }
 
   // Lettrage : créances clients postées non rapprochées.
@@ -751,8 +794,12 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
       "CGNC (exhaustivité).", "Comptabilité → Écritures : recouper par type/journal."));
   }
 
-  return out;
+  return out.map((f) => ({ ...f, source: "odoo" as const }));
 }
+
+/** Mappe des lignes de balance Odoo en éléments anormaux (code + intitulé + montant + id). */
+const elts = (rows: { id: number; code: string; name: string; balance: number }[]): ElementAnormal[] =>
+  rows.map((b) => ({ id: b.id, code: b.code, name: b.name, montant: b.balance }));
 
 /** Libellés FR des types de pièce Odoo (account.move.move_type). */
 const MOVE_TYPE_FR: Record<string, string> = {

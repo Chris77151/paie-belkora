@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, type OdooLeaveBalance } from "./odoo";
+import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, odooRecordUrl, type OdooLeaveBalance } from "./odoo";
 import type { Employee } from "@/data/types";
 
 const emp = (o: Partial<Employee>): Employee => ({
@@ -91,6 +91,16 @@ describe("odoo — appariement des soldes de congés (reconnaissance déterminis
     expect(matches[0].odoo_id).toBe(20);
     expect(matches[0].method).toBe("nom");
     expect(matches[0].confidence).toBe("faible");
+  });
+});
+
+describe("odoo — lien profond vers un enregistrement (correction directe)", () => {
+  it("construit une URL /web# vers le compte, en normalisant la base et en fixant la société", () => {
+    expect(odooRecordUrl("https://belkora.odoo.com/", "account.account", 42, 3))
+      .toBe("https://belkora.odoo.com/web#id=42&model=account.account&view_type=form&cids=3");
+    // suffixe /odoo retiré, pas de cids si société absente
+    expect(odooRecordUrl("https://belkora.odoo.com/odoo", "account.account", 7))
+      .toBe("https://belkora.odoo.com/web#id=7&model=account.account&view_type=form");
   });
 });
 

@@ -74,6 +74,17 @@ export async function odooTestConnection(config: OdooConfig): Promise<{ uid: num
  * Évite l'échec cryptique « Authentification refusée » quand un identifiant ou la
  * clé API n'a jamais été saisi dans Paramètres → Connexion Odoo.
  */
+/**
+ * Lien profond vers un enregistrement Odoo (vue formulaire) via l'URL classique `/web#…`, encore
+ * résolue par les versions récentes. Sert à ouvrir DIRECTEMENT le compte anormal (account.account)
+ * depuis l'audit, pour le corriger dans Odoo. `companyId` fixe le contexte société (cids).
+ */
+export function odooRecordUrl(baseUrl: string, model: string, id: number, companyId?: number): string {
+  const base = baseUrl.replace(/\/+$/, "").replace(/\/odoo$/i, "");
+  const cids = companyId ? `&cids=${companyId}` : "";
+  return `${base}/web#id=${id}&model=${model}&view_type=form${cids}`;
+}
+
 export function odooReadiness(
   config: OdooConfig | undefined,
   firm?: { name: string; odoo_company_id?: number },
