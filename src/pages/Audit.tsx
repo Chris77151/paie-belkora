@@ -12,7 +12,7 @@ import { useSession } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { MONTHS_FR, mad } from "@/lib/format";
 import {
-  buildAuditSnapshot, runFullAudit, buildRemediationPlan,
+  buildAuditSnapshot, runFullAudit, buildRemediationPlan, describeCompte, findingSteps, PCGE_LABELS,
   type AuditReport, type AuditFinding, type Gravite, type CorrectionEntry,
 } from "@/lib/audit-engine";
 import { buildRemediationReportPdf } from "@/lib/remediation-report";
@@ -304,36 +304,38 @@ function FindingRow({ c }: { c: AuditFinding }) {
       </summary>
       <div className="px-4 space-y-3 text-sm">
         {c.comptes.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Comptes PCGE :</span>
-            {c.comptes.map((n) => (
-              <span key={n} className="rounded border border-primary/30 bg-primary/5 px-1.5 py-0.5 font-mono text-[11px] text-primary">{n}</span>
-            ))}
+          <div>
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+              <BookText size={13} className="text-primary" /> Comptes concernés (PCGE)
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {c.comptes.map((n) => (
+                <span key={n} className="inline-flex items-baseline gap-1 rounded border border-primary/30 bg-primary/5 px-1.5 py-0.5 text-[11px]">
+                  <span className="font-mono font-medium text-primary">{n}</span>
+                  {PCGE_LABELS[n] && <span className="text-muted-foreground">{PCGE_LABELS[n]}</span>}
+                </span>
+              ))}
+            </div>
           </div>
         )}
         <Detail label="Problème détecté" value={c.detail} />
-        <Detail label="Recommandation" value={c.recommandation} icon={<CheckCircle2 size={13} className="text-sage" />} />
 
-        {c.correction && (
+        {c.correction ? (
           <div className="space-y-3 rounded-md border border-primary/25 bg-primary/[0.04] p-3">
             <Detail label="Comprendre l'anomalie" value={c.correction.comprendre} icon={<Lightbulb size={13} className="text-warning" />} />
-            {c.correction.etapes.length > 0 && (
-              <div>
-                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
-                  <ListChecks size={13} className="text-sage" /> Étapes de correction
-                </div>
-                <ol className="ml-4 list-decimal space-y-0.5 leading-relaxed">
-                  {c.correction.etapes.map((s, i) => <li key={i}>{s}</li>)}
-                </ol>
-              </div>
-            )}
+            <StepList label="Comment procéder" steps={findingSteps(c)} />
             {c.correction.ecriture ? (
               <EcritureTable e={c.correction.ecriture} />
             ) : (
               <p className="text-xs italic text-muted-foreground">
-                Pas d'écriture automatique : la correction dépend d'une analyse au cas par cas (voir les étapes).
+                Pas d'écriture automatique : le compte de contrepartie dépend d'une analyse au cas par cas (voir les étapes).
               </p>
             )}
+          </div>
+        ) : (
+          // Constat sans écriture-type : on garantit tout de même une marche à suivre concrète.
+          <div className="rounded-md border border-sage/25 bg-sage/[0.05] p-3">
+            <StepList label="Comment procéder" steps={findingSteps(c)} />
           </div>
         )}
 
@@ -343,6 +345,21 @@ function FindingRow({ c }: { c: AuditFinding }) {
         </div>
       </div>
     </details>
+  );
+}
+
+/** Liste numérotée « Comment procéder » — étapes concrètes de résolution d'un constat. */
+function StepList({ label, steps }: { label: string; steps: string[] }) {
+  if (!steps.length) return null;
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+        <ListChecks size={13} className="text-sage" /> {label}
+      </div>
+      <ol className="ml-4 list-decimal space-y-0.5 leading-relaxed">
+        {steps.map((s, i) => <li key={i}>{s}</li>)}
+      </ol>
+    </div>
   );
 }
 

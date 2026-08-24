@@ -53,7 +53,8 @@ describe("audit-engine — dossier de régularisation", () => {
     const md = buildRegularisationDossier(report, "MBD SARL", "juin 2026");
     expect(md).toContain("# Dossier de régularisation — MBD SARL");
     expect(md).toContain("PROPOSITION de régularisation (non appliquée)");
-    expect(md).toContain("Comptes PCGE : 4441");
+    expect(md).toContain("Comptes concernés : 4441 — CNSS (organismes sociaux)"); // comptes AVEC intitulé
+    expect(md).toContain("Comment procéder :"); // marche à suivre toujours présente
     expect(md).toContain("odoo-correction-anomalies");
   });
 });

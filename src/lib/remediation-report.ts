@@ -10,7 +10,7 @@
  * réversible (lettrage) ; les corrections de fond restent documentées pour le comptable.
  */
 import { jsPDF } from "jspdf";
-import { buildRemediationPlan, type AuditReport, type AuditFinding } from "./audit-engine";
+import { buildRemediationPlan, describeCompte, findingSteps, type AuditReport, type AuditFinding } from "./audit-engine";
 import type { ReconcileOutcome } from "./odoo";
 import type { Firm } from "@/data/types";
 import type { RGB } from "./brand-color";
@@ -171,15 +171,16 @@ function block(
 ) {
   txt(`${n}. [${c.gravite.toUpperCase()}] ${c.titre}`, M, { size: 9.5, bold: true });
   txt(`Cycle / assertion : ${c.cycle} · ${c.assertion} (${c.categorie_assertion})`, M + 2, { size: 7.5, color: grey });
-  if (c.comptes.length) txt(`Comptes PCGE : ${c.comptes.join(", ")}`, M + 2, { size: 8 });
+  if (c.comptes.length) txt(`Comptes concernés : ${c.comptes.map(describeCompte).join(" ; ")}`, M + 2, { size: 8 });
   txt(`Problème : ${c.detail}`, M + 2, { size: 8 });
-  txt(`Correction : ${c.recommandation}`, M + 2, { size: 8 });
+  if (c.correction) txt(`Comprendre : ${c.correction.comprendre}`, M + 2, { size: 8, color: grey });
+  // Marche à suivre : toujours présente (étapes de la correction, sinon recommandation + action Odoo).
+  const steps = findingSteps(c);
+  if (steps.length) {
+    txt("Comment procéder :", M + 2, { size: 8, bold: true });
+    steps.forEach((s, i) => txt(`  ${i + 1}. ${s}`, M + 2, { size: 8 }));
+  }
   if (c.correction) {
-    txt(`Comprendre : ${c.correction.comprendre}`, M + 2, { size: 8, color: grey });
-    if (c.correction.etapes.length) {
-      txt("Étapes :", M + 2, { size: 8, bold: true });
-      c.correction.etapes.forEach((s, i) => txt(`  ${i + 1}. ${s}`, M + 2, { size: 8 }));
-    }
     const e = c.correction.ecriture;
     if (e) {
       txt(`Écriture de correction (journal ${e.journal}) — ${e.libelle} :`, M + 2, { size: 8, bold: true });

@@ -81,9 +81,15 @@ export function mkEntry(journal: string, libelle: string, lignes: CorrectionLine
   return { journal, libelle, lignes: rl, totalDebit, totalCredit, equilibre: Math.abs(totalDebit - totalCredit) < 0.01, note };
 }
 
-/** Attache un bloc de correction à un constat (helper immuable). */
+/**
+ * Attache un bloc de correction à un constat (helper immuable) ET complète la liste des comptes
+ * concernés avec ceux de l'ÉCRITURE de correction — ainsi un constat dont les comptes n'apparaissent
+ * que dans l'écriture (ex. provision congés → 6171/617x/4437) les expose quand même clairement.
+ */
 export function withCorrection(f: AuditFinding, correction: FindingCorrection): AuditFinding {
-  return { ...f, correction };
+  const fromEcriture = correction.ecriture ? correction.ecriture.lignes.map((l) => l.compte) : [];
+  const comptes = Array.from(new Set([...f.comptes, ...fromEcriture])).sort();
+  return { ...f, comptes, correction };
 }
 
 export interface AuditReport {
@@ -150,6 +156,62 @@ const PCGE_ACCOUNTS = [
   "5141", "3421", "3411", "4421", "4411", "4434", "3431", "3491", "4491", "6171", "471", "472",
   "342", "441", "445",
 ].sort((a, b) => b.length - a.length);
+
+/**
+ * Intitulés PCGE / CGNC des comptes cités par l'audit — pour AFFICHER « 4441 — CNSS » plutôt qu'un
+ * simple « 4441 ». Valeurs standard du plan comptable marocain (aucune invention). Étend
+ * `ACCOUNT_LABELS` (paie) aux comptes des cycles Odoo (tiers, TVA, attente).
+ */
+export const PCGE_LABELS: Record<string, string> = {
+  "6171": "Rémunérations du personnel",
+  "617x": "Charges patronales sur salaires",
+  "61741": "Cotisations de sécurité sociale (part patronale)",
+  "617411": "CNSS (part patronale)",
+  "617412": "AMO (part patronale)",
+  "61744": "Prestations familiales (allocations familiales)",
+  "61671": "Taxe de formation professionnelle (TFP)",
+  "4432": "Rémunérations dues au personnel (net à payer)",
+  "4437": "Charges de personnel à payer (congés)",
+  "4441": "CNSS (organismes sociaux)",
+  "4457": "État — TFP à payer",
+  "4452": "État — impôts, taxes et assimilés",
+  "44525": "État — IR retenu à la source",
+  "4455": "État — TVA facturée (collectée)",
+  "4456": "État — TVA due (à décaisser)",
+  "3455": "État — TVA récupérable (déductible)",
+  "3456": "État — crédit de TVA (report)",
+  "3421": "Clients",
+  "342": "Clients et comptes rattachés",
+  "3411": "Fournisseurs — avances et acomptes versés",
+  "3431": "Personnel — avances et acomptes",
+  "4411": "Fournisseurs",
+  "441": "Fournisseurs et comptes rattachés",
+  "4421": "Clients — avances et acomptes reçus",
+  "4434": "Personnel — oppositions / saisies",
+  "445": "État — TVA et impôts",
+  "3491": "Comptes de régularisation — actif",
+  "4491": "Comptes de régularisation — passif",
+  "471": "Compte d'attente (à réimputer)",
+  "472": "Compte d'attente (à régulariser)",
+  "5141": "Banque",
+  "5161": "Caisse",
+};
+
+/** « 4441 — CNSS (organismes sociaux) » ; si le libellé est inconnu, renvoie le code seul. */
+export function describeCompte(code: string): string {
+  const label = PCGE_LABELS[code];
+  return label ? `${code} — ${label}` : code;
+}
+
+/**
+ * Marche à suivre CONCRÈTE d'un constat : les étapes de la correction si elles existent, sinon une
+ * checklist minimale dérivée de la recommandation + de l'action Odoo. Garantit que CHAQUE anomalie
+ * indique « comment procéder », même sans écriture. PURE.
+ */
+export function findingSteps(f: AuditFinding): string[] {
+  if (f.correction?.etapes?.length) return f.correction.etapes;
+  return [f.recommandation, f.action_odoo].map((s) => (s ?? "").trim()).filter(Boolean);
+}
 
 /** Extrait les comptes PCGE réellement cités dans le texte d'un constat (allowlist, avec suffixe « x » toléré). */
 export function extractComptes(detail: string, recommandation: string, action_odoo: string): string[] {
@@ -497,12 +559,30 @@ export function odooFindings(d: OdooAccountingData): AuditFinding[] {
     ));
   }
   const produitsAbn = d.balances.filter((b) => b.code.startsWith("7") && b.balance > 0.01);
-  if (produitsAbn.length)
-    out.push(F("flux", "Classification", "ventes/produits", "eleve",
-      `${produitsAbn.length} compte(s) de produits au solde débiteur`,
-      `Solde anormal (débiteur) sur des comptes de classe 7 : ${produitsAbn.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}.`,
-      "Vérifier l'imputation (avoir client, charge en produit, écriture inversée).",
-      "PCGE (classification).", "Grand livre du compte ; reclasser via OD."));
+  if (produitsAbn.length) {
+    const totalPrAbn = round2(produitsAbn.reduce((s, b) => s + b.balance, 0));
+    out.push(withCorrection(
+      F("flux", "Classification", "ventes/produits", "eleve",
+        `${produitsAbn.length} compte(s) de produits au solde débiteur`,
+        `Solde anormal (débiteur) sur des comptes de classe 7 : ${produitsAbn.slice(0, 6).map((b) => `${b.code} (${dh(b.balance)})`).join(", ")}.`,
+        "Vérifier l'imputation (avoir client, charge en produit, écriture inversée).",
+        "PCGE (classification).", "Grand livre du compte ; reclasser via OD."),
+      {
+        comprendre:
+          "Un produit (classe 7) est créditeur par nature. Un solde DÉBITEUR révèle un avoir client mal classé, "
+          + "une charge logée en produit, ou une écriture inversée → produits minorés et résultat (donc IS) sous-évalué.",
+        etapes: [
+          "Sortir le grand-livre de chaque compte de produit concerné pour identifier l'écriture anormale.",
+          "Solder provisoirement en compte d'attente 471, puis réimputer au bon compte (charge 6xxx, avoir client 3421…).",
+          "Documenter la cause (avoir non rattaché, saisie inversée) pour éviter la récidive.",
+        ],
+        ecriture: mkEntry("OD", "Mise en attente des produits au solde débiteur (à réimputer)", [
+          { compte: "471", libelle: "Compte d'attente — à réimputer après analyse", debit: totalPrAbn, credit: 0 },
+          ...produitsAbn.map((b) => ({ compte: b.code, libelle: `${b.name}`.slice(0, 58), debit: 0, credit: round2(b.balance) })),
+        ], "Écriture de MISE EN ATTENTE : le compte définitif dépend de l'analyse pièce par pièce. Réimputer depuis 471 vers le bon compte."),
+      },
+    ));
+  }
 
   // Existence / Évaluation : clients créditeurs (342x) / fournisseurs débiteurs (441x).
   const clientsCred = d.balances.filter((b) => startsWithAny(b.code, ["342", "3421"]) && b.balance < -0.01);
@@ -723,15 +803,18 @@ export function buildRegularisationDossier(report: AuditReport, firmName: string
   ordered.forEach((c, i) => {
     lines.push(`## ${i + 1}. [${c.gravite.toUpperCase()}] ${c.titre}`);
     lines.push(`- Cycle / assertion : ${c.cycle} · ${c.assertion} (${c.categorie_assertion})`);
-    if (c.comptes.length) lines.push(`- Comptes PCGE : ${c.comptes.join(", ")}`);
+    if (c.comptes.length) lines.push(`- Comptes concernés : ${c.comptes.map(describeCompte).join(" ; ")}`);
     lines.push(`- Problème : ${c.detail}`);
-    lines.push(`- Correction proposée : ${c.recommandation}`);
     if (c.correction) {
       lines.push(`- Comprendre : ${c.correction.comprendre}`);
-      if (c.correction.etapes.length) {
-        lines.push(`- Étapes :`);
-        c.correction.etapes.forEach((s, k) => lines.push(`  ${k + 1}. ${s}`));
-      }
+    }
+    // Marche à suivre : toujours présente (étapes de la correction, sinon recommandation + action Odoo).
+    const steps = findingSteps(c);
+    if (steps.length) {
+      lines.push(`- Comment procéder :`);
+      steps.forEach((s, k) => lines.push(`  ${k + 1}. ${s}`));
+    }
+    if (c.correction) {
       const e = c.correction.ecriture;
       if (e) {
         lines.push(`- Écriture de correction (journal ${e.journal}) — ${e.libelle} :`);
