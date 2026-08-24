@@ -8,6 +8,7 @@ import {
   buildPayrollEntry, buildSettlementEntry, sumResults, checkPayrollEntryInvariants,
   type JournalEntry, type InvariantCheck,
 } from "@/lib/payroll-accounting";
+import type { Firm, PaymentMode } from "@/data/types";
 import { DEFAULT_ACCOUNTS } from "@/lib/accounting-accounts";
 import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml, exportEntriesCsvSage } from "@/lib/accounting-export";
 import { Badge, Button, Card, CardContent, Field, PageHeader, Select, Table, Td, Th } from "@/components/ui/kit";
@@ -39,11 +40,20 @@ export default function Accounting() {
     return { results: [], hasValidated: false };
   }, [s, firm, year, month]);
 
+  // Mode de règlement des salaires nets — mémorisé par société, appliqué automatiquement aux
+  // écritures (5141 Banque pour virement/chèque, 5161 Caisse pour espèces).
+  const paymentMode: PaymentMode = firm.payroll_payment_mode ?? "virement";
+  function changePaymentMode(v: PaymentMode) {
+    const next: Firm = { ...firm, payroll_payment_mode: v };
+    actions.upsertFirm(next); // persistance : le mode est retenu et ré-appliqué la prochaine fois
+  }
+
   const { paie, reglement, totals, invariants } = useMemo(() => {
     const t = sumResults(results);
     // Ventilation « à la Sage » : la TFP (taxe) est ISOLÉE en 4457 (État), le compte 4441 ne
     // porte que le vrai bordereau CNSS (CNSS + AMO + AF, parts sal.+patr.). L'IR reste en 44525.
-    const opts = { tfpInCnss: false } as const;
+    // Le mode de paiement pilote la trésorerie du RÈGLEMENT (banque/caisse), sans toucher à l'OD.
+    const opts = { tfpInCnss: false, paymentMode } as const;
     const paieEntry = buildPayrollEntry(t, DEFAULT_ACCOUNTS, year, month, opts);
     return {
       totals: t,
@@ -51,7 +61,7 @@ export default function Accounting() {
       reglement: buildSettlementEntry(t, DEFAULT_ACCOUNTS, year, month, opts),
       invariants: checkPayrollEntryInvariants(paieEntry, t, DEFAULT_ACCOUNTS),
     };
-  }, [results, year, month]);
+  }, [results, year, month, paymentMode]);
 
   const period = periodLabel(year, month);
   // Période validée : on affiche l'INSTANTANÉ figé ; sinon les écritures dérivées à la volée.
@@ -119,6 +129,19 @@ export default function Accounting() {
           <Field label="Mois">
             <Select value={month} onChange={(e) => changeMonth(+e.target.value)} className="w-40">
               {MONTHS_FR.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </Select>
+          </Field>
+          <Field label="Mode de paiement (salaires)">
+            <Select
+              value={paymentMode}
+              onChange={(e) => changePaymentMode(e.target.value as PaymentMode)}
+              disabled={isValidated}
+              className="w-48"
+              title="Pilote le compte de trésorerie du règlement des salaires : Banque (5141) ou Caisse (5161)"
+            >
+              <option value="virement">Virement bancaire (5141)</option>
+              <option value="cheque">Chèque (5141)</option>
+              <option value="especes">Espèces — caisse (5161)</option>
             </Select>
           </Field>
           <div className="flex-1" />

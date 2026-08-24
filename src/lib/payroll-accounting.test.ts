@@ -112,7 +112,31 @@ describe("Écriture de règlement (journal BQ)", () => {
     const bank = entry.lines.find((x) => x.account === "5141");
     expect(bank?.credit).toBe(5089.32); // net + CNSS total + IR(0)
   });
+
+  it("virement/chèque = comportement identique (tout par banque 5141, pas de caisse)", () => {
+    const vir = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { paymentMode: "virement" });
+    const chq = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { paymentMode: "cheque" });
+    for (const e of [vir, chq]) {
+      expect(e.balanced).toBe(true);
+      expect(e.lines.find((x) => x.account === "5141")?.credit).toBe(5089.32);
+      expect(e.lines.some((x) => x.account === "5161")).toBe(false); // aucune caisse
+    }
+  });
+
+  it("espèces : les salaires nets sont crédités en CAISSE (5161), les organismes/IR restent en banque (5141)", () => {
+    const cash = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { paymentMode: "especes" });
+    expect(cash.balanced).toBe(true);
+    const caisse = cash.lines.find((x) => x.account === "5161");
+    const bank = cash.lines.find((x) => x.account === "5141");
+    expect(caisse?.credit).toBe(totals.netAPayer); // net en espèces
+    // banque = tout sauf le net (CNSS + AMO + AF + IR ; TFP isolée en 4457, hors banque ici)
+    const organismes = round2Local(caisse!.credit + (bank?.credit ?? 0));
+    expect(round2Local(organismes)).toBe(5089.32); // même total décaissé que par virement
+    expect(round2Local((bank?.credit ?? 0))).toBe(round2Local(5089.32 - totals.netAPayer));
+  });
 });
+
+const round2Local = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 describe("Agrégation multi-salariés", () => {
   it("somme correctement 3 bulletins et reste équilibrée", () => {

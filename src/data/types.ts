@@ -65,7 +65,16 @@ export interface Firm {
    * Défaut (absent) : `app`. Choisi dans Paramètres.
    */
   payslip_leave_source?: "app" | "odoo";
+  /**
+   * Mode de règlement des salaires nets, qui pilote le compte de trésorerie de l'écriture de
+   * règlement de paie : `virement`/`cheque` → Banque (5141), `especes` → Caisse (5161). Les
+   * organismes (CNSS, IR, TFP) restent réglés par banque. Défaut (absent) : `virement`.
+   */
+  payroll_payment_mode?: PaymentMode;
 }
+
+/** Mode de règlement des salaires nets (pilote le compte de trésorerie des écritures de paie). */
+export type PaymentMode = "virement" | "cheque" | "especes";
 
 /** Paramètres de connexion à l'API Odoo (JSON-RPC). */
 export interface OdooConfig {

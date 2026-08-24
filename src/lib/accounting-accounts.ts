@@ -29,8 +29,10 @@ export interface PayrollAccounts {
   etatTfp: string;
   /** 44525 — État, IR retenu à la source. */
   etatIr: string;
-  /** 5141 — Banque (règlement). */
+  /** 5141 — Banque (règlement par virement / chèque). */
   banque: string;
+  /** 5161 — Caisse (règlement des salaires en espèces). */
+  caisse: string;
 }
 
 export const DEFAULT_ACCOUNTS: PayrollAccounts = {
@@ -44,6 +46,7 @@ export const DEFAULT_ACCOUNTS: PayrollAccounts = {
   etatTfp: "4457",
   etatIr: "44525",
   banque: "5141",
+  caisse: "5161",
 };
 
 export const ACCOUNT_LABELS: Record<keyof PayrollAccounts, string> = {
@@ -57,4 +60,5 @@ export const ACCOUNT_LABELS: Record<keyof PayrollAccounts, string> = {
   etatTfp: "État - TFP à payer",
   etatIr: "État - IR retenu à la source",
   banque: "Banque",
+  caisse: "Caisse",
 };

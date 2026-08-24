@@ -5,6 +5,12 @@
 import { round2, type PayrollResult } from "./payroll-engine";
 import type { PayrollAccounts } from "./accounting-accounts";
 import { ACCOUNT_LABELS } from "./accounting-accounts";
+import type { PaymentMode } from "@/data/types";
+
+/** Libellé lisible d'un mode de règlement des salaires. */
+export function paymentModeLabel(mode: PaymentMode): string {
+  return mode === "especes" ? "espèces" : mode === "cheque" ? "chèque" : "virement";
+}
 
 export interface JournalLine {
   account: string;
@@ -84,6 +90,13 @@ export interface PayrollEntryOptions {
    * de CHARGE 61671 est présent dans les deux cas.
    */
   tfpInCnss?: boolean;
+  /**
+   * Mode de règlement des salaires nets, qui pilote le compte de TRÉSORERIE de l'écriture de
+   * règlement : `virement`/`cheque` → Banque (5141) ; `especes` → Caisse (5161). Les organismes
+   * (CNSS, IR, TFP) restent toujours réglés par banque. DÉFAUT `virement` (comportement historique :
+   * tout le règlement passe par 5141). N'a aucun effet sur l'écriture de paie (OD).
+   */
+  paymentMode?: PaymentMode;
 }
 
 /**
@@ -133,24 +146,37 @@ export function buildSettlementEntry(
   opts: PayrollEntryOptions = {},
 ): JournalEntry {
   const tfpInCnss = opts.tfpInCnss ?? false;
+  const mode = opts.paymentMode ?? "virement";
   const date = endOfMonthIso(year, month);
   const ref = `REGL-${year}-${String(month).padStart(2, "0")}`;
   const L = ACCOUNT_LABELS;
+  const modeLabel = paymentModeLabel(mode);
   const organismesBase = totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af;
   const cnssTotal = round2(organismesBase + (tfpInCnss ? totals.tfp : 0));
-  // Versements distincts : CNSS (bordereau), TFP (→OFPPT, isolée en 4457 par défaut) et IR (→DGI).
-  const total = round2(totals.netAPayer + cnssTotal + (tfpInCnss ? 0 : totals.tfp) + totals.ir);
+  const tfpEtat = round2(tfpInCnss ? 0 : totals.tfp);
+  // Organismes + État (CNSS/TFP/IR) : toujours réglés par BANQUE (télépaiement DAMANCOM / DGI).
+  const organismes = round2(cnssTotal + tfpEtat + totals.ir);
+  // Salaires nets : trésorerie pilotée par le MODE de paiement (5141 banque, 5161 caisse en espèces).
+  const especes = mode === "especes";
+  const net = totals.netAPayer;
+  // En espèces, deux lignes de trésorerie (5161 salaires + 5141 organismes) ; sinon tout par banque.
+  const credits: JournalLine[] = especes
+    ? [
+        C(accounts.caisse, `${L.caisse} (salaires ${modeLabel})`, net),
+        C(accounts.banque, `${L.banque} (CNSS + IR)`, organismes),
+      ]
+    : [C(accounts.banque, L.banque, round2(net + organismes))];
   return finalize({
     journal: "BQ",
     date,
     reference: ref,
-    description: `Règlement paie ${year}-${String(month).padStart(2, "0")}`,
+    description: `Règlement paie ${year}-${String(month).padStart(2, "0")} — salaires par ${modeLabel}`,
     lines: [
-      D(accounts.remunerationsDues, `${L.remunerationsDues} (virement salaires)`, totals.netAPayer),
+      D(accounts.remunerationsDues, `${L.remunerationsDues} (salaires ${modeLabel})`, net),
       D(accounts.cnssOrganisme, `${L.cnssOrganisme} (bordereau CNSS${tfpInCnss ? " + TFP" : ""})`, cnssTotal),
-      D(accounts.etatTfp, `${L.etatTfp} (OFPPT)`, tfpInCnss ? 0 : totals.tfp),
+      D(accounts.etatTfp, `${L.etatTfp} (OFPPT)`, tfpEtat),
       D(accounts.etatIr, `${L.etatIr} (versement IR)`, totals.ir),
-      C(accounts.banque, L.banque, total),
+      ...credits,
     ],
   });
 }
