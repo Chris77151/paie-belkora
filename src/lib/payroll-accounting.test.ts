@@ -123,6 +123,27 @@ describe("Écriture de règlement (journal BQ)", () => {
     }
   });
 
+  it("retenue d'avance : créditée en 3431, net décaissé (5141) diminué d'autant, écriture équilibrée", () => {
+    const e = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { advances: 500 });
+    expect(e.balanced).toBe(true);
+    const av = e.lines.find((x) => x.account === "3431");
+    const bank = e.lines.find((x) => x.account === "5141");
+    expect(av?.credit).toBe(500);                 // avance créditée en 3431
+    expect(bank?.credit).toBe(round2Local(5089.32 - 500)); // net décaissé diminué de l'avance
+    // Le TOTAL décaissé (banque + 3431) reste égal au règlement sans avance.
+    expect(round2Local((bank?.credit ?? 0) + (av?.credit ?? 0))).toBe(5089.32);
+    // Sans avance : aucune ligne 3431.
+    const e0 = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { advances: 0 });
+    expect(e0.lines.some((x) => x.account === "3431")).toBe(false);
+  });
+
+  it("TFP : compte de charge 61678 (et non 61671 « droits d'enregistrement »)", () => {
+    const paie = buildPayrollEntry(sumResults([computePayslip({ ...aboubi, panier: 0, transport: 0, salissure: 0, otherGross: 0 })]), DEFAULT_ACCOUNTS, 2026, 7);
+    // Le compte de charge TFP est 61678 ; 61671 ne doit jamais porter la TFP.
+    expect(DEFAULT_ACCOUNTS.tfp).toBe("61678");
+    expect(paie.lines.some((l) => l.account === "61671")).toBe(false);
+  });
+
   it("espèces : les salaires nets sont crédités en CAISSE (5161), les organismes/IR restent en banque (5141)", () => {
     const cash = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { paymentMode: "especes" });
     expect(cash.balanced).toBe(true);

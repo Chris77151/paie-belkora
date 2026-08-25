@@ -97,6 +97,13 @@ export interface PayrollEntryOptions {
    * tout le règlement passe par 5141). N'a aucun effet sur l'écriture de paie (OD).
    */
   paymentMode?: PaymentMode;
+  /**
+   * Total des RETENUES d'avances/acomptes sur salaire de la période (DH). Au RÈGLEMENT, ce montant
+   * est crédité en **3431** « Personnel — avances et acomptes » (extinction de la créance) et le net
+   * réellement décaissé (trésorerie) est diminué d'autant. DÉFAUT 0 (aucune retenue → écriture
+   * inchangée). N'affecte pas l'écriture de paie OD (le net 4432 y reste le net à payer).
+   */
+  advances?: number;
 }
 
 /**
@@ -128,7 +135,7 @@ export function buildPayrollEntry(
       D(accounts.cnssPatronal, L.cnssPatronal, totals.cnssPatronal),
       D(accounts.amoPatronal, L.amoPatronal, totals.amoPatronal),
       D(accounts.allocationsFamiliales, L.allocationsFamiliales, totals.af),
-      D(accounts.tfp, L.tfp, totals.tfp), // charge 61671 (toujours)
+      D(accounts.tfp, L.tfp, totals.tfp), // charge 61678 (toujours)
       C(accounts.remunerationsDues, L.remunerationsDues, totals.netAPayer),
       C(accounts.cnssOrganisme, L.cnssOrganisme, cnssTotal),
       C(accounts.etatTfp, L.etatTfp, tfpInCnss ? 0 : totals.tfp), // 4457 seulement si TFP isolée (ligne à 0 éliminée)
@@ -156,16 +163,23 @@ export function buildSettlementEntry(
   const tfpEtat = round2(tfpInCnss ? 0 : totals.tfp);
   // Organismes + État (CNSS/TFP/IR) : toujours réglés par BANQUE (télépaiement DAMANCOM / DGI).
   const organismes = round2(cnssTotal + tfpEtat + totals.ir);
-  // Salaires nets : trésorerie pilotée par le MODE de paiement (5141 banque, 5161 caisse en espèces).
-  const especes = mode === "especes";
   const net = totals.netAPayer;
+  // Retenue d'avance/acompte : bornée au net, créditée en 3431 (extinction de la créance). Le net
+  // réellement DÉCAISSÉ en trésorerie est diminué d'autant.
+  const advances = round2(Math.min(Math.max(0, opts.advances ?? 0), net));
+  const netDisbursed = round2(net - advances);
+  const advanceLine: JournalLine[] = advances > 0
+    ? [C(accounts.avancesPersonnel, `${L.avancesPersonnel} (retenue sur salaire)`, advances)]
+    : [];
+  // Salaires nets décaissés : trésorerie pilotée par le MODE de paiement (5141 banque, 5161 caisse).
+  const especes = mode === "especes";
   // En espèces, deux lignes de trésorerie (5161 salaires + 5141 organismes) ; sinon tout par banque.
   const credits: JournalLine[] = especes
     ? [
-        C(accounts.caisse, `${L.caisse} (salaires ${modeLabel})`, net),
+        C(accounts.caisse, `${L.caisse} (salaires ${modeLabel})`, netDisbursed),
         C(accounts.banque, `${L.banque} (CNSS + IR)`, organismes),
       ]
-    : [C(accounts.banque, L.banque, round2(net + organismes))];
+    : [C(accounts.banque, L.banque, round2(netDisbursed + organismes))];
   return finalize({
     journal: "BQ",
     date,
@@ -176,6 +190,7 @@ export function buildSettlementEntry(
       D(accounts.cnssOrganisme, `${L.cnssOrganisme} (bordereau CNSS${tfpInCnss ? " + TFP" : ""})`, cnssTotal),
       D(accounts.etatTfp, `${L.etatTfp} (OFPPT)`, tfpEtat),
       D(accounts.etatIr, `${L.etatIr} (versement IR)`, totals.ir),
+      ...advanceLine,
       ...credits,
     ],
   });

@@ -31,13 +31,16 @@ export default function Accounting() {
 
   // SOURCE UNIQUE DE VÉRITÉ : on n'agrège QUE les bulletins réellement validés (calculés) de la
   // période. Aucun recalcul, aucune valeur par défaut — sinon divergence garantie avec la BDS/CNSS.
-  const { results, hasValidated } = useMemo<{ results: PayrollResult[]; hasValidated: boolean }>(() => {
+  const { results, advancesTotal, hasValidated } = useMemo<{ results: PayrollResult[]; advancesTotal: number; hasValidated: boolean }>(() => {
     const period = s.periods.find((p) => p.firm_id === firm.id && p.year === year && p.month === month);
     if (period) {
-      const frozen = payslipsOfPeriod(s, period.id).filter((sl) => sl.result).map((sl) => sl.result as PayrollResult);
-      if (frozen.length) return { results: frozen, hasValidated: true };
+      const slips = payslipsOfPeriod(s, period.id).filter((sl) => sl.result);
+      const frozen = slips.map((sl) => sl.result as PayrollResult);
+      // Total des retenues d'avances/acomptes de la période (champ `advances` du bulletin) → crédit 3431.
+      const adv = slips.reduce((sum, sl) => sum + Math.max(0, sl.input.advances ?? 0), 0);
+      if (frozen.length) return { results: frozen, advancesTotal: adv, hasValidated: true };
     }
-    return { results: [], hasValidated: false };
+    return { results: [], advancesTotal: 0, hasValidated: false };
   }, [s, firm, year, month]);
 
   // Mode de règlement des salaires nets — mémorisé par société, appliqué automatiquement aux
@@ -53,7 +56,7 @@ export default function Accounting() {
     // Ventilation « à la Sage » : la TFP (taxe) est ISOLÉE en 4457 (État), le compte 4441 ne
     // porte que le vrai bordereau CNSS (CNSS + AMO + AF, parts sal.+patr.). L'IR reste en 44525.
     // Le mode de paiement pilote la trésorerie du RÈGLEMENT (banque/caisse), sans toucher à l'OD.
-    const opts = { tfpInCnss: false, paymentMode } as const;
+    const opts = { tfpInCnss: false, paymentMode, advances: advancesTotal } as const;
     const paieEntry = buildPayrollEntry(t, DEFAULT_ACCOUNTS, year, month, opts);
     return {
       totals: t,
@@ -61,7 +64,7 @@ export default function Accounting() {
       reglement: buildSettlementEntry(t, DEFAULT_ACCOUNTS, year, month, opts),
       invariants: checkPayrollEntryInvariants(paieEntry, t, DEFAULT_ACCOUNTS),
     };
-  }, [results, year, month, paymentMode]);
+  }, [results, advancesTotal, year, month, paymentMode]);
 
   const period = periodLabel(year, month);
   // Période validée : on affiche l'INSTANTANÉ figé ; sinon les écritures dérivées à la volée.
@@ -235,8 +238,8 @@ export default function Accounting() {
           ))}
 
           <p className="mt-6 text-xs text-muted-foreground">
-            Comptes PCGE par défaut (6171, 617411/617412, 61744, 61671, 4432, 4441, 4457, 44525, 5141),
-            validés par l'expert-comptable. Écritures à contrôler avant intégration en comptabilité.
+            Comptes PCGE par défaut (6171, 617411/617412, 61744, 61678 TFP, 4432, 4441, 4457, 44525, 5141/5161,
+            3431 avances), validés par l'expert-comptable. Écritures à contrôler avant intégration en comptabilité.
           </p>
         </>
       )}

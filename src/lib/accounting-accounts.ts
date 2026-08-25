@@ -6,9 +6,14 @@
  * Points de conformité (expert-comptable) :
  *  - 61741 = cotisations de sécurité sociale (CNSS + AMO patronales) ; 61742 = RETRAITE, 61743 = MUTUELLES.
  *    -> l'AMO patronale se loge sous 61741 (sous-comptes 617411/617412), jamais 61742/61743.
- *  - TFP = TAXE (pas une cotisation) -> charge 6167 (61671) ; au crédit 4457 (État - taxes à payer), pas 4441.
+ *  - TFP = TAXE (pas une cotisation) -> charge 6167 = **61678** « Autres impôts, taxes et droits
+ *    assimilés » (le 61671 est RÉSERVÉ aux « droits d'enregistrement et de timbre » — ne pas l'y loger).
+ *    Au crédit 4457 (État - taxes à payer) par défaut ; option `tfpInCnss` pour la loger en 4441
+ *    (recouvrement par la CNSS/OFPPT) — à trancher selon la politique de l'entité (réserve expert-comptable).
  *  - AMO (sal.+patr.) se paie sur le bordereau CNSS -> crédit 4441 (pas 4445 Mutuelles).
  *  - IR retenu à la source sur salaires -> 44525.
+ *  - Retenue d'AVANCE/ACOMPTE sur salaire -> crédit 3431 « Personnel — avances et acomptes »
+ *    (extinction de la créance) au règlement ; le net décaissé est diminué d'autant.
  */
 export interface PayrollAccounts {
   /** 6171 — Rémunérations du personnel (brut). */
@@ -19,7 +24,7 @@ export interface PayrollAccounts {
   amoPatronal: string;
   /** 61744 — Prestations familiales (allocations familiales). */
   allocationsFamiliales: string;
-  /** 61671 — Taxe de formation professionnelle (impôts et taxes, pas une cotisation). */
+  /** 61678 — Taxe de formation professionnelle (« Autres impôts, taxes et droits assimilés »). */
   tfp: string;
   /** 4432 — Rémunérations dues au personnel (net à payer). */
   remunerationsDues: string;
@@ -33,6 +38,8 @@ export interface PayrollAccounts {
   banque: string;
   /** 5161 — Caisse (règlement des salaires en espèces). */
   caisse: string;
+  /** 3431 — Personnel, avances et acomptes (retenue d'avance/acompte sur salaire). */
+  avancesPersonnel: string;
 }
 
 export const DEFAULT_ACCOUNTS: PayrollAccounts = {
@@ -40,13 +47,14 @@ export const DEFAULT_ACCOUNTS: PayrollAccounts = {
   cnssPatronal: "617411",
   amoPatronal: "617412",
   allocationsFamiliales: "61744",
-  tfp: "61671",
+  tfp: "61678",
   remunerationsDues: "4432",
   cnssOrganisme: "4441",
   etatTfp: "4457",
   etatIr: "44525",
   banque: "5141",
   caisse: "5161",
+  avancesPersonnel: "3431",
 };
 
 export const ACCOUNT_LABELS: Record<keyof PayrollAccounts, string> = {
@@ -61,4 +69,5 @@ export const ACCOUNT_LABELS: Record<keyof PayrollAccounts, string> = {
   etatIr: "État - IR retenu à la source",
   banque: "Banque",
   caisse: "Caisse",
+  avancesPersonnel: "Personnel - avances et acomptes",
 };

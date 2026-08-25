@@ -195,8 +195,8 @@ const dh = (n: number) => `${n.toLocaleString("fr-FR", { minimumFractionDigits: 
  * long au plus court pour matcher 617411 avant 6174, 44525 avant 4452, etc.
  */
 const PCGE_ACCOUNTS = [
-  "617411", "617412", "61671", "61744", "61741", "44525", "4455", "3455", "4432", "4441", "4457",
-  "5141", "3421", "3411", "4421", "4411", "4434", "3431", "3491", "4491", "6171", "471", "472",
+  "617411", "617412", "61678", "61671", "61744", "61741", "44525", "4455", "3455", "4432", "4441", "4457",
+  "5141", "5161", "3421", "3411", "4421", "4411", "4434", "3431", "3491", "4491", "6171", "471", "472",
   "342", "441", "445",
 ].sort((a, b) => b.length - a.length);
 
@@ -207,12 +207,13 @@ const PCGE_ACCOUNTS = [
  */
 export const PCGE_LABELS: Record<string, string> = {
   "6171": "Rémunérations du personnel",
+  "61671": "Droits d'enregistrement et de timbre",
+  "61678": "Autres impôts, taxes et droits assimilés (dont TFP)",
   "617x": "Charges patronales sur salaires",
   "61741": "Cotisations de sécurité sociale (part patronale)",
   "617411": "CNSS (part patronale)",
   "617412": "AMO (part patronale)",
   "61744": "Prestations familiales (allocations familiales)",
-  "61671": "Taxe de formation professionnelle (TFP)",
   "4432": "Rémunérations dues au personnel (net à payer)",
   "4437": "Charges de personnel à payer (congés)",
   "4441": "CNSS (organismes sociaux)",
