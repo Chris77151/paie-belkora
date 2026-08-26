@@ -104,6 +104,12 @@ export interface PayrollEntryOptions {
    * inchangée). N'affecte pas l'écriture de paie OD (le net 4432 y reste le net à payer).
    */
   advances?: number;
+  /**
+   * Ventilation du net par MODE DE PAIEMENT (paiement MIXTE : certains salariés en espèces, d'autres
+   * par banque). Passé à `buildSettlementEntries`, qui produit alors deux articles distincts (un
+   * journal Caisse 5161, un journal Banque 5141). Sans `split` : tout le net passe par banque.
+   */
+  split?: SettlementSplit;
 }
 
 /**
@@ -144,56 +150,92 @@ export function buildPayrollEntry(
   });
 }
 
-/** Écriture de règlement (journal banque) — décaissements. */
-export function buildSettlementEntry(
+/**
+ * Ventilation du net décaissé par MODE DE PAIEMENT quand les salariés d'une période sont réglés
+ * différemment (certains en espèces, d'autres par banque). `netCash`/`netBank` = net à payer (brut
+ * d'avance) de chaque groupe ; `advanceCash`/`advanceBank` = retenues d'avances de chaque groupe.
+ */
+export interface SettlementSplit {
+  netCash: number;
+  advanceCash: number;
+  netBank: number;
+  advanceBank: number;
+}
+
+/**
+ * Écriture(s) de RÈGLEMENT (décaissements). Renvoie un TABLEAU d'articles, un par journal de
+ * trésorerie (recommandation expert-comptable : un journal se rapproche d'UN seul compte) :
+ *  - un article **Caisse** (journal CA, crédit 5161) si des salaires sont payés en espèces ;
+ *  - un article **Banque** (journal BQ, crédit 5141) pour les salaires par banque + les organismes
+ *    (CNSS/IR/TFP, toujours réglés par banque via télépaiement DAMANCOM/DGI).
+ * Les retenues d'avances sont créditées en 3431 dans l'article du groupe concerné ; le net décaissé
+ * est diminué d'autant. Sans `split` : tout le net passe par banque (comportement historique) — un
+ * seul article Banque. Chaque article est équilibré. PURE.
+ */
+export function buildSettlementEntries(
   totals: PayrollTotals,
   accounts: PayrollAccounts,
   year: number,
   month: number,
   opts: PayrollEntryOptions = {},
-): JournalEntry {
+): JournalEntry[] {
   const tfpInCnss = opts.tfpInCnss ?? false;
-  const mode = opts.paymentMode ?? "virement";
   const date = endOfMonthIso(year, month);
-  const ref = `REGL-${year}-${String(month).padStart(2, "0")}`;
+  const ym = `${year}-${String(month).padStart(2, "0")}`;
+  const ref = `REGL-${ym}`;
   const L = ACCOUNT_LABELS;
-  const modeLabel = paymentModeLabel(mode);
   const organismesBase = totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af;
   const cnssTotal = round2(organismesBase + (tfpInCnss ? totals.tfp : 0));
   const tfpEtat = round2(tfpInCnss ? 0 : totals.tfp);
-  // Organismes + État (CNSS/TFP/IR) : toujours réglés par BANQUE (télépaiement DAMANCOM / DGI).
+  // Organismes + État : TOUJOURS réglés par banque (télépaiement DAMANCOM / DGI).
   const organismes = round2(cnssTotal + tfpEtat + totals.ir);
+
   const net = totals.netAPayer;
-  // Retenue d'avance/acompte : bornée au net, créditée en 3431 (extinction de la créance). Le net
-  // réellement DÉCAISSÉ en trésorerie est diminué d'autant.
-  const advances = round2(Math.min(Math.max(0, opts.advances ?? 0), net));
-  const netDisbursed = round2(net - advances);
-  const advanceLine: JournalLine[] = advances > 0
-    ? [C(accounts.avancesPersonnel, `${L.avancesPersonnel} (retenue sur salaire)`, advances)]
-    : [];
-  // Salaires nets décaissés : trésorerie pilotée par le MODE de paiement (5141 banque, 5161 caisse).
-  const especes = mode === "especes";
-  // En espèces, deux lignes de trésorerie (5161 salaires + 5141 organismes) ; sinon tout par banque.
-  const credits: JournalLine[] = especes
-    ? [
-        C(accounts.caisse, `${L.caisse} (salaires ${modeLabel})`, netDisbursed),
-        C(accounts.banque, `${L.banque} (CNSS + IR)`, organismes),
-      ]
-    : [C(accounts.banque, L.banque, round2(netDisbursed + organismes))];
-  return finalize({
+  const s = opts.split;
+  const netCash = s ? round2(Math.max(0, s.netCash)) : 0;
+  const advanceCash = round2(Math.min(Math.max(0, s ? s.advanceCash : 0), netCash));
+  const netBank = s ? round2(Math.max(0, s.netBank)) : net;
+  const advanceBank = round2(Math.min(Math.max(0, s ? s.advanceBank : (opts.advances ?? 0)), netBank));
+
+  const av = (amount: number): JournalLine[] =>
+    amount > 0 ? [C(accounts.avancesPersonnel, `${L.avancesPersonnel} (retenue sur salaire)`, amount)] : [];
+
+  const entries: JournalEntry[] = [];
+
+  // Article CAISSE — salaires payés en espèces (crédit 5161).
+  if (netCash > 0) {
+    entries.push(finalize({
+      journal: "CA",
+      date,
+      reference: ref,
+      description: `Règlement paie ${ym} — salaires en espèces`,
+      lines: [
+        D(accounts.remunerationsDues, `${L.remunerationsDues} (salaires espèces)`, netCash),
+        ...av(advanceCash),
+        C(accounts.caisse, `${L.caisse} (salaires en espèces)`, round2(netCash - advanceCash)),
+      ],
+    }));
+  }
+
+  // Article BANQUE — salaires par banque + organismes (crédit 5141).
+  const mixte = netCash > 0;
+  const bankSalaryLabel = mixte ? "salaires par banque" : "salaires";
+  entries.push(finalize({
     journal: "BQ",
     date,
     reference: ref,
-    description: `Règlement paie ${year}-${String(month).padStart(2, "0")} — salaires par ${modeLabel}`,
+    description: `Règlement paie ${ym} — ${bankSalaryLabel} + organismes`,
     lines: [
-      D(accounts.remunerationsDues, `${L.remunerationsDues} (salaires ${modeLabel})`, net),
+      D(accounts.remunerationsDues, `${L.remunerationsDues} (${bankSalaryLabel})`, netBank),
       D(accounts.cnssOrganisme, `${L.cnssOrganisme} (bordereau CNSS${tfpInCnss ? " + TFP" : ""})`, cnssTotal),
       D(accounts.etatTfp, `${L.etatTfp} (OFPPT)`, tfpEtat),
       D(accounts.etatIr, `${L.etatIr} (versement IR)`, totals.ir),
-      ...advanceLine,
-      ...credits,
+      ...av(advanceBank),
+      C(accounts.banque, `${L.banque}${mixte ? " (salaires banque + CNSS/IR)" : ""}`, round2(netBank - advanceBank + organismes)),
     ],
-  });
+  }));
+
+  return entries;
 }
 
 /* ------------------------------------------------------------------ invariants (contrôle bloquant) ------------------------------------------------------------------ */

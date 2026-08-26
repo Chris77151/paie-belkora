@@ -24,6 +24,7 @@ import type {
 import { capLoginEvents } from "@/lib/login-audit";
 import { capDocEvents } from "@/lib/doc-log";
 import { findGhostPayslips } from "@/lib/stability-engine";
+import { buildPeriodEntries } from "@/lib/payroll-period-accounting";
 import { seed, SUPER_ADMIN } from "./seed";
 import { isSupabaseConfigured, loadRemoteState, saveRemoteState } from "@/lib/supabase";
 
@@ -599,6 +600,31 @@ export const actions = {
     set((s) => {
       s.accountingClosures = (s.accountingClosures ?? []).filter((c) => c.id !== id);
     });
+  },
+  /**
+   * ACTUALISE les écritures d'une période DÉJÀ VALIDÉE avec le plan de comptes courant (TFP 61678,
+   * avances 3431, ventilation Caisse 5161 / Banque 5141 par salarié), à partir des MÊMES bulletins :
+   * les montants et l'équilibre sont inchangés, seuls les comptes/libellés et la ventilation de
+   * trésorerie évoluent. La traçabilité de validation (date/auteur) est CONSERVÉE. Idempotent.
+   * Renvoie `true` si un instantané a été régénéré. (L'UI avertit avant l'appel.)
+   */
+  refreshAccountingClosure(id: string): boolean {
+    const c = (state.accountingClosures ?? []).find((x) => x.id === id);
+    if (!c) return false;
+    const firm = state.firms.find((f) => f.id === c.firm_id);
+    const period = state.periods.find((p) => p.firm_id === c.firm_id && p.year === c.year && p.month === c.month);
+    if (!firm || !period) return false;
+    const slips = state.payslips
+      .filter((p) => p.period_id === period.id && p.result)
+      .map((p) => ({ employee_id: p.employee_id, input: p.input, result: p.result! }));
+    if (!slips.length) return false;
+    const employees = state.employees.filter((e) => e.firm_id === firm.id);
+    const built = buildPeriodEntries(slips, employees, firm, c.year, c.month);
+    set((st) => {
+      const cc = (st.accountingClosures ?? []).find((x) => x.id === id);
+      if (cc) cc.entries = [built.paie, ...built.reglements]; // date/auteur de validation conservés
+    });
+    return true;
   },
   reset() {
     if (!canWriteData()) return; // lecture seule : réinitialisation interdite

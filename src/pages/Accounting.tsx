@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
 import { Calculator, FileCode2, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, Sparkles, Lock, Unlock, Table2 } from "lucide-react";
-import { actions, currentFirm, payslipsOfPeriod, useStore } from "@/data/store";
+import { actions, currentFirm, employeesOfFirm, payslipsOfPeriod, useStore } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import { useSession } from "@/lib/auth";
-import type { PayrollResult } from "@/lib/payroll-engine";
 import {
-  buildPayrollEntry, buildSettlementEntry, sumResults, checkPayrollEntryInvariants,
-  type JournalEntry, type InvariantCheck,
+  checkPayrollEntryInvariants, type JournalEntry, type InvariantCheck,
 } from "@/lib/payroll-accounting";
+import { buildPeriodEntries, type PeriodSlip } from "@/lib/payroll-period-accounting";
 import type { Firm, PaymentMode } from "@/data/types";
 import { DEFAULT_ACCOUNTS } from "@/lib/accounting-accounts";
 import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml, exportEntriesCsvSage } from "@/lib/accounting-export";
@@ -31,44 +30,43 @@ export default function Accounting() {
 
   // SOURCE UNIQUE DE VÉRITÉ : on n'agrège QUE les bulletins réellement validés (calculés) de la
   // période. Aucun recalcul, aucune valeur par défaut — sinon divergence garantie avec la BDS/CNSS.
-  const { results, advancesTotal, hasValidated } = useMemo<{ results: PayrollResult[]; advancesTotal: number; hasValidated: boolean }>(() => {
+  const { slips, hasValidated } = useMemo<{ slips: PeriodSlip[]; hasValidated: boolean }>(() => {
     const period = s.periods.find((p) => p.firm_id === firm.id && p.year === year && p.month === month);
     if (period) {
-      const slips = payslipsOfPeriod(s, period.id).filter((sl) => sl.result);
-      const frozen = slips.map((sl) => sl.result as PayrollResult);
-      // Total des retenues d'avances/acomptes de la période (champ `advances` du bulletin) → crédit 3431.
-      const adv = slips.reduce((sum, sl) => sum + Math.max(0, sl.input.advances ?? 0), 0);
-      if (frozen.length) return { results: frozen, advancesTotal: adv, hasValidated: true };
+      const list = payslipsOfPeriod(s, period.id)
+        .filter((sl) => sl.result)
+        .map((sl) => ({ employee_id: sl.employee_id, input: sl.input, result: sl.result! }));
+      if (list.length) return { slips: list, hasValidated: true };
     }
-    return { results: [], advancesTotal: 0, hasValidated: false };
+    return { slips: [], hasValidated: false };
   }, [s, firm, year, month]);
 
-  // Mode de règlement des salaires nets — mémorisé par société, appliqué automatiquement aux
-  // écritures (5141 Banque pour virement/chèque, 5161 Caisse pour espèces).
+  // Mode de règlement PAR DÉFAUT de la société — appliqué aux salariés SANS mode propre. Chaque
+  // salarié peut être payé par Banque (5141) ou Espèces (5161) via sa fiche (volet Salariés).
   const paymentMode: PaymentMode = firm.payroll_payment_mode ?? "virement";
   function changePaymentMode(v: PaymentMode) {
     const next: Firm = { ...firm, payroll_payment_mode: v };
     actions.upsertFirm(next); // persistance : le mode est retenu et ré-appliqué la prochaine fois
   }
 
-  const { paie, reglement, totals, invariants } = useMemo(() => {
-    const t = sumResults(results);
-    // Ventilation « à la Sage » : la TFP (taxe) est ISOLÉE en 4457 (État), le compte 4441 ne
-    // porte que le vrai bordereau CNSS (CNSS + AMO + AF, parts sal.+patr.). L'IR reste en 44525.
-    // Le mode de paiement pilote la trésorerie du RÈGLEMENT (banque/caisse), sans toucher à l'OD.
-    const opts = { tfpInCnss: false, paymentMode, advances: advancesTotal } as const;
-    const paieEntry = buildPayrollEntry(t, DEFAULT_ACCOUNTS, year, month, opts);
+  const { paie, reglements, totals, split, invariants } = useMemo(() => {
+    const employees = employeesOfFirm(s, firm.id);
+    // Ventilation « à la Sage » (TFP isolée en 4457, IR en 44525) + ventilation de TRÉSORERIE par
+    // salarié (5161 espèces / 5141 banque) et retenues d'avances (3431). Deux articles de règlement
+    // si paiement mixte (un journal Caisse, un journal Banque).
+    const built = buildPeriodEntries(slips, employees, firm, year, month);
     return {
-      totals: t,
-      paie: paieEntry,
-      reglement: buildSettlementEntry(t, DEFAULT_ACCOUNTS, year, month, opts),
-      invariants: checkPayrollEntryInvariants(paieEntry, t, DEFAULT_ACCOUNTS),
+      totals: built.totals,
+      paie: built.paie,
+      reglements: built.reglements,
+      split: built.split,
+      invariants: checkPayrollEntryInvariants(built.paie, built.totals, DEFAULT_ACCOUNTS),
     };
-  }, [results, advancesTotal, year, month, paymentMode]);
+  }, [s, slips, firm, year, month, paymentMode]);
 
   const period = periodLabel(year, month);
   // Période validée : on affiche l'INSTANTANÉ figé ; sinon les écritures dérivées à la volée.
-  const entries: JournalEntry[] = isValidated ? closure!.entries : [paie, reglement];
+  const entries: JournalEntry[] = isValidated ? closure!.entries : [paie, ...reglements];
   const balanced = entries.every((e) => e.balanced);
   // Génération/validation autorisées seulement si TOUS les invariants passent (bloquant).
   const controlsOk = balanced && invariants.ok;
@@ -83,7 +81,7 @@ export default function Accounting() {
       firm_id: firm.id,
       year,
       month,
-      entries: [paie, reglement],
+      entries: [paie, ...reglements],
       validated_at: new Date().toISOString(),
       validated_by: session?.username ?? "—",
     });
@@ -108,6 +106,21 @@ export default function Accounting() {
     actions.revertAccounting(closureId);
   }
 
+  // L'instantané figé porte-t-il encore des comptes OBSOLÈTES (TFP en 61671) → proposer l'actualisation.
+  const closureNeedsRefresh = isValidated && !!closure!.entries.some((e) => e.lines.some((l) => l.account === "61671"));
+
+  /** Régénère l'instantané figé avec le plan de comptes courant (montants inchangés, traçabilité conservée). */
+  function refresh() {
+    if (!window.confirm(
+      `Actualiser les écritures figées de ${period} avec les comptes corrigés (TFP 61678, avances 3431, ventilation Caisse 5161 / Banque 5141 par salarié) ?\n\n`
+      + `Les MONTANTS et l'équilibre restent identiques ; seuls les comptes, libellés et la ventilation de trésorerie évoluent. La date et l'auteur de validation sont conservés.\n\n`
+      + `⚠ Si cette période est déjà DÉCLARÉE (DGI/CNSS) ou RAPPROCHÉE en banque, préférez une OD de reclassement (conseil expert-comptable).`,
+    )) return;
+    if (!actions.refreshAccountingClosure(closureId)) {
+      window.alert("Actualisation impossible : bulletins de la période introuvables.");
+    }
+  }
+
   const changeYear = (v: number) => { setYear(v); setGenerated(false); };
   const changeMonth = (v: number) => { setMonth(v); setGenerated(false); };
 
@@ -115,7 +128,10 @@ export default function Accounting() {
     <div>
       <PageHeader title={t("page.accounting.title")} subtitle={`${firm.name} · ${t("page.accounting.sub")}`}>
         {isValidated ? (
-          <Badge tone="success"><Lock size={13} /> Validée · verrouillée</Badge>
+          <span className="inline-flex items-center gap-2">
+            <Badge tone="success"><Lock size={13} /> Validée · verrouillée</Badge>
+            {closureNeedsRefresh && <Badge tone="warning"><AlertTriangle size={13} /> Comptes à actualiser</Badge>}
+          </span>
         ) : showEntries ? (
           <Badge tone={controlsOk ? "success" : "destructive"}>
             {controlsOk ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
@@ -147,11 +163,22 @@ export default function Accounting() {
               <option value="especes">Espèces — caisse (5161)</option>
             </Select>
           </Field>
+          {split.netCash > 0 && (
+            <div className="w-full text-xs text-muted-foreground">
+              Paiement mixte : <b className="text-foreground num">{mad(split.netCash)}</b> en espèces (Caisse 5161) ·{" "}
+              <b className="text-foreground num">{mad(split.netBank)}</b> par banque (5141) → <b>deux articles</b> de règlement.
+            </div>
+          )}
           <div className="flex-1" />
           {isValidated ? (
-            <Button variant="outline" onClick={revert}>
-              <Unlock size={16} /> Remettre en brouillon
-            </Button>
+            <>
+              <Button variant="sage" onClick={refresh} title="Régénère l'instantané figé avec les comptes corrigés — montants inchangés">
+                <Sparkles size={16} /> Actualiser les écritures
+              </Button>
+              <Button variant="outline" onClick={revert}>
+                <Unlock size={16} /> Remettre en brouillon
+              </Button>
+            </>
           ) : (
             <>
               {!generated && (

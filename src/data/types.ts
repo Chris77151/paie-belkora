@@ -128,6 +128,12 @@ export interface Employee {
   _odoo_id?: number;
   /** Soldes de congés importés d'Odoo (jours). Sert de source alternative au décompte de l'app. */
   odoo_leave?: { allocated: number; taken: number; remaining: number; fetched_at: string };
+  /**
+   * Mode de règlement du salaire net de CE salarié : `virement`/`cheque` → Banque (5141),
+   * `especes` → Caisse (5161). Pilote la ventilation de trésorerie de l'écriture de règlement de
+   * paie. Absent → on retombe sur le mode de la société (`Firm.payroll_payment_mode`), puis `virement`.
+   */
+  payment_mode?: PaymentMode;
 }
 
 export interface PayrollPeriod {

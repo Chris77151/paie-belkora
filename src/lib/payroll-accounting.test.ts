@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computePayslip, type PayrollInput } from "./payroll-engine";
-import { buildPayrollEntry, buildSettlementEntry, sumResults, checkPayrollEntryInvariants } from "./payroll-accounting";
+import { buildPayrollEntry, buildSettlementEntries, sumResults, checkPayrollEntryInvariants } from "./payroll-accounting";
 import { DEFAULT_ACCOUNTS } from "./accounting-accounts";
 
 const aboubi: PayrollInput = {
@@ -104,56 +104,57 @@ describe("Alignement BDS — salarié exonéré CNSS", () => {
   });
 });
 
-describe("Écriture de règlement (journal BQ)", () => {
+describe("Écriture(s) de règlement", () => {
   const totals = sumResults([computePayslip(aboubi)]);
-  const entry = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7);
-  it("est équilibrée et solde la banque (net + CNSS + IR)", () => {
+
+  it("sans split : UN article Banque équilibré qui solde 5141 (net + CNSS + IR)", () => {
+    const entries = buildSettlementEntries(totals, DEFAULT_ACCOUNTS, 2026, 7);
+    expect(entries).toHaveLength(1);
+    const [entry] = entries;
     expect(entry.balanced).toBe(true);
-    const bank = entry.lines.find((x) => x.account === "5141");
-    expect(bank?.credit).toBe(5089.32); // net + CNSS total + IR(0)
+    expect(entry.journal).toBe("BQ");
+    expect(entry.lines.find((x) => x.account === "5141")?.credit).toBe(5089.32);
+    expect(entry.lines.some((x) => x.account === "5161")).toBe(false); // aucune caisse
   });
 
-  it("virement/chèque = comportement identique (tout par banque 5141, pas de caisse)", () => {
-    const vir = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { paymentMode: "virement" });
-    const chq = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { paymentMode: "cheque" });
-    for (const e of [vir, chq]) {
-      expect(e.balanced).toBe(true);
-      expect(e.lines.find((x) => x.account === "5141")?.credit).toBe(5089.32);
-      expect(e.lines.some((x) => x.account === "5161")).toBe(false); // aucune caisse
-    }
-  });
-
-  it("retenue d'avance : créditée en 3431, net décaissé (5141) diminué d'autant, écriture équilibrée", () => {
-    const e = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { advances: 500 });
+  it("retenue d'avance : créditée en 3431, net décaissé (5141) diminué d'autant, article équilibré", () => {
+    const [e] = buildSettlementEntries(totals, DEFAULT_ACCOUNTS, 2026, 7, { advances: 500 });
     expect(e.balanced).toBe(true);
     const av = e.lines.find((x) => x.account === "3431");
     const bank = e.lines.find((x) => x.account === "5141");
-    expect(av?.credit).toBe(500);                 // avance créditée en 3431
-    expect(bank?.credit).toBe(round2Local(5089.32 - 500)); // net décaissé diminué de l'avance
-    // Le TOTAL décaissé (banque + 3431) reste égal au règlement sans avance.
+    expect(av?.credit).toBe(500);
+    expect(bank?.credit).toBe(round2Local(5089.32 - 500));
     expect(round2Local((bank?.credit ?? 0) + (av?.credit ?? 0))).toBe(5089.32);
     // Sans avance : aucune ligne 3431.
-    const e0 = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { advances: 0 });
+    const [e0] = buildSettlementEntries(totals, DEFAULT_ACCOUNTS, 2026, 7, { advances: 0 });
     expect(e0.lines.some((x) => x.account === "3431")).toBe(false);
   });
 
   it("TFP : compte de charge 61678 (et non 61671 « droits d'enregistrement »)", () => {
     const paie = buildPayrollEntry(sumResults([computePayslip({ ...aboubi, panier: 0, transport: 0, salissure: 0, otherGross: 0 })]), DEFAULT_ACCOUNTS, 2026, 7);
-    // Le compte de charge TFP est 61678 ; 61671 ne doit jamais porter la TFP.
     expect(DEFAULT_ACCOUNTS.tfp).toBe("61678");
     expect(paie.lines.some((l) => l.account === "61671")).toBe(false);
   });
 
-  it("espèces : les salaires nets sont crédités en CAISSE (5161), les organismes/IR restent en banque (5141)", () => {
-    const cash = buildSettlementEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { paymentMode: "especes" });
-    expect(cash.balanced).toBe(true);
-    const caisse = cash.lines.find((x) => x.account === "5161");
-    const bank = cash.lines.find((x) => x.account === "5141");
-    expect(caisse?.credit).toBe(totals.netAPayer); // net en espèces
-    // banque = tout sauf le net (CNSS + AMO + AF + IR ; TFP isolée en 4457, hors banque ici)
-    const organismes = round2Local(caisse!.credit + (bank?.credit ?? 0));
-    expect(round2Local(organismes)).toBe(5089.32); // même total décaissé que par virement
-    expect(round2Local((bank?.credit ?? 0))).toBe(round2Local(5089.32 - totals.netAPayer));
+  it("paiement MIXTE : DEUX articles (Caisse 5161 pour le net espèces + Banque 5141 pour net banque + organismes)", () => {
+    const net = totals.netAPayer;
+    const netCash = round2Local(net * 0.4); // 40 % des salariés payés en espèces (ex.)
+    const netBank = round2Local(net - netCash);
+    const entries = buildSettlementEntries(totals, DEFAULT_ACCOUNTS, 2026, 7, {
+      split: { netCash, advanceCash: 0, netBank, advanceBank: 0 },
+    });
+    expect(entries).toHaveLength(2);
+    const caisseArticle = entries.find((e) => e.journal === "CA")!;
+    const banqueArticle = entries.find((e) => e.journal === "BQ")!;
+    expect(caisseArticle.balanced).toBe(true);
+    expect(banqueArticle.balanced).toBe(true);
+    // Caisse : crédit 5161 = net espèces ; Banque : crédit 5141 = net banque + organismes.
+    expect(caisseArticle.lines.find((x) => x.account === "5161")?.credit).toBe(netCash);
+    expect(banqueArticle.lines.some((x) => x.account === "5161")).toBe(false); // pas de caisse dans l'article banque
+    const bank = banqueArticle.lines.find((x) => x.account === "5141")!;
+    // total décaissé banque + caisse = même total que le règlement 100 % banque (5089.32).
+    expect(round2Local(bank.credit + netCash)).toBe(5089.32);
+    expect(bank.credit).toBe(round2Local(5089.32 - netCash));
   });
 });
 

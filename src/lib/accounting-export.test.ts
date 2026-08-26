@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildEntriesCsvSage } from "./accounting-export";
-import { buildPayrollEntry, buildSettlementEntry, sumResults } from "./payroll-accounting";
+import { buildPayrollEntry, buildSettlementEntries, sumResults } from "./payroll-accounting";
 import { DEFAULT_ACCOUNTS } from "./accounting-accounts";
 import { computePayslip } from "./payroll-engine";
 import type { Firm } from "@/data/types";
@@ -14,7 +14,7 @@ function entries() {
     panier: 0, transport: 0, salissure: 0, otherGross: 0,
   });
   const t = sumResults([r]);
-  return [buildPayrollEntry(t, DEFAULT_ACCOUNTS, 2026, 7), buildSettlementEntry(t, DEFAULT_ACCOUNTS, 2026, 7)];
+  return [buildPayrollEntry(t, DEFAULT_ACCOUNTS, 2026, 7), ...buildSettlementEntries(t, DEFAULT_ACCOUNTS, 2026, 7)];
 }
 
 describe("buildEntriesCsvSage — CSV importable dans Sage / logiciels comptables", () => {

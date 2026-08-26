@@ -12,7 +12,7 @@ import {
   odooReadiness, odooErrorHint, IMPORT_ELEMENTS, importUpdateFields, type ImportElement,
 } from "@/lib/odoo";
 import type { SyncPlan } from "@/lib/odoo";
-import type { ContractType, Employee } from "@/data/types";
+import type { ContractType, Employee, PaymentMode } from "@/data/types";
 import type { CnssExemption } from "@/lib/payroll-engine";
 import { DEPARTURE_REASONS, type DepartureReason } from "@/lib/stc-engine";
 import {
@@ -665,6 +665,17 @@ function EmployeeDrawer({ emp, onClose, onSaved }: { emp: Employee; onClose: () 
           <Field label={t("emp.hoursMonth")} hint={t("emp.hoursMonth.hint")}><Input type="number" value={f.monthly_hours} onChange={(e) => applyHours(+e.target.value)} /></Field>
           <Field label={t("emp.dependents")}><Input type="number" min={0} max={6} value={f.dependents} onChange={(e) => set({ dependents: +e.target.value })} /></Field>
           <Field label={t("emp.rib")}><Input value={f.bank_rib ?? ""} onChange={(e) => set({ bank_rib: e.target.value })} /></Field>
+          <Field label="Mode de paiement du salaire" hint="Espèces → Caisse (5161) ; virement/chèque → Banque (5141) dans les écritures.">
+            <Select
+              value={f.payment_mode ?? ""}
+              onChange={(e) => set({ payment_mode: (e.target.value || undefined) as PaymentMode | undefined })}
+            >
+              <option value="">Par défaut (société)</option>
+              <option value="virement">Virement bancaire (5141)</option>
+              <option value="cheque">Chèque (5141)</option>
+              <option value="especes">Espèces — caisse (5161)</option>
+            </Select>
+          </Field>
           <Field label={t("emp.phone")}><Input value={f.phone ?? ""} onChange={(e) => set({ phone: e.target.value })} /></Field>
         </div>
 

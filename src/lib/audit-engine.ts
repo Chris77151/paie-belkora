@@ -17,7 +17,7 @@ import { round2, type PayrollResult } from "@/lib/payroll-engine";
 import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
 import { leaveBalance } from "@/lib/leave-balance";
 import {
-  buildPayrollEntry, buildSettlementEntry, sumResults, type JournalEntry,
+  buildPayrollEntry, buildSettlementEntries, sumResults, type JournalEntry,
 } from "@/lib/payroll-accounting";
 import { DEFAULT_ACCOUNTS } from "@/lib/accounting-accounts";
 import { getParams } from "@/lib/params";
@@ -173,7 +173,7 @@ export function buildAuditSnapshot(year: number, month: number): AuditSnapshot {
   const totals = sumResults(resultsFor(year, month));
   const entries = [
     buildPayrollEntry(totals, DEFAULT_ACCOUNTS, year, month),
-    buildSettlementEntry(totals, DEFAULT_ACCOUNTS, year, month),
+    ...buildSettlementEntries(totals, DEFAULT_ACCOUNTS, year, month),
   ];
   return { firm: { name: firm.name, regime: firm.regime }, period: `${year}-${String(month).padStart(2, "0")}`, totals, entries, headcount: totals.headcount };
 }
