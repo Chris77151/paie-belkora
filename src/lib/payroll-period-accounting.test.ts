@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computePayslip, type PayrollInput, type PayrollResult } from "./payroll-engine";
-import { periodSplit, buildPeriodEntries, resolvePaymentMode, type PeriodSlip } from "./payroll-period-accounting";
+import { periodSplit, buildPeriodEntries, buildReclassementEntry, resolvePaymentMode, type PeriodSlip } from "./payroll-period-accounting";
 import type { Employee, Firm, PayslipInput } from "@/data/types";
 
 const firm: Firm = { id: "f", name: "MBD", regime: "SMIG" };
@@ -57,5 +57,25 @@ describe("payroll-period-accounting — ventilation trésorerie par salarié", (
     expect(reglements).toHaveLength(1);
     expect(reglements[0].journal).toBe("BQ");
     expect(reglements[0].lines.some((l) => l.account === "5161")).toBe(false);
+  });
+
+  it("buildReclassementEntry : OD équilibrée qui déplace la TFP 61671→61678, null si identique", () => {
+    const employees = [emp("b1", "virement")];
+    const { paie, reglements } = buildPeriodEntries([slip("b1")], employees, firm, 2026, 7);
+    const nouveau = [paie, ...reglements];
+    // « Ancien » instantané = identique mais TFP encore en 61671 (avant correction).
+    const ancien = nouveau.map((e) => ({
+      ...e,
+      lines: e.lines.map((l) => (l.account === "61678" ? { ...l, account: "61671" } : l)),
+    }));
+    const od = buildReclassementEntry(ancien, nouveau, "2026-08-26", "RECL-2026-07")!;
+    expect(od).not.toBeNull();
+    expect(od.journal).toBe("OD");
+    expect(od.balanced).toBe(true);
+    const tfp = paie.lines.find((l) => l.account === "61678")!.debit; // montant TFP
+    expect(od.lines.find((l) => l.account === "61678")?.debit).toBe(tfp);  // reclasse vers 61678
+    expect(od.lines.find((l) => l.account === "61671")?.credit).toBe(tfp); // annule 61671
+    // Aucun écart → null.
+    expect(buildReclassementEntry(nouveau, nouveau, "2026-08-26", "R")).toBeNull();
   });
 });

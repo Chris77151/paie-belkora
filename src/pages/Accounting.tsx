@@ -6,7 +6,7 @@ import { useSession } from "@/lib/auth";
 import {
   checkPayrollEntryInvariants, type JournalEntry, type InvariantCheck,
 } from "@/lib/payroll-accounting";
-import { buildPeriodEntries, type PeriodSlip } from "@/lib/payroll-period-accounting";
+import { buildPeriodEntries, buildReclassementEntry, type PeriodSlip } from "@/lib/payroll-period-accounting";
 import type { Firm, PaymentMode } from "@/data/types";
 import { DEFAULT_ACCOUNTS } from "@/lib/accounting-accounts";
 import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml, exportEntriesCsvSage } from "@/lib/accounting-export";
@@ -106,8 +106,15 @@ export default function Accounting() {
     actions.revertAccounting(closureId);
   }
 
-  // L'instantané figé porte-t-il encore des comptes OBSOLÈTES (TFP en 61671) → proposer l'actualisation.
-  const closureNeedsRefresh = isValidated && !!closure!.entries.some((e) => e.lines.some((l) => l.account === "61671"));
+  // Écart entre l'instantané figé et les comptes CORRIGÉS (mêmes bulletins) → une OD de reclassement
+  // équilibrée transforme l'ancien en nouveau. `null` = déjà correct (rien à actualiser).
+  const ym = `${year}-${String(month).padStart(2, "0")}`;
+  const today = new Date().toISOString().slice(0, 10);
+  const payPeriod = s.periods.find((p) => p.firm_id === firm.id && p.year === year && p.month === month);
+  // Période déjà DÉCLARÉE (DGI/CNSS) ou PAYÉE → ne pas réécrire l'instantané : proposer l'OD de reclassement.
+  const periodDeclared = payPeriod?.status === "declared" || payPeriod?.status === "paid";
+  const correction = isValidated ? buildReclassementEntry(closure!.entries, [paie, ...reglements], today, `RECL-${ym}`) : null;
+  const needsCorrection = !!correction;
 
   /** Régénère l'instantané figé avec le plan de comptes courant (montants inchangés, traçabilité conservée). */
   function refresh() {
@@ -130,7 +137,9 @@ export default function Accounting() {
         {isValidated ? (
           <span className="inline-flex items-center gap-2">
             <Badge tone="success"><Lock size={13} /> Validée · verrouillée</Badge>
-            {closureNeedsRefresh && <Badge tone="warning"><AlertTriangle size={13} /> Comptes à actualiser</Badge>}
+            {needsCorrection && (
+              <Badge tone="warning"><AlertTriangle size={13} /> {periodDeclared ? "OD de reclassement à passer" : "Comptes à actualiser"}</Badge>
+            )}
           </span>
         ) : showEntries ? (
           <Badge tone={controlsOk ? "success" : "destructive"}>
@@ -172,9 +181,11 @@ export default function Accounting() {
           <div className="flex-1" />
           {isValidated ? (
             <>
-              <Button variant="sage" onClick={refresh} title="Régénère l'instantané figé avec les comptes corrigés — montants inchangés">
-                <Sparkles size={16} /> Actualiser les écritures
-              </Button>
+              {needsCorrection && !periodDeclared && (
+                <Button variant="sage" onClick={refresh} title="Régénère l'instantané figé avec les comptes corrigés — montants inchangés">
+                  <Sparkles size={16} /> Actualiser les écritures
+                </Button>
+              )}
               <Button variant="outline" onClick={revert}>
                 <Unlock size={16} /> Remettre en brouillon
               </Button>
@@ -257,12 +268,32 @@ export default function Accounting() {
           {entries.map((entry, i) => (
             <div key={i}>
               {i > 0 && <div className="h-4" />}
-              <EntryCard
-                title={`${entry.journal === "BQ" ? "Écriture de règlement" : "Écriture de paie"} — journal ${entry.journal}`}
-                entry={entry}
-              />
+              <EntryCard title={`${entryTitle(entry.journal)} — journal ${entry.journal}`} entry={entry} />
             </div>
           ))}
+
+          {correction && periodDeclared && (
+            <div className="mt-6">
+              <div className="mb-2 flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
+                <span className="text-muted-foreground">
+                  Période <b className="text-foreground">déjà déclarée / payée</b> : l'instantané figé n'est
+                  <b> pas</b> réécrit (intangibilité). Passez plutôt cette <b className="text-foreground">OD de
+                  reclassement</b> datée du <b>{dateFr(today)}</b> pour corriger les comptes (TFP 61678, avances 3431,
+                  ventilation Caisse/Banque) — les <b>montants globaux et le résultat sont inchangés</b>. Si un
+                  rapprochement bancaire a déjà été validé, contrôlez la ligne 5141/5161 avant de passer l'OD.
+                </span>
+              </div>
+              <EntryCard title={`OD de reclassement — journal OD (réf. ${correction.reference})`} entry={correction} />
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span className="text-sm text-muted-foreground mr-1">Exporter l'OD :</span>
+                <Button variant="outline" onClick={() => exportEntriesXml([correction], firm, `RECL-${ym}`)}><FileCode2 size={16} /> XML</Button>
+                <Button variant="outline" onClick={() => exportEntriesXlsx([correction], firm, `RECL-${ym}`)}><FileSpreadsheet size={16} /> Excel</Button>
+                <Button variant="sage" onClick={() => exportEntriesCsvSage([correction], firm, `RECL-${ym}`)}><Table2 size={16} /> Sage (CSV)</Button>
+                <Button variant="outline" onClick={() => exportEntriesPdf([correction], firm, `RECL-${ym}`)}><FileDown size={16} /> PDF</Button>
+              </div>
+            </div>
+          )}
 
           <p className="mt-6 text-xs text-muted-foreground">
             Comptes PCGE par défaut (6171, 617411/617412, 61744, 61678 TFP, 4432, 4441, 4457, 44525, 5141/5161,
@@ -319,6 +350,13 @@ function InvariantsPanel({ check }: { check: InvariantCheck }) {
       </Table>
     </Card>
   );
+}
+
+/** Intitulé lisible d'un article selon son journal (OD paie, BQ règlement banque, CA règlement caisse). */
+function entryTitle(journal: string): string {
+  if (journal === "CA") return "Règlement — caisse (espèces)";
+  if (journal === "BQ") return "Écriture de règlement";
+  return "Écriture de paie";
 }
 
 function EntryCard({ title, entry }: { title: string; entry: JournalEntry }) {
