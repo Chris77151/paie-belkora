@@ -127,10 +127,11 @@ export function buildPayrollEntry(
   const date = endOfMonthIso(year, month); // fin de mois (sans décalage de fuseau)
   const ref = `PAIE-${year}-${String(month).padStart(2, "0")}`;
   const L = ACCOUNT_LABELS;
-  // 4441 = CNSS + AMO + AF (sal. + patr.). Par défaut la TFP en est EXCLUE (isolée en 4457, État) ;
-  // elle n'y est ajoutée que si tfpInCnss = true (présentation « recouvrement CNSS/OFPPT »).
-  const organismesBase = totals.cnssSalarie + totals.amoSalarie + totals.cnssPatronal + totals.amoPatronal + totals.af;
-  const cnssTotal = round2(organismesBase + (tfpInCnss ? totals.tfp : 0));
+  // Crédit des organismes sociaux DÉCOMPOSÉ, comme le Guide des écritures : une ligne 4441 par nature
+  // (CNSS, AMO, AF), chacune part patronale + salariale — jamais un montant 4441 « en vrac ». La TFP
+  // reste isolée en 4457 (État) par défaut ; `tfpInCnss` = true l'ajoute sur le bordereau CNSS (4441).
+  const cnss = round2(totals.cnssSalarie + totals.cnssPatronal);
+  const amo = round2(totals.amoSalarie + totals.amoPatronal);
   return finalize({
     journal: "OD",
     date,
@@ -143,7 +144,10 @@ export function buildPayrollEntry(
       D(accounts.allocationsFamiliales, L.allocationsFamiliales, totals.af),
       D(accounts.tfp, L.tfp, totals.tfp), // charge 61678 (toujours)
       C(accounts.remunerationsDues, L.remunerationsDues, totals.netAPayer),
-      C(accounts.cnssOrganisme, L.cnssOrganisme, cnssTotal),
+      C(accounts.cnssOrganisme, "CNSS - part patronale et salariale", cnss),
+      C(accounts.cnssOrganisme, "AMO - part patronale et salariale", amo),
+      C(accounts.cnssOrganisme, L.allocationsFamiliales, totals.af), // prestations familiales (patronal)
+      ...(tfpInCnss ? [C(accounts.cnssOrganisme, `${L.tfp} (bordereau OFPPT)`, totals.tfp)] : []),
       C(accounts.etatTfp, L.etatTfp, tfpInCnss ? 0 : totals.tfp), // 4457 seulement si TFP isolée (ligne à 0 éliminée)
       C(accounts.etatIr, L.etatIr, totals.ir),
     ],

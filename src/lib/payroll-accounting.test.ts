@@ -29,9 +29,13 @@ describe("Écriture de paie (journal OD)", () => {
     const l = entry.lines.find((x) => x.account === "4432");
     expect(l?.credit).toBe(4135.52);
   });
-  it("crédit 4441 = CNSS+AMO+AF 898,96 (TFP EXCLUE — isolée en 4457 par défaut)", () => {
-    const l = entry.lines.find((x) => x.account === "4441");
-    expect(l?.credit).toBe(898.96);
+  it("crédit 4441 DÉCOMPOSÉ (lignes CNSS / AMO / AF), total 898,96 (TFP EXCLUE — isolée en 4457)", () => {
+    const lines4441 = entry.lines.filter((x) => x.account === "4441");
+    expect(lines4441.length).toBeGreaterThanOrEqual(2); // au moins CNSS + AMO en lignes séparées
+    expect(lines4441.some((l) => /CNSS/.test(l.label))).toBe(true);
+    expect(lines4441.some((l) => /AMO/.test(l.label))).toBe(true);
+    const total = round2Local(lines4441.reduce((s, l) => s + l.credit, 0));
+    expect(total).toBe(898.96); // somme des lignes 4441
   });
   it("crédit 4457 = TFP 54,84 par défaut (compte d'État distinct, conforme au référentiel)", () => {
     expect(entry.lines.find((x) => x.account === "4457")?.credit).toBe(54.84);
@@ -49,8 +53,9 @@ describe("Écriture de paie — TFP sur bordereau CNSS (option tfpInCnss=true)",
     expect(entry.balanced).toBe(true);
     expect(entry.totalDebit).toBe(5089.32);
   });
-  it("crédit 4441 = 953,80 (TFP incluse) et aucune ligne 4457", () => {
-    expect(entry.lines.find((x) => x.account === "4441")?.credit).toBe(953.8); // 898,96 + 54,84
+  it("crédit 4441 (lignes CNSS/AMO/AF/TFP) total 953,80 (TFP incluse) et aucune ligne 4457", () => {
+    const total = round2Local(entry.lines.filter((x) => x.account === "4441").reduce((s, l) => s + l.credit, 0));
+    expect(total).toBe(953.8); // 898,96 + 54,84 (TFP)
     expect(entry.lines.find((x) => x.account === "4457")).toBeUndefined();
   });
 });
