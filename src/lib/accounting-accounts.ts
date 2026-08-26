@@ -57,17 +57,18 @@ export const DEFAULT_ACCOUNTS: PayrollAccounts = {
   avancesPersonnel: "3431",
 };
 
+// Libellés EXACTS du « Guide des écritures comptables » marocain (PCGE / CGNC) fourni par Belkora.
 export const ACCOUNT_LABELS: Record<keyof PayrollAccounts, string> = {
-  remunerations: "Rémunérations du personnel",
-  cnssPatronal: "Cotisations CNSS (part patronale)",
-  amoPatronal: "Cotisations AMO (part patronale)",
-  allocationsFamiliales: "Prestations familiales (AF)",
-  tfp: "Taxe de formation professionnelle",
+  remunerations: "Appointements et salaires",
+  cnssPatronal: "CNSS part patronale",
+  amoPatronal: "AMO part patronale",
+  allocationsFamiliales: "Prestations familiales (allocations familiales)",
+  tfp: "Autres impôts, taxes et droits assimilés (TFP)",
   remunerationsDues: "Rémunérations dues au personnel",
-  cnssOrganisme: "CNSS (organisme social)",
-  etatTfp: "État - TFP à payer",
-  etatIr: "État - IR retenu à la source",
-  banque: "Banque",
-  caisse: "Caisse",
+  cnssOrganisme: "Caisses de sécurité sociale (CNSS)",
+  etatTfp: "État - impôts et taxes à payer",
+  etatIr: "État - IR (IGR) retenu à la source",
+  banque: "Banques (soldes débiteurs)",
+  caisse: "Caisses",
   avancesPersonnel: "Personnel - avances et acomptes",
 };

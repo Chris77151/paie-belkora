@@ -67,6 +67,22 @@ export function buildPeriodEntries(
 
 const round2b = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+/**
+ * Les écritures diffèrent-elles (compte, LIBELLÉ ou montant) ? Sert à détecter qu'un instantané figé
+ * n'est plus conforme au moteur/plan de comptes courant — y compris pour une simple correction de
+ * LIBELLÉ (que le delta comptable ne verrait pas). Comparaison multi-ensemble, insensible à l'ordre.
+ */
+export function entriesDiffer(a: JournalEntry[], b: JournalEntry[]): boolean {
+  const norm = (entries: JournalEntry[]) =>
+    entries
+      .flatMap((e) => e.lines.map((l) => `${e.journal}|${l.account}|${l.label}|${l.debit.toFixed(2)}|${l.credit.toFixed(2)}`))
+      .sort();
+  const na = norm(a), nb = norm(b);
+  if (na.length !== nb.length) return true;
+  for (let i = 0; i < na.length; i++) if (na[i] !== nb[i]) return true;
+  return false;
+}
+
 /** Solde net (débit − crédit) par compte sur un jeu d'écritures. */
 function netByAccount(entries: JournalEntry[]): Map<string, { label: string; net: number }> {
   const m = new Map<string, { label: string; net: number }>();

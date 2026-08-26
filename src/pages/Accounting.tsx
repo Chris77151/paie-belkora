@@ -6,7 +6,7 @@ import { useSession } from "@/lib/auth";
 import {
   checkPayrollEntryInvariants, type JournalEntry, type InvariantCheck,
 } from "@/lib/payroll-accounting";
-import { buildPeriodEntries, buildReclassementEntry, type PeriodSlip } from "@/lib/payroll-period-accounting";
+import { buildPeriodEntries, buildReclassementEntry, entriesDiffer, type PeriodSlip } from "@/lib/payroll-period-accounting";
 import type { Firm, PaymentMode } from "@/data/types";
 import { DEFAULT_ACCOUNTS } from "@/lib/accounting-accounts";
 import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml, exportEntriesCsvSage } from "@/lib/accounting-export";
@@ -113,8 +113,16 @@ export default function Accounting() {
   const payPeriod = s.periods.find((p) => p.firm_id === firm.id && p.year === year && p.month === month);
   // Période déjà DÉCLARÉE (DGI/CNSS) ou PAYÉE → ne pas réécrire l'instantané : proposer l'OD de reclassement.
   const periodDeclared = payPeriod?.status === "declared" || payPeriod?.status === "paid";
-  const correction = isValidated ? buildReclassementEntry(closure!.entries, [paie, ...reglements], today, `RECL-${ym}`) : null;
-  const needsCorrection = !!correction;
+  const newEntries = [paie, ...reglements];
+  // Correction requise si l'instantané figé diffère (compte, LIBELLÉ ou montant) des écritures courantes.
+  const needsCorrection = isValidated && entriesDiffer(closure!.entries, newEntries);
+  // OD de reclassement = uniquement s'il y a un vrai MOUVEMENT de comptes (delta ≠ 0). Une correction
+  // qui ne change que les LIBELLÉS ne se reclasse pas : elle se corrige par régénération en place.
+  const accountDelta = isValidated ? buildReclassementEntry(closure!.entries, newEntries, today, `RECL-${ym}`) : null;
+  // En place (réécriture) : périodes NON déclarées, OU déclarées mais sans mouvement de comptes (libellés seuls).
+  const canRefreshInPlace = needsCorrection && (!periodDeclared || !accountDelta);
+  // OD de reclassement : période déjà déclarée/payée AVEC mouvement réel de comptes.
+  const showReclass = !!accountDelta && periodDeclared;
 
   /** Régénère l'instantané figé avec le plan de comptes courant (montants inchangés, traçabilité conservée). */
   function refresh() {
@@ -138,7 +146,7 @@ export default function Accounting() {
           <span className="inline-flex items-center gap-2">
             <Badge tone="success"><Lock size={13} /> Validée · verrouillée</Badge>
             {needsCorrection && (
-              <Badge tone="warning"><AlertTriangle size={13} /> {periodDeclared ? "OD de reclassement à passer" : "Comptes à actualiser"}</Badge>
+              <Badge tone="warning"><AlertTriangle size={13} /> {showReclass ? "OD de reclassement à passer" : "Libellés/comptes à actualiser"}</Badge>
             )}
           </span>
         ) : showEntries ? (
@@ -181,8 +189,8 @@ export default function Accounting() {
           <div className="flex-1" />
           {isValidated ? (
             <>
-              {needsCorrection && !periodDeclared && (
-                <Button variant="sage" onClick={refresh} title="Régénère l'instantané figé avec les comptes corrigés — montants inchangés">
+              {canRefreshInPlace && (
+                <Button variant="sage" onClick={refresh} title="Régénère l'instantané figé avec les libellés et comptes corrigés — montants inchangés">
                   <Sparkles size={16} /> Actualiser les écritures
                 </Button>
               )}
@@ -272,7 +280,7 @@ export default function Accounting() {
             </div>
           ))}
 
-          {correction && periodDeclared && (
+          {showReclass && accountDelta && (
             <div className="mt-6">
               <div className="mb-2 flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
@@ -284,13 +292,13 @@ export default function Accounting() {
                   rapprochement bancaire a déjà été validé, contrôlez la ligne 5141/5161 avant de passer l'OD.
                 </span>
               </div>
-              <EntryCard title={`OD de reclassement — journal OD (réf. ${correction.reference})`} entry={correction} />
+              <EntryCard title={`OD de reclassement — journal OD (réf. ${accountDelta.reference})`} entry={accountDelta} />
               <div className="mt-2 flex flex-wrap gap-2">
                 <span className="text-sm text-muted-foreground mr-1">Exporter l'OD :</span>
-                <Button variant="outline" onClick={() => exportEntriesXml([correction], firm, `RECL-${ym}`)}><FileCode2 size={16} /> XML</Button>
-                <Button variant="outline" onClick={() => exportEntriesXlsx([correction], firm, `RECL-${ym}`)}><FileSpreadsheet size={16} /> Excel</Button>
-                <Button variant="sage" onClick={() => exportEntriesCsvSage([correction], firm, `RECL-${ym}`)}><Table2 size={16} /> Sage (CSV)</Button>
-                <Button variant="outline" onClick={() => exportEntriesPdf([correction], firm, `RECL-${ym}`)}><FileDown size={16} /> PDF</Button>
+                <Button variant="outline" onClick={() => exportEntriesXml([accountDelta], firm, `RECL-${ym}`)}><FileCode2 size={16} /> XML</Button>
+                <Button variant="outline" onClick={() => exportEntriesXlsx([accountDelta], firm, `RECL-${ym}`)}><FileSpreadsheet size={16} /> Excel</Button>
+                <Button variant="sage" onClick={() => exportEntriesCsvSage([accountDelta], firm, `RECL-${ym}`)}><Table2 size={16} /> Sage (CSV)</Button>
+                <Button variant="outline" onClick={() => exportEntriesPdf([accountDelta], firm, `RECL-${ym}`)}><FileDown size={16} /> PDF</Button>
               </div>
             </div>
           )}
