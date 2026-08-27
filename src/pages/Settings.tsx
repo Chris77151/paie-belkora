@@ -38,6 +38,7 @@ import { paletteForFirm, dominantColorFromImage, DEFAULT_PALETTE } from "@/lib/b
 import { getParams, AVAILABLE_YEARS } from "@/lib/params";
 import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
 import { hashPin, isValidPin } from "@/lib/pin";
+import { MIYA_RH_LATEX_TEMPLATE } from "@/data/seed";
 import type { AppRole, Employee, Firm, Regime } from "@/data/types";
 
 const ROLES: { role: AppRole; label: string; desc: string; tone: Parameters<typeof Badge>[0]["tone"] }[] = [
@@ -77,6 +78,15 @@ export default function Settings() {
   function saveFirm() {
     actions.upsertFirm(draft);
   }
+
+  // Template LaTeX RH — sauvegarde avec retour visuel explicite (le bouton « Enregistrer » ne
+  // donnait aucune confirmation, d'où l'impression qu'il ne « fonctionnait pas »).
+  const [latexSaved, setLatexSaved] = useState(false);
+  function saveRhTemplate() {
+    actions.upsertFirm(draft);
+    setLatexSaved(true);
+  }
+  const isMiyaFirm = /miya\s+belkora/i.test(draft.name ?? "");
 
   // Code de validation (paie & écritures comptables) — stocké HASHÉ sur la société.
   const [pin1, setPin1] = useState("");
@@ -555,14 +565,42 @@ export default function Settings() {
             className="w-full h-40 rounded-md border border-input bg-background p-3 text-sm font-mono"
             value={draft.rh_template_latex ?? ""}
             placeholder={TEMPLATE_PLACEHOLDER}
-            onChange={(e) => patch("rh_template_latex", e.target.value)}
+            onChange={(e) => { patch("rh_template_latex", e.target.value); setLatexSaved(false); }}
           />
-          <div className="mt-4">
-            <Button onClick={saveFirm}>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button onClick={saveRhTemplate}>
               <Save size={16} />
               Enregistrer
             </Button>
+            {isMiyaFirm && (
+              <Button
+                variant="outline"
+                onClick={() => { patch("rh_template_latex", MIYA_RH_LATEX_TEMPLATE); setLatexSaved(false); }}
+              >
+                <RotateCcw size={16} />
+                Charger le modèle Miya (mbd-style)
+              </Button>
+            )}
+            {draft.rh_template_latex && (
+              <Button
+                variant="ghost"
+                onClick={() => { patch("rh_template_latex", ""); setLatexSaved(false); }}
+              >
+                <Trash2 size={16} />
+                Vider (gabarit par défaut)
+              </Button>
+            )}
+            {latexSaved && (
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-success">
+                <Check size={16} /> Modèle enregistré
+              </span>
+            )}
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Ce template pilote l'export <span className="font-medium">LaTeX (.tex)</span> des documents RH
+            (bouton « LaTeX » de chaque volet Documents). Il est <span className="font-medium">sans aucun impact</span> sur le
+            bulletin de paie. Champ vide = gabarit LaTeX par défaut aux couleurs de la société.
+          </p>
         </CardContent>
       </Card>
 
