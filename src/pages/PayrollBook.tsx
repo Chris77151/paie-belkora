@@ -6,7 +6,7 @@ import {
   Card, CardHeader, CardTitle, CardContent, Button, Field, Select,
   Table, Th, Td, PageHeader, Kpi,
 } from "@/components/ui/kit";
-import { mad, num, dateFr, MONTHS_FR } from "@/lib/format";
+import { mad, num, pct, dateFr, MONTHS_FR } from "@/lib/format";
 import { buildPayrollBook, payrollBookYears } from "@/lib/payroll-book";
 import { exportPayrollBookPdf, exportPayrollBookXlsx } from "@/lib/payroll-book-export";
 import { YearSelect } from "@/components/YearSelect";
@@ -73,25 +73,29 @@ export default function PayrollBook() {
                 {/* En-têtes groupés calqués sur le registre officiel (2 pages) : identité, période
                     payée (H/J + Total), rémunération, pont brut→imposable (à déduire / à ajouter),
                     retenues (CNSS/AMO/IR + Total), net. */}
+                {/* 33 colonnes officielles (identiques au PDF et à l'Excel), en-têtes groupés. */}
                 <thead>
                   <tr>
-                    <Th rowSpan={2} className="text-right align-bottom">N° Bull.</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">N° ordre</Th>
+                    <Th rowSpan={2} className="align-bottom">N° bulletin</Th>
                     <Th rowSpan={2} className="align-bottom">Période</Th>
                     <Th rowSpan={2} className="align-bottom">{t("doc.employee")}</Th>
                     <Th rowSpan={2} className="align-bottom">Emploi</Th>
                     <Th rowSpan={2} className="align-bottom">Naissance</Th>
                     <Th rowSpan={2} className="align-bottom">Entrée en service</Th>
                     <Th rowSpan={2} className="align-bottom">N° C.N.S.S.</Th>
+                    <Th rowSpan={2} className="align-bottom">Sit. fam.</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Nb déd.</Th>
                     <Th colSpan={6} className="text-center">Période payée (Heures / Jours)</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Salaire de base</Th>
-                    <Th rowSpan={2} className="text-right align-bottom">Ancien.</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Ancienneté</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Taux anc.</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Primes / Ind.</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Salaire brut</Th>
                     <Th rowSpan={2} className="text-right align-bottom">À déduire (non imp.)</Th>
                     <Th rowSpan={2} className="text-right align-bottom">À ajouter</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Salaire imposable</Th>
-                    <Th rowSpan={2} className="text-right align-bottom">Frais prof.</Th>
+                    <Th colSpan={2} className="text-center">Frais professionnels</Th>
                     <Th colSpan={4} className="text-center">À déduire (retenues)</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Salaire net à payer</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Avances</Th>
@@ -104,6 +108,8 @@ export default function PayrollBook() {
                     <Th className="text-right">H.S. 100</Th>
                     <Th className="text-right">Jours</Th>
                     <Th className="text-right">Total</Th>
+                    <Th className="text-right">Montant</Th>
+                    <Th className="text-right">Taux</Th>
                     <Th className="text-right">C.N.S.S</Th>
                     <Th className="text-right">AMO</Th>
                     <Th className="text-right">I.R.</Th>
@@ -114,12 +120,14 @@ export default function PayrollBook() {
                   {rows.map((r) => (
                     <tr key={`${r.year}-${r.month}-${r.order}`}>
                       <Td className="text-right num">{r.order}</Td>
+                      <Td>{r.bulletin || "—"}</Td>
                       <Td className="whitespace-nowrap">{r.period}</Td>
                       <Td className="whitespace-nowrap">{r.name}</Td>
                       <Td>{r.emploi || "—"}</Td>
                       <Td className="whitespace-nowrap">{r.birthDate ? dateFr(r.birthDate) : "—"}</Td>
                       <Td className="whitespace-nowrap">{r.hireDate ? dateFr(r.hireDate) : "—"}</Td>
                       <Td>{r.cnss || "—"}</Td>
+                      <Td>{r.maritalStatus || "—"}</Td>
                       <Td className="text-right num">{r.dependents}</Td>
                       <Td className="text-right num">{r.hoursNormal || "—"}</Td>
                       <Td className="text-right num">{r.hoursOt25 || "—"}</Td>
@@ -129,12 +137,14 @@ export default function PayrollBook() {
                       <Td className="text-right num">{r.totalHours || "—"}</Td>
                       <Td className="text-right num">{num(r.salaireBase)}</Td>
                       <Td className="text-right num">{r.primeAnciennete ? num(r.primeAnciennete) : "—"}</Td>
+                      <Td className="text-right num">{r.primeAnciennete ? pct(r.seniorityRate) : "—"}</Td>
                       <Td className="text-right num">{r.primesIndemnites ? num(r.primesIndemnites) : "—"}</Td>
                       <Td className="text-right num">{num(r.salaireBrut)}</Td>
                       <Td className="text-right num">{r.imposableADeduire ? num(r.imposableADeduire) : "—"}</Td>
                       <Td className="text-right num">{r.imposableAAjouter ? num(r.imposableAAjouter) : "—"}</Td>
                       <Td className="text-right num">{num(r.sbi)}</Td>
                       <Td className="text-right num">{r.fraisPro ? num(r.fraisPro) : "—"}</Td>
+                      <Td className="text-right num">{r.fraisPro ? pct(r.fraisProRate) : "—"}</Td>
                       <Td className="text-right num">{num(r.cnssSalarie)}</Td>
                       <Td className="text-right num">{num(r.amoSalarie)}</Td>
                       <Td className="text-right num">{num(r.ir)}</Td>
@@ -147,18 +157,20 @@ export default function PayrollBook() {
                 </tbody>
                 <tfoot>
                   <tr className="font-semibold">
-                    <Td colSpan={8} className="text-right">{t("lp.total")} ({totals.count})</Td>
+                    <Td colSpan={10} className="text-right">{t("lp.total")} ({totals.count})</Td>
                     <Td /><Td /><Td /><Td />
                     <Td className="text-right num">{num(totals.daysWorked)}</Td>
                     <Td className="text-right num">{num(totals.totalHours)}</Td>
                     <Td className="text-right num">{num(totals.salaireBase)}</Td>
                     <Td className="text-right num">{num(totals.primeAnciennete)}</Td>
+                    <Td />
                     <Td className="text-right num">{num(totals.primesIndemnites)}</Td>
                     <Td className="text-right num">{num(totals.salaireBrut)}</Td>
                     <Td className="text-right num">{num(totals.imposableADeduire)}</Td>
                     <Td className="text-right num">{num(totals.imposableAAjouter)}</Td>
                     <Td className="text-right num">{num(totals.sbi)}</Td>
                     <Td className="text-right num">{num(totals.fraisPro)}</Td>
+                    <Td />
                     <Td className="text-right num">{num(totals.cnssSalarie)}</Td>
                     <Td className="text-right num">{num(totals.amoSalarie)}</Td>
                     <Td className="text-right num">{num(totals.ir)}</Td>
