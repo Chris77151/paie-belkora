@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Employee, Firm } from "@/data/types";
-import { PH, val, valDate, legalFileName, employerParagraph, renderLegalHtml, renderLegalPdf, sanitizeLegalText, sanitizeLegalDoc, type LegalBlock, type LegalDoc } from "./rh-legal";
+import { PH, val, valDate, legalFileName, employerParagraph, renderLegalHtml, renderLegalPdf, sanitizeLegalText, sanitizeLegalDoc, buildRhDocLatex, type LegalBlock, type LegalDoc } from "./rh-legal";
 import {
   buildContractDoc,
   contractMissingFields,
@@ -480,6 +480,33 @@ describe("Kit disciplinaire — sanctions graduées", () => {
     const m = disciplineMissingFields(disc({ type: "decision-licenciement", employee: emp({ cin: undefined }) }));
     expect(m).toContain("N° CIN");
     expect(m).toContain("Date d'effet du licenciement");
+  });
+});
+
+describe("buildRhDocLatex — export LaTeX des documents RH (indépendant du bulletin)", () => {
+  const doc: LegalDoc = {
+    fileTitle: "Attestation",
+    heading: "ATTESTATION DE TRAVAIL",
+    blocks: [{ k: "p", t: "Nous attestons que **M. Yassine** est employé." }],
+    faitA: "Fait à Marrakech, le 01/01/2026.",
+    signatures: [{ title: "Miya BELKORA", lines: ["Gérante"], caption: "(Signature et cachet)" }],
+  };
+
+  it("gabarit par défaut : document LaTeX complet, titre + société, sans astérisque markdown", () => {
+    const tex = buildRhDocLatex(firm, doc, emp(), undefined);
+    expect(tex).toContain("\\documentclass");
+    expect(tex).toContain("\\begin{document}");
+    expect(tex).toContain("ATTESTATION DE TRAVAIL");
+    expect(tex).toContain("MIYA BELKORA DESIGN SARL");
+    expect(tex).toContain("\\textbf{M. Yassine}"); // **gras** rendu, pas d'astérisques
+    expect(tex).not.toContain("**");
+  });
+
+  it("template société : substitution des tokens (firm, employee, doc, signataire)", () => {
+    const template = "\\doc{{{doc.title}}} par {{firm.name}} pour {{employee.last_name}} — {{signatory.role}}";
+    const tex = buildRhDocLatex(firm, doc, emp(), template);
+    expect(tex).toBe("\\doc{ATTESTATION DE TRAVAIL} par Miya Belkora Design SARL pour El Amrani — Gérante");
+    expect(tex).not.toContain("{{"); // tous les tokens remplacés
   });
 });
 

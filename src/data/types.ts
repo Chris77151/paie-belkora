@@ -40,7 +40,11 @@ export interface Firm {
   logo_path?: string;
   /** Couleur de marque (hex, ex. « #8CB45A ») — spectre des bulletins. Vide = vert tilleul Miya (logo) par défaut. */
   brand_color?: string;
+  /** Template LaTeX du BULLETIN (conservé pour compatibilité ; plus édité depuis Paramètres). */
   payslip_template_latex?: string;
+  /** Template LaTeX des DOCUMENTS RH (attestations, contrats…). Éditable dans Paramètres. Vide =
+   *  gabarit LaTeX par défaut généré à partir du document. N'a AUCUN impact sur le bulletin. */
+  rh_template_latex?: string;
   address?: string;
   city?: string;
   /** Signataire par défaut des documents RH (attestations, certificats). Éditable avant émission. */

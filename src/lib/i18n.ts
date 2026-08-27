@@ -455,7 +455,7 @@ export const DICT = {
   // Page Paramètres — titres de section
   "set.firm.title": { fr: "Société active", ar: "الشركة النشطة" },
   "set.regul.title": { fr: "Paramètres réglementaires (année en cours)", ar: "المعايير التنظيمية (السنة الجارية)" },
-  "set.latex.title": { fr: "Template LaTeX du bulletin", ar: "قالب LaTeX لكشف الأجر" },
+  "set.latex.title": { fr: "Template LaTeX Document RH", ar: "قالب LaTeX لوثائق الموارد البشرية" },
   "set.roles.title": { fr: "Rôles & permissions (référentiel)", ar: "الأدوار والصلاحيات (مرجع)" },
   "set.danger.title": { fr: "Zone sensible", ar: "منطقة حساسة" },
   "set.users.title": { fr: "Utilisateurs & accès", ar: "المستخدمون والولوج" },

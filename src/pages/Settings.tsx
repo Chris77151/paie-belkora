@@ -47,11 +47,12 @@ const ROLES: { role: AppRole; label: string; desc: string; tone: Parameters<type
   { role: "lecture_seule", label: "Lecture seule", desc: "Consultation des données sans modification.", tone: "muted" },
 ];
 
-const TEMPLATE_PLACEHOLDER = `Tokens disponibles :
-{{firm.name}}  {{firm.ice}}  {{firm.cnss_affiliation}}
-{{employee.first_name}}  {{employee.last_name}}  {{employee.matricule}}  {{employee.cnss_number}}
-{{period.label}}
-{{result.brut}}  {{result.net}}  {{result.net_lettres}}  {{result.cnss_salarie}}  {{result.ir}}`;
+const TEMPLATE_PLACEHOLDER = `Template LaTeX des documents RH (attestations, contrats…). Vide = gabarit par défaut. N'affecte PAS le bulletin de paie.
+Tokens disponibles :
+{{firm.name}}  {{firm.ice}}  {{firm.if_fiscal}}  {{firm.rc}}  {{firm.cnss_affiliation}}  {{firm.address}}  {{firm.city}}
+{{employee.first_name}}  {{employee.last_name}}  {{employee.cin}}  {{employee.cnss_number}}  {{employee.position}}  {{employee.hire_date}}
+{{doc.title}}  {{doc.body}}  {{doc.faitA}}
+{{signatory.name}}  {{signatory.role}}  {{date}}`;
 
 export default function Settings() {
   const s = useStore();
@@ -552,9 +553,9 @@ export default function Settings() {
         <CardContent>
           <textarea
             className="w-full h-40 rounded-md border border-input bg-background p-3 text-sm font-mono"
-            value={draft.payslip_template_latex ?? ""}
+            value={draft.rh_template_latex ?? ""}
             placeholder={TEMPLATE_PLACEHOLDER}
-            onChange={(e) => patch("payslip_template_latex", e.target.value)}
+            onChange={(e) => patch("rh_template_latex", e.target.value)}
           />
           <div className="mt-4">
             <Button onClick={saveFirm}>

@@ -41,11 +41,13 @@ import {
   missingFields,
   exportRhDocPdf,
   openRhDocHtml,
+  buildRhDoc,
   DOC_TITLE,
   type RhDocType,
   type Civility,
   type RhDocView,
 } from "@/lib/rh-documents";
+import { downloadRhDocLatex } from "@/lib/rh-legal";
 import {
   CONTRACT_MODELS,
   CONTRACT_PROJECTS,
@@ -529,6 +531,9 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
             <Button className="flex-1" onClick={() => { trackRhDoc(firm, "attestation", "pdf", employee); exportRhDocPdf(view); }}>
               <FileDown size={16} /> {t("btn.pdf")}
             </Button>
+            <Button variant="outline" className="flex-1" title="Source LaTeX (.tex) — gabarit Document RH" onClick={() => { trackRhDoc(firm, "attestation", "latex", employee); downloadRhDocLatex(firm, buildRhDoc(view), employee, firm.rh_template_latex, `${DOC_TITLE[type]}_${employee.last_name}`); }}>
+              <FileText size={16} /> LaTeX
+            </Button>
             <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "attestation", "apercu", employee); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
@@ -855,6 +860,9 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
             <Button className="flex-1" onClick={() => { trackRhDoc(firm, "contrat", "pdf", employee); exportContractPdf(view); }}>
               <FileDown size={16} /> PDF (FR)
             </Button>
+            <Button variant="outline" className="flex-1" title="Source LaTeX (.tex) — gabarit Document RH" onClick={() => { trackRhDoc(firm, "contrat", "latex", employee); downloadRhDocLatex(firm, doc, employee, firm.rh_template_latex, `${doc.fileTitle}_${employee.last_name}`); }}>
+              <FileText size={16} /> LaTeX
+            </Button>
             <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "contrat", "apercu", employee); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
@@ -1104,6 +1112,9 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
             </Button>
             <Button className="flex-1" onClick={() => { trackRhDoc(firm, "disciplinaire", "pdf", employee); exportDisciplinePdf(view); }}>
               <FileDown size={16} /> PDF
+            </Button>
+            <Button variant="outline" className="flex-1" title="Source LaTeX (.tex) — gabarit Document RH" onClick={() => { trackRhDoc(firm, "disciplinaire", "latex", employee); downloadRhDocLatex(firm, doc, employee, firm.rh_template_latex, `${doc.fileTitle}_${employee.last_name}`); }}>
+              <FileText size={16} /> LaTeX
             </Button>
             <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "disciplinaire", "apercu", employee); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")}
@@ -1488,6 +1499,9 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
             <Button className="flex-1" onClick={() => { trackRhDoc(firm, "rupture", "pdf", employee); exportRupturePdf(view); }}>
               <FileDown size={16} /> PDF
             </Button>
+            <Button variant="outline" className="flex-1" title="Source LaTeX (.tex) — gabarit Document RH" onClick={() => { trackRhDoc(firm, "rupture", "latex", employee); downloadRhDocLatex(firm, doc, employee, firm.rh_template_latex, `${doc.fileTitle}_${employee.last_name}`); }}>
+              <FileText size={16} /> LaTeX
+            </Button>
             <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "rupture", "apercu", employee); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
@@ -1697,6 +1711,9 @@ function MineurPanel({ firm }: { firm: Firm }) {
             </Button>
             <Button className="flex-1" onClick={() => { trackRhDoc(firm, "mineurs", "pdf"); exportMineurPdf(view); }}>
               <FileDown size={16} /> PDF (FR)
+            </Button>
+            <Button variant="outline" className="flex-1" title="Source LaTeX (.tex) — gabarit Document RH" onClick={() => { trackRhDoc(firm, "mineurs", "latex"); downloadRhDocLatex(firm, doc, null, firm.rh_template_latex, doc.fileTitle); }}>
+              <FileText size={16} /> LaTeX
             </Button>
             <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "mineurs", "apercu"); exportPreview(); }}>
               <Camera size={16} /> {t("doc.exportPreview")} ({lang === "ar" ? "AR" : "FR"})

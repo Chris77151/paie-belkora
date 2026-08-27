@@ -636,3 +636,142 @@ export function legalFileName(title: string, name: string): string {
   const n = name.replace(/\s+/g, "_");
   return `${t}_${n}.pdf`;
 }
+
+/* ------------------------------------------------------------------ LaTeX (documents RH) ------------------------------------------------------------------ */
+/**
+ * Export LaTeX des DOCUMENTS RH (attestations, contrats, kits…). Indépendant du bulletin de paie :
+ * ce gabarit est piloté par `firm.rh_template_latex` (Paramètres → « Template LaTeX Document RH »).
+ * Sans template, un gabarit LaTeX par défaut est généré à partir du document, aux couleurs de la
+ * société. AUCUN impact sur le template LaTeX du bulletin (`firm.payslip_template_latex`).
+ */
+function escapeLatex(s: string): string {
+  return s
+    .replace(/\\/g, "\\textbackslash{}")
+    .replace(/([&%$#_{}])/g, "\\$1")
+    .replace(/~/g, "\\textasciitilde{}")
+    .replace(/\^/g, "\\textasciicircum{}")
+    .replace(/—/g, "--");
+}
+/** Texte balisé `**gras**` / `*italique*` → LaTeX (échappé). */
+function runsToLatex(s: string): string {
+  return parseRuns(s)
+    .map((r) => {
+      const t = escapeLatex(r.t);
+      return r.b ? `\\textbf{${t}}` : r.i ? `\\textit{${t}}` : t;
+    })
+    .join("");
+}
+/** Texte brut d'un texte balisé (astérisques retirées), pour substitution dans un template. */
+function plainRunText(s: string): string {
+  return parseRuns(s).map((r) => r.t).join("");
+}
+/** Corps du document en texte brut (paragraphe par paragraphe) — token `{{doc.body}}`. */
+function docBodyPlain(d: LegalDoc): string {
+  const out: string[] = [];
+  for (const b of d.blocks) {
+    if (b.k === "h" || b.k === "p" || b.k === "center") out.push(plainRunText(b.t));
+    else if (b.k === "ul") out.push(b.items.map((i) => `- ${plainRunText(i)}`).join("\n"));
+    else if (b.k === "check") out.push(b.items.map((i, idx) => `${b.checked?.[idx] ? "[X]" : "[ ]"} ${plainRunText(i)}`).join("\n"));
+    else if (b.k === "table") {
+      if (b.head) out.push(b.head.join(" | "));
+      b.rows.forEach((r) => out.push(r.join(" | ")));
+    }
+  }
+  return out.join("\n\n");
+}
+
+/** Construit le source LaTeX d'un document RH (avec ou sans template société). PURE. */
+export function buildRhDocLatex(firm: Firm, raw: LegalDoc, employee: Employee | null, template?: string): string {
+  const d = sanitizeLegalDoc(raw);
+  const sig = d.signatures?.[0];
+  const today = dateFr(new Date().toISOString());
+
+  // 1) Template société : simple substitution de tokens (le contenu LaTeX est fourni par l'utilisateur).
+  if (template && template.trim()) {
+    const map: Record<string, string> = {
+      "firm.name": firm.name,
+      "firm.ice": firm.ice ?? "",
+      "firm.if_fiscal": firm.if_fiscal ?? "",
+      "firm.rc": firm.rc ?? "",
+      "firm.cnss_affiliation": firm.cnss_affiliation ?? "",
+      "firm.address": firm.address ?? "",
+      "firm.city": firm.city ?? "",
+      "employee.first_name": employee?.first_name ?? "",
+      "employee.last_name": employee?.last_name ?? "",
+      "employee.cin": employee?.cin ?? "",
+      "employee.cnss_number": employee?.cnss_number ?? "",
+      "employee.position": employee?.position ?? "",
+      "employee.hire_date": employee?.hire_date ? dateFr(employee.hire_date) : "",
+      "doc.title": d.heading,
+      "doc.body": docBodyPlain(d),
+      "doc.faitA": d.faitA ?? "",
+      "signatory.name": sig?.title ?? "",
+      "signatory.role": sig?.lines?.[0] ?? "",
+      date: today,
+    };
+    return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k) => map[k] ?? `??${k}??`);
+  }
+
+  // 2) Gabarit LaTeX par défaut, aux couleurs de la société.
+  const pal = paletteForFirm(firm.brand_color);
+  const rgb = ([r, g, b]: RGB) => `${Math.round(r)},${Math.round(g)},${Math.round(b)}`;
+  const body = d.blocks
+    .map((b) => {
+      switch (b.k) {
+        case "h": return `\\vspace{6pt}\\noindent{\\bfseries\\color{deep} ${runsToLatex(b.t)}}\\par\\vspace{3pt}`;
+        case "p": return `\\noindent ${runsToLatex(b.t)}\\par\\vspace{5pt}`;
+        case "center": return `\\begin{center}${b.strong ? "\\bfseries " : ""}${runsToLatex(b.t)}\\end{center}`;
+        case "ul": return `\\begin{itemize}\\setlength{\\itemsep}{1pt}\n${b.items.map((i) => `\\item ${runsToLatex(i)}`).join("\n")}\n\\end{itemize}`;
+        case "check": return `\\begin{itemize}\\setlength{\\itemsep}{1pt}\n${b.items.map((i, idx) => `\\item[${b.checked?.[idx] ? "$\\boxtimes$" : "$\\square$"}] ${runsToLatex(i)}`).join("\n")}\n\\end{itemize}`;
+        case "sp": return `\\vspace{${Math.round((b.h ?? 8) / 2)}pt}`;
+        case "table": {
+          const cols = b.head?.length ?? b.rows[0]?.length ?? 1;
+          const spec = `|${"l|".repeat(cols)}`;
+          const head = b.head ? `\\rowcolor{olive}${b.head.map((h) => `\\textcolor{white}{\\textbf{${escapeLatex(h)}}}`).join(" & ")}\\\\\\hline\n` : "";
+          const rows = b.rows.map((r) => `${r.map(escapeLatex).join(" & ")}\\\\\\hline`).join("\n");
+          return `\\vspace{4pt}\\noindent\\begin{tabular}{${spec}}\\hline\n${head}${rows}\n\\end{tabular}\\vspace{4pt}`;
+        }
+        default: return "";
+      }
+    })
+    .join("\n");
+  const sigTex = sig
+    ? `\\vspace{20pt}\\noindent\\textbf{${escapeLatex(sig.title)}}\\\\ ${sig.lines.map(escapeLatex).join("\\\\ ")}${sig.caption ? `\\\\ \\textit{\\footnotesize ${escapeLatex(sig.caption)}}` : ""}`
+    : "";
+
+  return `\\documentclass[11pt,a4paper]{article}
+\\usepackage[utf8]{inputenc}
+\\usepackage[T1]{fontenc}
+\\usepackage[margin=2.2cm]{geometry}
+\\usepackage{xcolor,colortbl,array,amssymb}
+\\definecolor{deep}{RGB}{${rgb(pal.deep)}}
+\\definecolor{olive}{RGB}{${rgb(pal.olive)}}
+\\begin{document}\\pagestyle{empty}
+\\noindent{\\Large\\bfseries\\color{deep} ${escapeLatex(firm.name.toUpperCase())}}\\\\{\\small ICE : ${escapeLatex(firm.ice ?? "--")} \\quad IF : ${escapeLatex(firm.if_fiscal ?? "--")} \\quad RC : ${escapeLatex(firm.rc ?? "--")} \\quad CNSS : ${escapeLatex(firm.cnss_affiliation ?? "--")}}
+\\vspace{4pt}\\hrule\\vspace{14pt}
+\\begin{center}{\\Large\\bfseries\\color{deep} ${escapeLatex(d.heading.toUpperCase())}}\\end{center}
+\\vspace{10pt}
+${body}
+\\vspace{10pt}
+${d.faitA ? `\\begin{center}\\textbf{${escapeLatex(d.faitA)}}\\end{center}` : ""}
+${sigTex}
+\\end{document}
+`;
+}
+
+/** Télécharge le source LaTeX (.tex) d'un document RH. */
+export function downloadRhDocLatex(firm: Firm, doc: LegalDoc, employee: Employee | null, template?: string, fileBase?: string): void {
+  const tex = buildRhDocLatex(firm, doc, employee, template);
+  const blob = new Blob([tex], { type: "text/x-tex" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const base = (fileBase ?? doc.fileTitle ?? "document")
+    .normalize("NFD")
+    .replace(/[^\x00-\x7F]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  a.download = `${base || "document"}.tex`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
