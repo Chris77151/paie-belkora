@@ -18,8 +18,10 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
     <div
       dir={rtl ? "rtl" : "ltr"}
       style={{ color: pal.inkHex }}
-      /* Empattements hors arabe, comme le PDF : l'aperçu sert de source à l'export « Aperçu fidèle ». */
-      className={`mx-auto max-w-[720px] rounded-md border bg-white shadow-sm px-9 py-8 text-[12.5px] leading-[1.7] ${rtl ? "text-right [font-family:'Amiri','Arabic_Typesetting',Tahoma,Arial,sans-serif]" : "[font-family:'Libre_Baskerville','Times_New_Roman',Times,serif]"}`}
+      /* Empattements hors arabe, comme le PDF : l'aperçu sert de source à l'export « Aperçu fidèle ».
+         Feuille au format A4 (aspect 210/297) en COLONNE flex : le corps reste en haut, le bloc de
+         clôture (« Fait à … » + émargement + pied) est poussé EN BAS (mt-auto). */
+      className={`mx-auto flex aspect-[210/297] max-w-[720px] flex-col rounded-md border bg-white shadow-sm px-9 py-8 text-[12.5px] leading-[1.7] ${rtl ? "text-right [font-family:'Amiri','Arabic_Typesetting',Tahoma,Arial,sans-serif]" : "[font-family:'Libre_Baskerville','Times_New_Roman',Times,serif]"}`}
     >
       {/* En-tête — même composition que le PDF : logo carré à gauche, bloc d'identité CENTRÉ
           sur la largeur restante, filet de marque. */}
@@ -131,33 +133,37 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
         })}
       </div>
 
-      {c.faitA && <div className="mt-7 text-center font-bold text-[13px]">{c.faitA}</div>}
-      {c.legalNote && <div className="mt-1 text-center text-[11px] italic text-neutral-500">{c.legalNote}</div>}
+      {/* Bloc de clôture + pied poussés EN BAS de la feuille (mt-auto) : sur un acte court, la
+          signature ne « flotte » plus au milieu. Sur un acte long, le bloc suit le corps. */}
+      <div className="mt-auto">
+        {c.faitA && <div className="mt-7 text-center font-bold text-[13px]">{c.faitA}</div>}
+        {c.legalNote && <div className="mt-1 text-center text-[11px] italic text-neutral-500">{c.legalNote}</div>}
 
-      {c.signatures && c.signatures.length > 0 && (
-        <div className={`mt-8 flex gap-8 ${c.signatures.length >= 2 ? "" : "justify-start"}`}>
-          {c.signatures.map((col, i) => (
-            <div key={i} className={c.signatures!.length >= 2 ? "flex-1" : "w-3/5"}>
-              <div className="font-bold text-[12.5px]" style={{ color: pal.deepHex }}>{col.title}</div>
-              <div className="mt-1 mb-2 h-[2px] w-6" style={{ backgroundColor: pal.limeHex }} />
-              {col.lines.map((l, j) => (
-                <div key={j} className="text-[12px]">
-                  {l}
-                </div>
-              ))}
-              <div className="mt-11 border-t border-neutral-400 w-[90%]" />
-              {col.caption && <div className="mt-1 text-[10px] text-neutral-500">{col.caption}</div>}
-            </div>
-          ))}
+        {c.signatures && c.signatures.length > 0 && (
+          <div className={`mt-8 flex gap-8 ${c.signatures.length >= 2 ? "" : "justify-start"}`}>
+            {c.signatures.map((col, i) => (
+              <div key={i} className={c.signatures!.length >= 2 ? "flex-1" : "w-3/5"}>
+                <div className="font-bold text-[12.5px]" style={{ color: pal.deepHex }}>{col.title}</div>
+                <div className="mt-1 mb-2 h-[2px] w-6" style={{ backgroundColor: pal.limeHex }} />
+                {col.lines.map((l, j) => (
+                  <div key={j} className="text-[12px]">
+                    {l}
+                  </div>
+                ))}
+                <div className="mt-11 border-t border-neutral-400 w-[90%]" />
+                {col.caption && <div className="mt-1 text-[10px] text-neutral-500">{col.caption}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Pied — STRICTEMENT celui du PDF et du HTML (deux lignes d'identité, sans mention de
+            l'outil). L'aperçu sert de source à l'export « Aperçu fidèle » (capture WYSIWYG) :
+            toute divergence ici réapparaîtrait dans le document remis au tiers. */}
+        <div className="mt-8 border-t pt-2 text-center text-[9px] text-neutral-500" style={{ borderColor: pal.oliveHex }}>
+          <div>{firmIdentifiersLine(firm)}</div>
+          <div className="mt-0.5">{firmContactLine(firm)}</div>
         </div>
-      )}
-
-      {/* Pied — STRICTEMENT celui du PDF et du HTML (deux lignes d'identité, sans mention de
-          l'outil). L'aperçu sert de source à l'export « Aperçu fidèle » (capture WYSIWYG) :
-          toute divergence ici réapparaîtrait dans le document remis au tiers. */}
-      <div className="mt-8 border-t pt-2 text-center text-[9px] text-neutral-500" style={{ borderColor: pal.oliveHex }}>
-        <div>{firmIdentifiersLine(firm)}</div>
-        <div className="mt-0.5">{firmContactLine(firm)}</div>
       </div>
     </div>
   );

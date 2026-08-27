@@ -24,6 +24,7 @@ import { paletteForFirm, type PayslipPalette, type RGB } from "./brand-color";
 import {
   CW,
   FONT,
+  FOOT,
   FS,
   M,
   W,
@@ -418,25 +419,44 @@ export async function renderLegalPdf(firm: Firm, raw: LegalDoc): Promise<jsPDF> 
     }
   }
 
-  // Fait à … + note légale
-  if (d.faitA) {
-    ctx.y += 4;
-    ensure(ctx, 14);
-    doc.setFont(FONT, "bold").setFontSize(10.5).setTextColor(...INK);
-    doc.text(d.faitA, W / 2, ctx.y, { align: "center" });
-    ctx.y += 5;
-    if (d.legalNote) {
-      doc.setFont(FONT, "italic").setFontSize(8).setTextColor(...MUTED);
-      const nl = doc.splitTextToSize(d.legalNote, CW) as string[];
-      doc.text(nl, W / 2, ctx.y, { align: "center", lineHeightFactor: 1.25 });
-      ctx.y += nl.length * lineHeight(8) + 2;
+  // ---- Bloc de clôture (« Fait à … » + note légale + émargement) ANCRÉ EN BAS DE PAGE ----
+  // Sur un acte court, ce bloc ne doit pas « flotter » au milieu de la feuille : le corps reste en
+  // haut, la clôture se pose contre la réserve de pied. On mesure sa hauteur, on garantit qu'il
+  // tient sur la page (sinon page suivante), puis on descend le curseur pour l'aligner en bas —
+  // sans jamais REMONTER (`max`) si le corps occupe déjà le bas de la page.
+  if (d.faitA || d.signatures?.length) {
+    const SIG_BLOCK = 48; // hauteur du bloc d'émargement (cf. drawSignatures)
+    let noteLines: string[] = [];
+    let closingH = 0;
+    if (d.faitA) {
+      closingH += 4 + lineHeight(10.5) + 1;
+      if (d.legalNote) {
+        noteLines = doc.splitTextToSize(d.legalNote, CW) as string[];
+        closingH += noteLines.length * lineHeight(8) + 2;
+      }
     }
-  }
+    if (d.signatures?.length) closingH += 8 + SIG_BLOCK;
 
-  // Signatures / émargement — espace après le « Fait à » pour aérer le bas de l'acte.
-  if (d.signatures?.length) {
-    ctx.y += 8;
-    drawSignatures(ctx, d.signatures);
+    ensure(ctx, closingH); // bascule en page suivante si le bloc ne tient pas ici
+    ctx.y = Math.max(ctx.y, doc.internal.pageSize.getHeight() - FOOT - closingH);
+
+    if (d.faitA) {
+      ctx.y += 4;
+      doc.setFont(FONT, "bold").setFontSize(10.5).setTextColor(...INK);
+      doc.text(d.faitA, W / 2, ctx.y, { align: "center" });
+      ctx.y += lineHeight(10.5) + 1;
+      if (d.legalNote) {
+        doc.setFont(FONT, "italic").setFontSize(8).setTextColor(...MUTED);
+        doc.text(noteLines, W / 2, ctx.y, { align: "center", lineHeightFactor: 1.25 });
+        ctx.y += noteLines.length * lineHeight(8) + 2;
+      }
+    }
+
+    // Signatures / émargement — espace après le « Fait à » pour aérer le bas de l'acte.
+    if (d.signatures?.length) {
+      ctx.y += 8;
+      drawSignatures(ctx, d.signatures);
+    }
   }
 
   // Pieds de page (numérotation a posteriori) — total réel (autoTable a pu ajouter des pages)
@@ -529,7 +549,9 @@ export function renderLegalHtml(firm: Firm, raw: LegalDoc, lang: "fr" | "ar" = "
  /* Empattements, comme le PDF : l'aperçu imprimable doit être fidèle au document exporté. */
  *{box-sizing:border-box;font-family:"Libre Baskerville","Times New Roman",Times,serif}
  body{margin:0;padding:24px;background:#f4f5f2;color:var(--ink)}
- .sheet{max-width:820px;margin:auto;background:#fff;padding:40px 48px 64px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,.08);position:relative}
+ /* Feuille au format A4 (hauteur mini), en COLONNE flex : le corps reste en haut, le bloc de
+    clôture (« Fait à … » + émargement) est poussé EN BAS via .closing{margin-top:auto}. */
+ .sheet{max-width:820px;margin:auto;background:#fff;padding:40px 48px 64px;border-radius:8px;box-shadow:0 2px 20px rgba(0,0,0,.08);position:relative;display:flex;flex-direction:column;min-height:1160px}
  .top{display:flex;gap:18px;align-items:center;border-bottom:2.5px solid var(--olive);padding-bottom:14px}
  .top img{width:74px;height:74px;object-fit:contain;flex:0 0 auto}
  .firm{flex:1;text-align:center}
@@ -553,6 +575,9 @@ export function renderLegalHtml(firm: Firm, raw: LegalDoc, lang: "fr" | "ar" = "
  table.dt{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 14px}
  table.dt th{background:var(--vf);color:#fff;font-weight:700;padding:5px 7px;border:1px solid #cfd4c7;text-align:left}
  table.dt td{padding:4px 7px;border:1px solid #dfe3d8}
+ /* Bloc de clôture poussé en bas de la feuille (le corps occupe le haut). Sur un acte long il
+    suit naturellement le corps (plus d'espace libre à absorber). */
+ .closing{margin-top:auto}
  .faitA{text-align:center;font-weight:700;font-size:14px;margin:30px 0 4px}
  .note{text-align:center;font-style:italic;color:var(--muted);font-size:11px;margin-bottom:14px}
  /* Émargement : identité + libellé « (signature et cachet) » PUIS un espace de signature délimité
@@ -570,7 +595,7 @@ export function renderLegalHtml(firm: Firm, raw: LegalDoc, lang: "fr" | "ar" = "
  .foot{position:absolute;left:48px;right:48px;bottom:24px;border-top:1px solid var(--olive);padding-top:7px;color:var(--muted);font-size:10px;line-height:1.6;text-align:center}
  .noprint{max-width:820px;margin:0 auto 14px}
  button{background:var(--lime);color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer}
- @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;border-radius:0}.noprint{display:none}.foot{position:fixed}}${arCss}
+ @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;border-radius:0;min-height:100vh}.noprint{display:none}.foot{position:fixed}}${arCss}
 </style></head><body>
 <div class="noprint"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
 <div class="sheet">
@@ -590,9 +615,11 @@ export function renderLegalHtml(firm: Firm, raw: LegalDoc, lang: "fr" | "ar" = "
  <div class="accentbar"></div>
  <div class="divider"></div>
  ${parts.join("\n ")}
+ <div class="closing">
  ${c.faitA ? `<div class="faitA">${esc(c.faitA)}</div>` : ""}
  ${c.legalNote ? `<div class="note">${esc(c.legalNote)}</div>` : ""}
  ${sig}
+ </div>
  <div class="foot">${esc(firmIdentifiersLine(firm))}<br>${esc(firmContactLine(firm))}</div>
 </div></body></html>`;
 }

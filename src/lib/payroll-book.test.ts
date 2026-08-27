@@ -73,6 +73,20 @@ describe("payroll-book — livre de paie", () => {
     }
   });
 
+  it("pont brut→imposable (colonnes officielles) : imposable = brut − à déduire + à ajouter", () => {
+    const b = buildPayrollBook(state(), firm, 2026, 7);
+    for (const r of b.rows) {
+      // Identité du registre : le salaire imposable se déduit du brut par les deux colonnes.
+      expect(r.sbi).toBeCloseTo(r.salaireBrut - r.imposableADeduire + r.imposableAAjouter, 2);
+      // Un seul des deux ajustements est renseigné (jamais les deux à la fois).
+      expect(Math.min(r.imposableADeduire, r.imposableAAjouter)).toBe(0);
+    }
+    expect(b.totals.imposableADeduire).toBeCloseTo(
+      b.rows.reduce((a, r) => a + r.imposableADeduire, 0), 2);
+    expect(b.totals.imposableAAjouter).toBeCloseTo(
+      b.rows.reduce((a, r) => a + r.imposableAAjouter, 0), 2);
+  });
+
   it("les totaux somment les lignes (net, brut, retenues)", () => {
     const b = buildPayrollBook(state(), firm, 2026, 7);
     const sumNet = b.rows.reduce((a, r) => a + r.netAPayer, 0);

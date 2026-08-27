@@ -543,7 +543,9 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
             <CardTitle>{t("doc.preview")} — {DOC_TITLE[type]}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div ref={previewRef} className="mx-auto max-w-[640px] rounded-md border bg-white shadow-sm px-9 py-8" style={{ color: pal.inkHex }}>
+            {/* Feuille A4 (aspect 210/297) en colonne flex : le corps reste en haut, le bloc
+                « Fait à … » + signature est poussé EN BAS (mt-auto) — plus de signature flottante. */}
+            <div ref={previewRef} className="mx-auto flex aspect-[210/297] max-w-[640px] flex-col rounded-md border bg-white shadow-sm px-9 py-8" style={{ color: pal.inkHex }}>
               <div className="flex items-center gap-4 border-b-2 pb-3" style={{ borderColor: pal.oliveHex }}>
                 <img src={firm.logo_path || "/logo-miya.png"} alt="logo" className="h-11 w-auto object-contain" />
                 <div>
@@ -569,20 +571,23 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
                 ))}
               </div>
 
-              <div className="mt-10 text-right text-[13.5px]">
-                Fait à {(city || firm.city || "……").trim()}, le {new Date(issueDate).toLocaleDateString("fr-FR")}.
-              </div>
-              <div className="mt-4 text-right">
-                <div className="font-bold text-[13.5px]">{(signatoryName || firm.signatory_name || "……").trim()}</div>
-                <div className="text-[12px] text-neutral-500">{(signatoryRole || firm.signatory_role || "……").trim()}</div>
-                <div className="text-[11px] text-neutral-400 mt-1.5">(Signature et cachet)</div>
-              </div>
-
-              {firmLegalLine(firm) && (
-                <div className="mt-8 border-t border-neutral-200 pt-2 text-center text-[9px] text-neutral-400">
-                  {firmLegalLine(firm)}
+              {/* Clôture (« Fait à … » + signature + pied) ancrée en bas de la feuille. */}
+              <div className="mt-auto">
+                <div className="mt-10 text-right text-[13.5px]">
+                  Fait à {(city || firm.city || "……").trim()}, le {new Date(issueDate).toLocaleDateString("fr-FR")}.
                 </div>
-              )}
+                <div className="mt-4 text-right">
+                  <div className="font-bold text-[13.5px]">{(signatoryName || firm.signatory_name || "……").trim()}</div>
+                  <div className="text-[12px] text-neutral-500">{(signatoryRole || firm.signatory_role || "……").trim()}</div>
+                  <div className="text-[11px] text-neutral-400 mt-1.5">(Signature et cachet)</div>
+                </div>
+
+                {firmLegalLine(firm) && (
+                  <div className="mt-8 border-t border-neutral-200 pt-2 text-center text-[9px] text-neutral-400">
+                    {firmLegalLine(firm)}
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

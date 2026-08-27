@@ -46,6 +46,10 @@ export interface PayrollBookRow {
   /** « À ajouter » : primes et indemnités = brut − base − ancienneté. */
   primesIndemnites: number;
   salaireBrut: number;
+  /** « À déduire » du registre officiel : part du brut NON imposable (brut − imposable, si > 0). */
+  imposableADeduire: number;
+  /** « À ajouter » du registre officiel : part imposable au-delà du brut (imposable − brut, si > 0). */
+  imposableAAjouter: number;
   sbi: number;
   /* --- retenues salariales --- */
   cnssSalarie: number;
@@ -68,6 +72,8 @@ export interface PayrollBookTotals {
   primeAnciennete: number;
   primesIndemnites: number;
   salaireBrut: number;
+  imposableADeduire: number;
+  imposableAAjouter: number;
   sbi: number;
   cnssSalarie: number;
   amoSalarie: number;
@@ -129,6 +135,10 @@ export function buildPayrollBook(
       const totalHours = round2(inp.hours_normal + inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100);
       // « À ajouter » (primes + heures supp. + indemnités) = brut − base − ancienneté.
       const primesIndemnites = round2(r.salaireBrut - r.salaireBase - r.primeAnciennete);
+      // Pont brut → imposable du registre officiel : « à déduire » (part non imposable) et
+      // « à ajouter » (part imposable au-delà du brut). Dérivés, jamais inventés : imposable = SBI.
+      const imposableADeduire = round2(Math.max(0, r.salaireBrut - r.sbi));
+      const imposableAAjouter = round2(Math.max(0, r.sbi - r.salaireBrut));
       const totalRetenues = round2(r.cnssSalarie + r.amoSalarie + r.ir);
       const avances = round2(Math.max(0, inp.advances ?? 0));
       const netFinal = round2(r.netAPayer - avances);
@@ -157,6 +167,8 @@ export function buildPayrollBook(
         seniorityRate: r.seniorityRate,
         primesIndemnites,
         salaireBrut: r.salaireBrut,
+        imposableADeduire,
+        imposableAAjouter,
         sbi: r.sbi,
         cnssSalarie: r.cnssSalarie,
         amoSalarie: r.amoSalarie,
@@ -178,6 +190,8 @@ export function buildPayrollBook(
       acc.primeAnciennete = round2(acc.primeAnciennete + r.primeAnciennete);
       acc.primesIndemnites = round2(acc.primesIndemnites + r.primesIndemnites);
       acc.salaireBrut = round2(acc.salaireBrut + r.salaireBrut);
+      acc.imposableADeduire = round2(acc.imposableADeduire + r.imposableADeduire);
+      acc.imposableAAjouter = round2(acc.imposableAAjouter + r.imposableAAjouter);
       acc.sbi = round2(acc.sbi + r.sbi);
       acc.cnssSalarie = round2(acc.cnssSalarie + r.cnssSalarie);
       acc.amoSalarie = round2(acc.amoSalarie + r.amoSalarie);
@@ -190,7 +204,8 @@ export function buildPayrollBook(
     },
     {
       count: 0, daysWorked: 0, totalHours: 0, salaireBase: 0, primeAnciennete: 0,
-      primesIndemnites: 0, salaireBrut: 0, sbi: 0, cnssSalarie: 0, amoSalarie: 0,
+      primesIndemnites: 0, salaireBrut: 0, imposableADeduire: 0, imposableAAjouter: 0,
+      sbi: 0, cnssSalarie: 0, amoSalarie: 0,
       ir: 0, totalRetenues: 0, netAPayer: 0, avances: 0, netFinal: 0,
     },
   );

@@ -70,35 +70,42 @@ export default function PayrollBook() {
           ) : (
             <div className="overflow-x-auto scrollbar-thin">
               <Table>
+                {/* En-têtes groupés calqués sur le registre officiel (2 pages) : identité, période
+                    payée (H/J + Total), rémunération, pont brut→imposable (à déduire / à ajouter),
+                    retenues (CNSS/AMO/IR + Total), net. */}
                 <thead>
                   <tr>
-                    <Th className="text-right">N°</Th>
-                    <Th>Période</Th>
-                    <Th>Matricule</Th>
-                    <Th>{t("doc.employee")}</Th>
-                    <Th>Emploi</Th>
-                    <Th>N° CNSS</Th>
-                    <Th>Naissance</Th>
-                    <Th>Entrée</Th>
-                    <Th className="text-right">S.F.</Th>
-                    <Th className="text-right">P.C.</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">N° Bull.</Th>
+                    <Th rowSpan={2} className="align-bottom">Période</Th>
+                    <Th rowSpan={2} className="align-bottom">{t("doc.employee")}</Th>
+                    <Th rowSpan={2} className="align-bottom">Emploi</Th>
+                    <Th rowSpan={2} className="align-bottom">Naissance</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">S.F.</Th>
+                    <Th rowSpan={2} className="align-bottom">N° CNSS</Th>
+                    <Th colSpan={6} className="text-center">Période payée (Heures / Jours)</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Salaire du poste</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Ancien.</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Primes / Ind.</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Salaire brut</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">À déduire</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">À ajouter</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Salaire imposable</Th>
+                    <Th colSpan={4} className="text-center">À déduire (retenues)</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Salaire net</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Avances</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Net à payer</Th>
+                  </tr>
+                  <tr>
                     <Th className="text-right">H.N.</Th>
-                    <Th className="text-right">HS 25</Th>
-                    <Th className="text-right">HS 50</Th>
-                    <Th className="text-right">HS 100</Th>
+                    <Th className="text-right">H.S. 25</Th>
+                    <Th className="text-right">H.S. 50</Th>
+                    <Th className="text-right">H.S. 100</Th>
                     <Th className="text-right">Jours</Th>
-                    <Th className="text-right">Base</Th>
-                    <Th className="text-right">Ancien.</Th>
-                    <Th className="text-right">Primes/Ind.</Th>
-                    <Th className="text-right">Brut</Th>
-                    <Th className="text-right">SBI</Th>
-                    <Th className="text-right">CNSS</Th>
+                    <Th className="text-right">Total</Th>
+                    <Th className="text-right">C.N.S.S</Th>
                     <Th className="text-right">AMO</Th>
-                    <Th className="text-right">IR</Th>
-                    <Th className="text-right">Total ret.</Th>
-                    <Th className="text-right">Salaire net</Th>
-                    <Th className="text-right">Avances</Th>
-                    <Th className="text-right">Net à payer</Th>
+                    <Th className="text-right">I.R.</Th>
+                    <Th className="text-right">Total</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -106,23 +113,23 @@ export default function PayrollBook() {
                     <tr key={`${r.year}-${r.month}-${r.order}`}>
                       <Td className="text-right num">{r.order}</Td>
                       <Td className="whitespace-nowrap">{r.period}</Td>
-                      <Td>{r.matricule || "—"}</Td>
                       <Td className="whitespace-nowrap">{r.name}</Td>
                       <Td>{r.emploi || "—"}</Td>
-                      <Td>{r.cnss || "—"}</Td>
                       <Td className="whitespace-nowrap">{r.birthDate ? dateFr(r.birthDate) : "—"}</Td>
-                      <Td className="whitespace-nowrap">{dateFr(r.hireDate)}</Td>
                       <Td className="text-right">{r.maritalStatus || "—"}</Td>
-                      <Td className="text-right num">{r.dependents}</Td>
+                      <Td>{r.cnss || "—"}</Td>
                       <Td className="text-right num">{r.hoursNormal || "—"}</Td>
                       <Td className="text-right num">{r.hoursOt25 || "—"}</Td>
                       <Td className="text-right num">{r.hoursOt50 || "—"}</Td>
                       <Td className="text-right num">{r.hoursOt100 || "—"}</Td>
                       <Td className="text-right num">{r.daysWorked || "—"}</Td>
+                      <Td className="text-right num">{r.totalHours || "—"}</Td>
                       <Td className="text-right num">{num(r.salaireBase)}</Td>
                       <Td className="text-right num">{r.primeAnciennete ? num(r.primeAnciennete) : "—"}</Td>
                       <Td className="text-right num">{r.primesIndemnites ? num(r.primesIndemnites) : "—"}</Td>
                       <Td className="text-right num">{num(r.salaireBrut)}</Td>
+                      <Td className="text-right num">{r.imposableADeduire ? num(r.imposableADeduire) : "—"}</Td>
+                      <Td className="text-right num">{r.imposableAAjouter ? num(r.imposableAAjouter) : "—"}</Td>
                       <Td className="text-right num">{num(r.sbi)}</Td>
                       <Td className="text-right num">{num(r.cnssSalarie)}</Td>
                       <Td className="text-right num">{num(r.amoSalarie)}</Td>
@@ -136,12 +143,16 @@ export default function PayrollBook() {
                 </tbody>
                 <tfoot>
                   <tr className="font-semibold">
-                    <Td colSpan={14} className="text-right">{t("lp.total")} ({totals.count})</Td>
+                    <Td colSpan={7} className="text-right">{t("lp.total")} ({totals.count})</Td>
+                    <Td /><Td /><Td /><Td />
                     <Td className="text-right num">{num(totals.daysWorked)}</Td>
+                    <Td className="text-right num">{num(totals.totalHours)}</Td>
                     <Td className="text-right num">{num(totals.salaireBase)}</Td>
                     <Td className="text-right num">{num(totals.primeAnciennete)}</Td>
                     <Td className="text-right num">{num(totals.primesIndemnites)}</Td>
                     <Td className="text-right num">{num(totals.salaireBrut)}</Td>
+                    <Td className="text-right num">{num(totals.imposableADeduire)}</Td>
+                    <Td className="text-right num">{num(totals.imposableAAjouter)}</Td>
                     <Td className="text-right num">{num(totals.sbi)}</Td>
                     <Td className="text-right num">{num(totals.cnssSalarie)}</Td>
                     <Td className="text-right num">{num(totals.amoSalarie)}</Td>
