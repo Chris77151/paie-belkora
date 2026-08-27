@@ -38,7 +38,7 @@ export interface Firm {
   email?: string;
   regime: Regime;
   logo_path?: string;
-  /** Couleur de marque (hex, ex. « #8CB45A ») — spectre des bulletins. Vide = vert tilleul Miya (logo) par défaut. */
+  /** Couleur de marque (hex, ex. « #97BC62 ») — spectre des bulletins. Vide = palette Miya du LaTeX mbd-style. */
   brand_color?: string;
   /** Template LaTeX du BULLETIN (conservé pour compatibilité ; plus édité depuis Paramètres). */
   payslip_template_latex?: string;

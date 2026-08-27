@@ -35,17 +35,16 @@ describe("palette par société — aucune régression Miya", () => {
     expect(paletteForFirm("")).toBe(DEFAULT_PALETTE);
     expect(paletteForFirm("invalide")).toBe(DEFAULT_PALETTE);
   });
-  it("les valeurs Miya par défaut reflètent le VRAI vert du logo (tilleul/olive #8CB45A)", () => {
-    // Vert dominant mesuré de la feuille du logo « Miya Belkora Design » (H≈87°, tilleul/olive),
-    // et non plus l'émeraude #52B788 qui ne correspondait pas au logo.
-    expect(DEFAULT_PALETTE.limeHex.toLowerCase()).toBe("#8cb45a");
-    expect(DEFAULT_PALETTE.lime).toEqual([140, 180, 90]);
-    expect(DEFAULT_PALETTE.deepHex.toLowerCase()).toBe("#3f512a");
-    expect(DEFAULT_PALETTE.tintHex.toLowerCase()).toBe("#e9f1df");
-    // La teinte du vert profond des titres reste dans la famille olive/tilleul (H≈80-100°).
-    const h = rgbToHsl(DEFAULT_PALETTE.deep)[0];
-    expect(h).toBeGreaterThan(70);
-    expect(h).toBeLessThan(110);
+  it("les valeurs Miya par défaut sont les couleurs EXACTES du LaTeX mbd-style.sty", () => {
+    // Source de vérité : mbdvertfonce #2C5F2D, mbdvertclair #97BC62, mbdvertpale #E8F5E9,
+    // mbdgris #666666, mbdnoir #333333 — pour que les PDF de l'app matchent les documents LaTeX.
+    expect(DEFAULT_PALETTE.deepHex.toLowerCase()).toBe("#2c5f2d");
+    expect(DEFAULT_PALETTE.deep).toEqual([44, 95, 45]);
+    expect(DEFAULT_PALETTE.limeHex.toLowerCase()).toBe("#97bc62");
+    expect(DEFAULT_PALETTE.oliveHex.toLowerCase()).toBe("#97bc62");
+    expect(DEFAULT_PALETTE.tintHex.toLowerCase()).toBe("#e8f5e9");
+    expect(DEFAULT_PALETTE.mutedHex.toLowerCase()).toBe("#666666");
+    expect(DEFAULT_PALETTE.inkHex.toLowerCase()).toBe("#333333");
   });
 });
 

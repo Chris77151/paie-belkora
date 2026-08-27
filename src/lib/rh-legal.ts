@@ -53,7 +53,7 @@ import {
 /* Couleurs de marque — dérivées de la société (firm.brand_color) au début de chaque rendu.
  * Sans couleur de marque définie, on garde EXACTEMENT le vert Miya d'origine.
  * `usePalette(firm)` réassigne LIME/OLIVE/INK/VERT_FONCE/MUTED : les usages `...LIME` restent inchangés. */
-let LIME: RGB = paletteForFirm(undefined).lime; // #8CB45A (vert tilleul du logo Miya) par défaut
+let LIME: RGB = paletteForFirm(undefined).lime; // #97BC62 (mbdvertclair, LaTeX mbd-style) par défaut
 let OLIVE: RGB = paletteForFirm(undefined).olive;
 let INK: RGB = paletteForFirm(undefined).ink;
 let VERT_FONCE: RGB = paletteForFirm(undefined).deep;

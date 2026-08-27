@@ -36,28 +36,27 @@ export interface PayslipPalette {
 }
 
 /**
- * Palette Miya par défaut — dérivée du VRAI vert du logo « Miya Belkora Design » : un vert
- * TILLEUL / OLIVE `#8CB45A` (couleur dominante mesurée de la feuille du logo), et NON l'émeraude
- * `#52B788` employé auparavant (qui ne correspondait pas au logo). Spectre mono-teinte cohérent
- * (même teinte H≈87°, S/L modulés) : `deep` = vert olive foncé (titres, intitulés d'articles,
- * en-têtes de tableau) ; `olive`/`lime` = vert tilleul (filet d'accent, filets médians) ; `tint`
- * = vert pâle (fonds) ; `muted` = gris teinté ; `ink` = quasi-noir olive (corps).
+ * Palette Miya par défaut — couleurs EXACTES du package LaTeX `mbd-style.sty` (source de vérité de la
+ * charte « Miya Belkora Design »), afin que les documents PDF de l'app soient IDENTIQUES aux documents
+ * LaTeX : `mbdvertfonce #2C5F2D` (titres, intitulés d'articles, en-têtes de tableau = `deep`),
+ * `mbdvertclair #97BC62` (filets d'accent / d'en-tête = `olive`/`lime`), `mbdvertpale #E8F5E9`
+ * (fonds = `tint`), `mbdgris #666666` (texte secondaire = `muted`), `mbdnoir #333333` (corps = `ink`).
  */
 export const DEFAULT_PALETTE: PayslipPalette = {
-  lime: [140, 180, 90], // #8CB45A — vert tilleul du logo Miya
-  olive: [116, 142, 82], // #748E52 — olive médian (filets)
-  sageDark: [103, 112, 92], // #67705C
-  tint: [233, 241, 223], // #E9F1DF — vert pâle (fonds)
-  ink: [44, 50, 36], // #2C3224 — quasi-noir olive (corps)
-  deep: [63, 81, 42], // #3F512A — vert olive foncé (titres)
-  muted: [124, 135, 110], // #7C876E — gris teinté
-  limeHex: "#8CB45A",
-  oliveHex: "#748E52",
-  sageHex: "#67705C",
-  tintHex: "#E9F1DF",
-  inkHex: "#2C3224",
-  deepHex: "#3F512A",
-  mutedHex: "#7C876E",
+  lime: [151, 188, 98], // #97BC62 mbdvertclair
+  olive: [151, 188, 98], // #97BC62 mbdvertclair (filets)
+  sageDark: [97, 141, 71], // #618D47 — vert médian (section charges patronales du bulletin)
+  tint: [232, 245, 233], // #E8F5E9 mbdvertpale (fonds clairs)
+  ink: [51, 51, 51], // #333333 mbdnoir (corps)
+  deep: [44, 95, 45], // #2C5F2D mbdvertfonce (titres)
+  muted: [102, 102, 102], // #666666 mbdgris (texte secondaire)
+  limeHex: "#97BC62",
+  oliveHex: "#97BC62",
+  sageHex: "#618D47",
+  tintHex: "#E8F5E9",
+  inkHex: "#333333",
+  deepHex: "#2C5F2D",
+  mutedHex: "#666666",
 };
 
 /* ------------------------------------------------------------------ conversions ------------------------------------------------------------------ */
