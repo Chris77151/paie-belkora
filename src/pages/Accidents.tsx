@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { HardHat, Plus, Pencil, Trash2, X, AlertTriangle, CalendarClock, ShieldAlert } from "lucide-react";
 import { currentFirm, employeesOfFirm, uid, useStore, actions } from "@/data/store";
+import { useCanWrite } from "@/lib/auth";
 import { useT, type TKey } from "@/lib/i18n";
 import {
   Badge, Button, Card, CardContent, Field, Input, Textarea, Select,
@@ -26,6 +27,7 @@ export default function Accidents() {
   const s = useStore();
   const t = useT();
   const firm = currentFirm(s);
+  const canEdit = useCanWrite(); // false pour le rôle « lecture seule » : aucune modification possible
   const employees = useMemo(() => employeesOfFirm(s, firm.id), [s, firm.id]);
   const empById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const empIds = useMemo(() => new Set(employees.map((e) => e.id)), [employees]);
@@ -70,7 +72,7 @@ export default function Accidents() {
         title={t("page.accidents.title")}
         subtitle={`${firm.name} · ${t("page.accidents.sub")}`}
       >
-        <Button onClick={newAccident} disabled={employees.length === 0}>
+        <Button onClick={newAccident} disabled={employees.length === 0 || !canEdit} title={canEdit ? undefined : t("header.readonly.hint")}>
           <Plus size={16} /> {t("acc.new")}
         </Button>
       </PageHeader>
@@ -133,10 +135,10 @@ export default function Accidents() {
                       </Td>
                       <Td className="text-right">
                         <div className="inline-flex gap-1">
-                          <Button size="icon" variant="ghost" title={t("btn.edit")} onClick={() => setEditing(a)}>
+                          <Button size="icon" variant="ghost" title={canEdit ? t("btn.edit") : t("header.readonly.hint")} onClick={() => setEditing(a)} disabled={!canEdit}>
                             <Pencil size={15} />
                           </Button>
-                          <Button size="icon" variant="ghost" title={t("btn.delete")} onClick={() => remove(a.id)}>
+                          <Button size="icon" variant="ghost" title={canEdit ? t("btn.delete") : t("header.readonly.hint")} onClick={() => remove(a.id)} disabled={!canEdit}>
                             <Trash2 size={15} />
                           </Button>
                         </div>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { CalendarDays, Stethoscope, Hourglass, Baby, Plus, Pencil, Trash2, X } from "lucide-react";
 import { useStore, currentFirm, employeesOfFirm, uid, actions } from "@/data/store";
+import { useCanWrite } from "@/lib/auth";
 import { useT, type TKey } from "@/lib/i18n";
 import {
   Card,
@@ -37,6 +38,7 @@ export default function Leaves() {
   const s = useStore();
   const t = useT();
   const firm = currentFirm(s);
+  const canEdit = useCanWrite(); // « lecture seule » : consultation uniquement
 
   const employees = useMemo(() => employeesOfFirm(s, firm.id), [s, firm.id]);
   const empIds = useMemo(() => new Set(employees.map((e) => e.id)), [employees]);
@@ -100,7 +102,7 @@ export default function Leaves() {
   return (
     <div>
       <PageHeader title={t("page.leaves.title")} subtitle={t("page.leaves.sub")}>
-        <Button onClick={newLeave} disabled={employees.length === 0}>
+        <Button onClick={newLeave} disabled={employees.length === 0 || !canEdit} title={canEdit ? undefined : t("header.readonly.hint")}>
           <Plus size={16} /> {t("lv.new")}
         </Button>
       </PageHeader>
@@ -174,10 +176,10 @@ export default function Leaves() {
                       </Td>
                       <Td className="text-right">
                         <div className="inline-flex gap-1">
-                          <Button size="icon" variant="ghost" title={t("btn.edit")} onClick={() => setEditing(l)}>
+                          <Button size="icon" variant="ghost" title={canEdit ? t("btn.edit") : t("header.readonly.hint")} onClick={() => setEditing(l)} disabled={!canEdit}>
                             <Pencil size={15} />
                           </Button>
-                          <Button size="icon" variant="ghost" title={t("btn.delete")} onClick={() => remove(l.id)}>
+                          <Button size="icon" variant="ghost" title={canEdit ? t("btn.delete") : t("header.readonly.hint")} onClick={() => remove(l.id)} disabled={!canEdit}>
                             <Trash2 size={15} />
                           </Button>
                         </div>

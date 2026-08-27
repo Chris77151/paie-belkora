@@ -6,6 +6,7 @@ import {
 import {
   actions, currentFirm, employeesOfFirm, getState, payslipsOfPeriod, uid, useStore,
 } from "@/data/store";
+import { useCanWrite } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import type { DocFormat, Employee, Payslip, PayslipInput, SalaryAdvance } from "@/data/types";
 import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
@@ -27,6 +28,7 @@ export default function Payroll() {
   const s = useStore();
   const t = useT();
   const firm = currentFirm(s);
+  const canEdit = useCanWrite(); // « lecture seule » : ni saisie, ni validation de période
   // Liste complète de la société (recherche/affichage des bulletins existants) ...
   const firmEmps = useMemo(() => employeesOfFirm(s, firm.id), [s, firm]);
   const [year, setYear] = useState(2026);
@@ -193,12 +195,12 @@ export default function Payroll() {
           {!locked ? (
             <>
               <Button variant="outline" onClick={exportAll}><FileDown size={16} /> {t("pay.exportGroup")}</Button>
-              <Button onClick={requestValidate}><Lock size={16} /> {t("pay.validate")}</Button>
+              <Button onClick={requestValidate} disabled={!canEdit} title={canEdit ? undefined : t("header.readonly.hint")}><Lock size={16} /> {t("pay.validate")}</Button>
             </>
           ) : (
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={exportAll}><FileDown size={16} /> {t("pay.exportGroup")}</Button>
-              <Button variant="outline" onClick={revertToDraft} title={t("pay.revert.hint")}>
+              <Button variant="outline" onClick={revertToDraft} title={canEdit ? t("pay.revert.hint") : t("header.readonly.hint")} disabled={!canEdit}>
                 <Unlock size={16} /> {t("pay.revert")}
               </Button>
               {period?.status === "validated" && (

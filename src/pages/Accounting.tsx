@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Calculator, FileCode2, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, Sparkles, Lock, Unlock, Table2 } from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, payslipsOfPeriod, useStore } from "@/data/store";
 import { useT } from "@/lib/i18n";
-import { useSession } from "@/lib/auth";
+import { useSession, useCanWrite } from "@/lib/auth";
 import {
   checkPayrollEntryInvariants, type JournalEntry, type InvariantCheck,
 } from "@/lib/payroll-accounting";
@@ -19,6 +19,7 @@ export default function Accounting() {
   const s = useStore();
   const t = useT();
   const session = useSession();
+  const canEdit = useCanWrite(); // « lecture seule » : aucune validation / actualisation / bascule
   const firm = currentFirm(s);
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(6);
@@ -189,12 +190,12 @@ export default function Accounting() {
           <div className="flex-1" />
           {isValidated ? (
             <>
-              {canRefreshInPlace && (
+              {canRefreshInPlace && canEdit && (
                 <Button variant="sage" onClick={refresh} title="Régénère l'instantané figé avec les libellés et comptes corrigés — montants inchangés">
                   <Sparkles size={16} /> Actualiser les écritures
                 </Button>
               )}
-              <Button variant="outline" onClick={revert}>
+              <Button variant="outline" onClick={revert} disabled={!canEdit} title={canEdit ? undefined : t("header.readonly.hint")}>
                 <Unlock size={16} /> Remettre en brouillon
               </Button>
             </>
@@ -206,7 +207,7 @@ export default function Accounting() {
                 </Button>
               )}
               {generated && (
-                <Button onClick={validate} disabled={!controlsOk}>
+                <Button onClick={validate} disabled={!controlsOk || !canEdit} title={canEdit ? undefined : t("header.readonly.hint")}>
                   <Lock size={16} /> Valider la période
                 </Button>
               )}

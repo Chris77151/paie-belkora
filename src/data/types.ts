@@ -393,6 +393,47 @@ export interface AccountingClosure {
   validated_by: string;
 }
 
+/** Type de document demandé par un salarié (self-service depuis l'accueil). */
+export type DocumentRequestType =
+  | "attestation_travail"
+  | "attestation_salaire"
+  | "certificat_travail"
+  | "domiciliation_irrevocable"
+  | "bulletin_paie"
+  | "autre";
+
+/** État de traitement d'une demande de document. */
+export type DocumentRequestStatus = "en_attente" | "en_cours" | "traite" | "refuse";
+
+/**
+ * Demande de document faite par un SALARIÉ depuis l'accueil (self-service). Visible par les
+ * utilisateurs de la société ; traitée par un gestionnaire/administrateur sous 48 h ouvrables.
+ * La création est ouverte à tout compte connecté (y compris « lecture seule ») ; seul le
+ * TRAITEMENT (changement de statut) est réservé aux comptes autorisés à écrire.
+ */
+export interface DocumentRequest {
+  id: string;
+  firm_id: string;
+  /** Salarié concerné (si sélectionné dans la liste). */
+  employee_id?: string;
+  /** Nom du salarié (affiché, même sans fiche liée). */
+  employee_name: string;
+  type: DocumentRequestType;
+  /** Précision libre (période, motif, destinataire…). */
+  message?: string;
+  /** Horodatage ISO de la demande. */
+  requested_at: string;
+  /** Identifiant (username) du demandeur, s'il est connecté. */
+  requested_by?: string;
+  /** Échéance ISO (date) = 48 h OUVRABLES après la demande (week-ends exclus). */
+  deadline: string;
+  status: DocumentRequestStatus;
+  /** Horodatage ISO du traitement (statut final). */
+  processed_at?: string;
+  /** Identifiant (username) de l'agent traitant. */
+  processed_by?: string;
+}
+
 export interface AppState {
   firms: Firm[];
   employees: Employee[];
@@ -403,6 +444,8 @@ export interface AppState {
   salaryAdvances?: SalaryAdvance[];
   /** Registre des accidents du travail. */
   workAccidents?: WorkAccident[];
+  /** Demandes de documents des salariés (self-service depuis l'accueil). */
+  documentRequests?: DocumentRequest[];
   /** Clôtures comptables validées (verrou + snapshot par période). */
   accountingClosures?: AccountingClosure[];
   /** Comptes de connexion à l'application (auth locale). */

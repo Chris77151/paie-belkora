@@ -10,6 +10,7 @@ import { computeFor, defaultInput } from "@/lib/payroll-helpers";
 import { Card, CardContent, CardHeader, CardTitle, Kpi, PageHeader, Badge } from "@/components/ui/kit";
 import { mad, num, periodLabel } from "@/lib/format";
 import { useT } from "@/lib/i18n";
+import DocumentRequestsCard from "@/components/DocumentRequestsCard";
 
 // Palette data-viz tokenisée — famille de marque, adaptative light/dark (cf. index.css).
 const PALETTE = [
@@ -23,7 +24,8 @@ export default function Dashboard() {
   const s = useStore();
   const t = useT();
   const firm = currentFirm(s);
-  const emps = employeesOfFirm(s, firm.id).filter((e) => e.is_active);
+  const allEmps = employeesOfFirm(s, firm.id);
+  const emps = allEmps.filter((e) => e.is_active);
   const alerts = deriveAlerts(s, firm.id);
 
   const agg = useMemo(() => {
@@ -167,6 +169,10 @@ export default function Dashboard() {
             ))}
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-4">
+        <DocumentRequestsCard firm={firm} employees={allEmps} requests={s.documentRequests ?? []} />
       </div>
 
       <p className="mt-6 text-xs text-muted-foreground">

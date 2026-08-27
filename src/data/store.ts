@@ -20,11 +20,14 @@ import type {
   Payslip,
   PayrollPeriod,
   WorkAccident,
+  DocumentRequest,
+  DocumentRequestStatus,
 } from "./types";
 import { capLoginEvents } from "@/lib/login-audit";
 import { capDocEvents } from "@/lib/doc-log";
 import { findGhostPayslips } from "@/lib/stability-engine";
 import { buildPeriodEntries } from "@/lib/payroll-period-accounting";
+import { documentRequestDeadline } from "@/lib/document-requests";
 import { seed, SUPER_ADMIN } from "./seed";
 import { isSupabaseConfigured, loadRemoteState, saveRemoteState } from "@/lib/supabase";
 
@@ -82,6 +85,7 @@ function migrate(s: AppState): AppState {
   if (!Array.isArray(s.loginEvents)) s.loginEvents = [];
   if (!Array.isArray(s.docGenerations)) s.docGenerations = [];
   if (!Array.isArray(s.workAccidents)) s.workAccidents = [];
+  if (!Array.isArray(s.documentRequests)) s.documentRequests = [];
   if (!Array.isArray(s.accountingClosures)) s.accountingClosures = [];
   if (!Array.isArray(s.salaryAdvances)) s.salaryAdvances = [];
   if (!Array.isArray(s.extraYears)) s.extraYears = [];
@@ -555,6 +559,61 @@ export const actions = {
   removeWorkAccident(id: string) {
     set((s) => {
       s.workAccidents = (s.workAccidents ?? []).filter((x) => x.id !== id);
+    });
+  },
+  /* ---- Demandes de documents (self-service accueil) ---- */
+  /**
+   * Dépose une demande de document. Self-service : autorisé même pour les comptes en lecture
+   * seule (`{ view: true }` contourne le garde d'écriture), car ce sont les salariés qui demandent.
+   * L'échéance de traitement est fixée à 48 h ouvrables.
+   */
+  addDocumentRequest(input: {
+    firm_id: string;
+    employee_id?: string;
+    employee_name: string;
+    type: DocumentRequest["type"];
+    message?: string;
+  }) {
+    const requested_at = new Date().toISOString();
+    const req: DocumentRequest = {
+      id: uid("docreq"),
+      firm_id: input.firm_id,
+      employee_id: input.employee_id,
+      employee_name: input.employee_name,
+      type: input.type,
+      message: input.message?.trim() ? input.message.trim() : undefined,
+      requested_at,
+      requested_by: sessionUsername(),
+      deadline: documentRequestDeadline(requested_at),
+      status: "en_attente",
+    };
+    set((s) => {
+      s.documentRequests = [...(s.documentRequests ?? []), req];
+    }, { view: true });
+  },
+  /**
+   * Change le statut d'une demande (traitement). Écriture NORMALE : bloquée pour la lecture seule
+   * — seuls les rôles habilités (admins / gestionnaires paie) peuvent traiter une demande.
+   */
+  setDocumentRequestStatus(id: string, status: DocumentRequestStatus) {
+    const closing = status === "traite" || status === "refuse";
+    set((s) => {
+      s.documentRequests = (s.documentRequests ?? []).map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              status,
+              processed_at: closing ? new Date().toISOString() : r.processed_at,
+              processed_by: closing ? sessionUsername() : r.processed_by,
+            }
+          : r,
+      );
+    });
+  },
+  /** Supprime une demande de document (habilité uniquement). */
+  removeDocumentRequest(id: string) {
+    set((s) => {
+      s.documentRequests = (s.documentRequests ?? []).filter((r) => r.id !== id);
     });
   },
   /* ---- Congés & absences (saisie) ---- */
