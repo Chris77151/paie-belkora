@@ -53,6 +53,9 @@ export interface PayrollBookRow {
   salaireBase: number;
   primeAnciennete: number;
   seniorityRate: number;
+  /** Ancienneté en années révolues à la période (tenure) — toujours affichable dès qu'une date
+   *  d'embauche est renseignée, même si la prime légale (≥ 2 ans) est encore nulle. */
+  seniorityYears: number;
   /** « À ajouter » : primes et indemnités = brut − base − ancienneté. */
   primesIndemnites: number;
   salaireBrut: number;
@@ -186,6 +189,7 @@ export function buildPayrollBook(
         salaireBase: r.salaireBase,
         primeAnciennete: r.primeAnciennete,
         seniorityRate: r.seniorityRate,
+        seniorityYears: r.seniorityYears,
         primesIndemnites,
         salaireBrut: r.salaireBrut,
         imposableADeduire,

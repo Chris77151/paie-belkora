@@ -89,7 +89,7 @@ export default function PayrollBook() {
                     <Th colSpan={6} className="text-center">Période payée (Heures / Jours)</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Salaire de base</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Ancienneté</Th>
-                    <Th rowSpan={2} className="text-right align-bottom">Taux anc.</Th>
+                    <Th rowSpan={2} className="text-right align-bottom">Taux · ancienneté</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Primes / Ind.</Th>
                     <Th rowSpan={2} className="text-right align-bottom">Salaire brut</Th>
                     <Th rowSpan={2} className="text-right align-bottom">À déduire (non imp.)</Th>
@@ -136,8 +136,11 @@ export default function PayrollBook() {
                       <Td className="text-right num">{r.daysWorked || "—"}</Td>
                       <Td className="text-right num">{r.totalHours || "—"}</Td>
                       <Td className="text-right num">{num(r.salaireBase)}</Td>
-                      <Td className="text-right num">{r.primeAnciennete ? num(r.primeAnciennete) : "—"}</Td>
-                      <Td className="text-right num">{r.primeAnciennete ? pct(r.seniorityRate) : "—"}</Td>
+                      <Td className="text-right num">{num(r.primeAnciennete)}</Td>
+                      <Td className="text-right num whitespace-nowrap">
+                        {pct(r.seniorityRate)}
+                        {r.hireDate ? <span className="text-muted-foreground"> · {r.seniorityYears} an{r.seniorityYears > 1 ? "s" : ""}</span> : null}
+                      </Td>
                       <Td className="text-right num">{r.primesIndemnites ? num(r.primesIndemnites) : "—"}</Td>
                       <Td className="text-right num">{num(r.salaireBrut)}</Td>
                       <Td className="text-right num">{r.imposableADeduire ? num(r.imposableADeduire) : "—"}</Td>
@@ -196,6 +199,13 @@ export default function PayrollBook() {
           <p className="mt-1 text-xs text-muted-foreground">
             <span className="font-medium">N° ordre</span> = numéro de ligne continu du registre ·{" "}
             <span className="font-medium">N° bulletin</span> = numéro séquentiel du bulletin de paie (format AAAAMM-NNN, remis à 001 au début de chaque mois).
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            <span className="font-medium">Ancienneté</span> : la <span className="font-medium">prime</span> légale d'ancienneté ne
+            démarre qu'à <span className="font-medium">2 ans de service</span> (5 %, puis 10 % à 5 ans… — art. 350) ; elle reste donc à
+            0,00 en deçà. L'ancienneté en <span className="font-medium">années</span> (colonne « Taux · ancienneté ») se calcule
+            automatiquement dès qu'une <span className="font-medium">date d'entrée</span> est renseignée sur la fiche du salarié — une
+            colonne « Ancienneté » vide signale le plus souvent une <span className="font-medium">date d'embauche manquante</span>.
           </p>
         </CardContent>
       </Card>
