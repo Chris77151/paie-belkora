@@ -64,6 +64,13 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
   // (H.N / H.S / Jours / Total) · rémunération · pont brut→imposable (à déduire / à ajouter) ·
   // retenues (CNSS / AMO / IR / Total) · net.
   const rate = (n: number) => (n ? pct(n) : "");
+  // « Taux · ancienneté » = taux figé du bulletin (si prime) + ancienneté en ANNÉES (tenure live).
+  const ancText = (r: PayrollBook["rows"][number]) => {
+    const parts: string[] = [];
+    if (r.seniorityRate) parts.push(pct(r.seniorityRate));
+    if (r.hireDate) parts.push(`${r.seniorityYears} an${r.seniorityYears > 1 ? "s" : ""}`);
+    return parts.join(" · ");
+  };
   const head = [
     [
       { content: "N° ordre", rowSpan: 2 },
@@ -79,7 +86,7 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
       { content: "Période payée (Heures / Jours)", colSpan: 6 },
       { content: "Salaire de base", rowSpan: 2 },
       { content: "Ancienneté", rowSpan: 2 },
-      { content: "Taux anc.", rowSpan: 2 },
+      { content: "Taux · anc.", rowSpan: 2 },
       { content: "Primes / Ind.", rowSpan: 2 },
       { content: "Salaire brut", rowSpan: 2 },
       { content: "À déduire", rowSpan: 2 },
@@ -112,7 +119,7 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
     hrs(r.totalHours),
     money(r.salaireBase),
     money(r.primeAnciennete),
-    rate(r.primeAnciennete ? r.seniorityRate : 0),
+    ancText(r),
     money(r.primesIndemnites),
     money(r.salaireBrut),
     money(r.imposableADeduire),
@@ -215,7 +222,7 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
     "N° ordre", "N° bulletin", "Période", "Nom et prénom", "Emploi", "Date de naissance",
     "Date d'entrée", "N° CNSS", "Situation de famille", "Personnes à charge",
     "H.N.", "H.S. 25%", "H.S. 50%", "H.S. 100%", "Jours travaillés", "Total heures",
-    "Salaire de base", "Ancienneté", "Taux ancienneté", "Primes/Indemnités",
+    "Salaire de base", "Ancienneté", "Taux ancienneté", "Ancienneté (années)", "Primes/Indemnités",
     "Salaire brut", "À déduire (imposable)", "À ajouter (imposable)", "Salaire imposable (SBI)",
     "Frais professionnels", "Taux frais prof.",
     "CNSS sal.", "AMO sal.", "IR", "Total retenues",
@@ -232,7 +239,7 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
       r.order, r.bulletin, r.period, r.name, r.emploi, r.birthDate ? dateFr(r.birthDate) : "",
       r.hireDate ? dateFr(r.hireDate) : "", r.cnss ?? "", r.maritalStatus ?? "", r.dependents,
       r.hoursNormal, r.hoursOt25, r.hoursOt50, r.hoursOt100, r.daysWorked, r.totalHours,
-      r.salaireBase, r.primeAnciennete, r.seniorityRate, r.primesIndemnites,
+      r.salaireBase, r.primeAnciennete, r.seniorityRate, r.seniorityYears, r.primesIndemnites,
       r.salaireBrut, r.imposableADeduire, r.imposableAAjouter, r.sbi,
       r.fraisPro, r.fraisProRate,
       r.cnssSalarie, r.amoSalarie, r.ir, r.totalRetenues,
@@ -242,14 +249,14 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
   rows.push([
     "", "", "", `Total (${b.totals.count})`, "", "", "", "", "", "",
     "", "", "", "", b.totals.daysWorked, b.totals.totalHours,
-    b.totals.salaireBase, b.totals.primeAnciennete, "", b.totals.primesIndemnites,
+    b.totals.salaireBase, b.totals.primeAnciennete, "", "", b.totals.primesIndemnites,
     b.totals.salaireBrut, b.totals.imposableADeduire, b.totals.imposableAAjouter, b.totals.sbi,
     b.totals.fraisPro, "",
     b.totals.cnssSalarie, b.totals.amoSalarie,
     b.totals.ir, b.totals.totalRetenues, b.totals.netAPayer, b.totals.avances, b.totals.netFinal,
   ]);
 
-  const LAST_COL = 32; // 33 colonnes (0..32)
+  const LAST_COL = 33; // 34 colonnes (0..33) — ajout de « Ancienneté (années) » en 19
   const HEADER_ROW = 3; // 0-based : [0] titre, [1] sous-titre, [2] vide, [3] en-têtes
   const firstDataRow = HEADER_ROW + 1;
   const lastDataRow = firstDataRow + b.rows.length - 1;
@@ -262,10 +269,12 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
   const MONEY = "#,##0.00";
   const HOURS = "#,##0.##";
   const PERCENT = "0.00%";
+  const INT = "0";
   const fmtByCol: Record<number, string> = {};
-  for (const c of [16, 17, 19, 20, 21, 22, 23, 24, 26, 27, 28, 29, 30, 31, 32]) fmtByCol[c] = MONEY;
+  for (const c of [16, 17, 20, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 33]) fmtByCol[c] = MONEY;
   for (const c of [10, 11, 12, 13, 14, 15]) fmtByCol[c] = HOURS;
-  for (const c of [18, 25]) fmtByCol[c] = PERCENT;
+  for (const c of [18, 26]) fmtByCol[c] = PERCENT;
+  fmtByCol[19] = INT; // Ancienneté (années)
   for (let r = firstDataRow; r <= totalRow; r++) {
     for (const key of Object.keys(fmtByCol)) {
       const c = Number(key);
@@ -290,7 +299,7 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
     { wch: 7 }, { wch: 12 }, { wch: 9 }, { wch: 28 }, { wch: 20 }, { wch: 13 },
     { wch: 13 }, { wch: 14 }, { wch: 16 }, { wch: 10 },
     { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 9 }, { wch: 10 }, { wch: 10 },
-    { wch: 13 }, { wch: 11 }, { wch: 12 }, { wch: 14 },
+    { wch: 13 }, { wch: 11 }, { wch: 12 }, { wch: 11 }, { wch: 14 },
     { wch: 13 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 12 },
     { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 },
     { wch: 15 }, { wch: 11 }, { wch: 13 },
