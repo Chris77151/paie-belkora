@@ -18,9 +18,9 @@ export interface PayrollBookRow {
   /** N° d'ordre continu dans le périmètre affiché. */
   order: number;
   /**
-   * N° du bulletin de paie = MATRICULE du salarié (identifiant de paie que l'employeur attribue),
-   * ou chaîne vide si aucun matricule n'est renseigné. On n'utilise JAMAIS l'identifiant technique
-   * interne du salarié ici : il n'a aucun sens pour l'utilisateur.
+   * N° du bulletin de paie : numéro SÉQUENTIEL au format « AAAAMM-NNN » (ex. « 202607-001 »),
+   * remis à 001 au début de chaque période. Distinct du n° d'ordre du registre (ligne continue) :
+   * il identifie le bulletin lui-même. Jamais l'identifiant technique interne du salarié.
    */
   bulletin: string;
   matricule: string;
@@ -138,10 +138,12 @@ export function buildPayrollBook(
       .map((sl) => ({ sl, e: empById.get(sl.employee_id) }))
       .sort((a, b) => sortKey(a.e).localeCompare(sortKey(b.e)));
 
+    let seq = 0; // séquence des bulletins DANS la période (remise à 1 chaque mois)
     for (const { sl, e } of slips) {
       const r = sl.result!;
       const inp = sl.input;
       order += 1;
+      seq += 1;
       const totalHours = round2(inp.hours_normal + inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100);
       // « À ajouter » (primes + heures supp. + indemnités) = brut − base − ancienneté.
       const primesIndemnites = round2(r.salaireBrut - r.salaireBase - r.primeAnciennete);
@@ -154,7 +156,7 @@ export function buildPayrollBook(
       const netFinal = round2(r.netAPayer - avances);
       rows.push({
         order,
-        bulletin: (e?.matricule ?? "").trim(),
+        bulletin: `${per.year}${two(per.month)}-${String(seq).padStart(3, "0")}`,
         matricule: e?.matricule ?? "",
         period: `${two(per.month)}/${per.year}`,
         year: per.year,

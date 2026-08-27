@@ -353,11 +353,11 @@ describe("Contrat RH — corps fidèle au gabarit MBD", () => {
     expect(html).not.toContain('class="titlebox"');
   });
 
-  it("rendu HTML : couleurs EXACTES du gabarit LaTeX officiel (mbd-style.sty)", () => {
+  it("rendu HTML : couleurs de la palette Miya = vraies couleurs du logo (tilleul/olive)", () => {
     const html = renderLegalHtml(firm, buildContractDoc(contract())); // Miya : palette par défaut
-    expect(html).toContain("#1B4332"); // mbdvertfonce (titre, intitulés d'articles)
-    expect(html).toContain("#52B788"); // mbdvertclair (filet d'accent, filet d'en-tête)
-    expect(html).toContain("#6B7280"); // mbdmuted (texte secondaire)
+    expect(html).toContain("#3F512A"); // vert olive foncé (titre, intitulés d'articles)
+    expect(html).toContain("#748E52"); // vert olive médian (filet d'accent, filet d'en-tête)
+    expect(html).toContain("#7C876E"); // gris teinté (texte secondaire)
     expect(html).toContain("var(--olive)"); // filet d'en-tête au vert médian, pas au vert foncé
   });
 

@@ -77,7 +77,7 @@ export default function PayrollBook() {
                 <thead>
                   <tr>
                     <Th rowSpan={2} className="text-right align-bottom">N° ordre</Th>
-                    <Th rowSpan={2} className="align-bottom">N° bulletin (matricule)</Th>
+                    <Th rowSpan={2} className="align-bottom">N° bulletin</Th>
                     <Th rowSpan={2} className="align-bottom">Période</Th>
                     <Th rowSpan={2} className="align-bottom">{t("doc.employee")}</Th>
                     <Th rowSpan={2} className="align-bottom">Emploi</Th>
@@ -195,7 +195,7 @@ export default function PayrollBook() {
           <p className="mt-3 text-xs text-muted-foreground">{t("lp.note")}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             <span className="font-medium">N° ordre</span> = numéro de ligne continu du registre ·{" "}
-            <span className="font-medium">N° bulletin</span> = matricule du salarié (« — » si aucun matricule n'est renseigné).
+            <span className="font-medium">N° bulletin</span> = numéro séquentiel du bulletin de paie (format AAAAMM-NNN, remis à 001 au début de chaque mois).
           </p>
         </CardContent>
       </Card>

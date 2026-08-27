@@ -35,13 +35,17 @@ describe("palette par société — aucune régression Miya", () => {
     expect(paletteForFirm("")).toBe(DEFAULT_PALETTE);
     expect(paletteForFirm("invalide")).toBe(DEFAULT_PALETTE);
   });
-  it("les valeurs Miya par défaut sont celles du gabarit LaTeX officiel mbd-style.sty", () => {
-    // Source de vérité : mbdvertfonce #1B4332, mbdvertclair #52B788, mbdvertpale #D8F3DC, mbdmuted #6B7280.
-    expect(DEFAULT_PALETTE.deepHex.toLowerCase()).toBe("#1b4332");
-    expect(DEFAULT_PALETTE.deep).toEqual([27, 67, 50]);
-    expect(DEFAULT_PALETTE.oliveHex.toLowerCase()).toBe("#52b788");
-    expect(DEFAULT_PALETTE.tintHex.toLowerCase()).toBe("#d8f3dc");
-    expect(DEFAULT_PALETTE.mutedHex.toLowerCase()).toBe("#6b7280");
+  it("les valeurs Miya par défaut reflètent le VRAI vert du logo (tilleul/olive #8CB45A)", () => {
+    // Vert dominant mesuré de la feuille du logo « Miya Belkora Design » (H≈87°, tilleul/olive),
+    // et non plus l'émeraude #52B788 qui ne correspondait pas au logo.
+    expect(DEFAULT_PALETTE.limeHex.toLowerCase()).toBe("#8cb45a");
+    expect(DEFAULT_PALETTE.lime).toEqual([140, 180, 90]);
+    expect(DEFAULT_PALETTE.deepHex.toLowerCase()).toBe("#3f512a");
+    expect(DEFAULT_PALETTE.tintHex.toLowerCase()).toBe("#e9f1df");
+    // La teinte du vert profond des titres reste dans la famille olive/tilleul (H≈80-100°).
+    const h = rgbToHsl(DEFAULT_PALETTE.deep)[0];
+    expect(h).toBeGreaterThan(70);
+    expect(h).toBeLessThan(110);
   });
 });
 

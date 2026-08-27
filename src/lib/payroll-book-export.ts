@@ -67,7 +67,7 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
   const head = [
     [
       { content: "N° ordre", rowSpan: 2 },
-      { content: "N° bull. (matric.)", rowSpan: 2 },
+      { content: "N° bulletin", rowSpan: 2 },
       { content: "Période", rowSpan: 2 },
       { content: "Nom et prénom", rowSpan: 2 },
       { content: "Emploi", rowSpan: 2 },
@@ -193,7 +193,7 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
   doc.setFont(FONT, "normal").setFontSize(FS.note).setTextColor(...pal.ink);
   doc.text(
     asciiSpaces(
-      "Livre de paie (art. 371 du Code du Travail) établi à partir des bulletins validés, à conserver au moins deux ans (art. 373). N° ordre = numéro de ligne du registre ; N° du bulletin = matricule du salarié (- si non renseigné). Montants en dirhams. Salaire imposable = salaire brut - à déduire + à ajouter. Frais professionnels = abattement fiscal informatif (n'entre pas dans les retenues). Total des retenues = CNSS + AMO + IR. Net à payer = salaire net - avances.",
+      "Livre de paie (art. 371 du Code du Travail) établi à partir des bulletins validés, à conserver au moins deux ans (art. 373). N° ordre = numéro de ligne du registre ; N° du bulletin = numéro séquentiel du bulletin (AAAAMM-NNN, remis à 001 chaque mois). Montants en dirhams. Salaire imposable = salaire brut - à déduire + à ajouter. Frais professionnels = abattement fiscal informatif (n'entre pas dans les retenues). Total des retenues = CNSS + AMO + IR. Net à payer = salaire net - avances.",
     ),
     M,
     cur.y,
@@ -212,7 +212,7 @@ export async function exportPayrollBookPdf(b: PayrollBook): Promise<void> {
 /** Export tableur — INTÉGRALITÉ des colonnes du registre (identité complète + détail des heures). */
 export function exportPayrollBookXlsx(b: PayrollBook): void {
   const header = [
-    "N° ordre", "N° bulletin (matricule)", "Période", "Nom et prénom", "Emploi", "Date de naissance",
+    "N° ordre", "N° bulletin", "Période", "Nom et prénom", "Emploi", "Date de naissance",
     "Date d'entrée", "N° CNSS", "Situation de famille", "Personnes à charge",
     "H.N.", "H.S. 25%", "H.S. 50%", "H.S. 100%", "Jours travaillés", "Total heures",
     "Salaire de base", "Ancienneté", "Taux ancienneté", "Primes/Indemnités",

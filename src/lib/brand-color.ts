@@ -36,27 +36,28 @@ export interface PayslipPalette {
 }
 
 /**
- * Palette Miya par défaut — couleurs EXACTES du gabarit LaTeX officiel `mbd-style.sty` v1.1
- * (source de vérité fournie par le Groupe Belkora) :
- *   mbdvertfonce #1B4332 · mbdvertclair #52B788 · mbdvertpale #D8F3DC · mbdmuted #6B7280.
- * `deep` = vert foncé (titres, intitulés d'articles, en-têtes de tableau) ; `olive`/`lime` = vert
- * clair (filet d'accent, filets médians) ; `tint` = vert pâle ; `muted` = gris ; `ink` = quasi-noir.
+ * Palette Miya par défaut — dérivée du VRAI vert du logo « Miya Belkora Design » : un vert
+ * TILLEUL / OLIVE `#8CB45A` (couleur dominante mesurée de la feuille du logo), et NON l'émeraude
+ * `#52B788` employé auparavant (qui ne correspondait pas au logo). Spectre mono-teinte cohérent
+ * (même teinte H≈87°, S/L modulés) : `deep` = vert olive foncé (titres, intitulés d'articles,
+ * en-têtes de tableau) ; `olive`/`lime` = vert tilleul (filet d'accent, filets médians) ; `tint`
+ * = vert pâle (fonds) ; `muted` = gris teinté ; `ink` = quasi-noir olive (corps).
  */
 export const DEFAULT_PALETTE: PayslipPalette = {
-  lime: [82, 183, 136], // #52B788 mbdvertclair
-  olive: [82, 183, 136], // #52B788 mbdvertclair (filets)
-  sageDark: [64, 145, 108], // #40916C vert médian (même famille)
-  tint: [216, 243, 220], // #D8F3DC mbdvertpale
-  ink: [31, 41, 55], // #1F2937 quasi-noir neutre (corps)
-  deep: [27, 67, 50], // #1B4332 mbdvertfonce
-  muted: [107, 114, 128], // #6B7280 mbdmuted
-  limeHex: "#52B788",
-  oliveHex: "#52B788",
-  sageHex: "#40916C",
-  tintHex: "#D8F3DC",
-  inkHex: "#1F2937",
-  deepHex: "#1B4332",
-  mutedHex: "#6B7280",
+  lime: [140, 180, 90], // #8CB45A — vert tilleul du logo Miya
+  olive: [116, 142, 82], // #748E52 — olive médian (filets)
+  sageDark: [103, 112, 92], // #67705C
+  tint: [233, 241, 223], // #E9F1DF — vert pâle (fonds)
+  ink: [44, 50, 36], // #2C3224 — quasi-noir olive (corps)
+  deep: [63, 81, 42], // #3F512A — vert olive foncé (titres)
+  muted: [124, 135, 110], // #7C876E — gris teinté
+  limeHex: "#8CB45A",
+  oliveHex: "#748E52",
+  sageHex: "#67705C",
+  tintHex: "#E9F1DF",
+  inkHex: "#2C3224",
+  deepHex: "#3F512A",
+  mutedHex: "#7C876E",
 };
 
 /* ------------------------------------------------------------------ conversions ------------------------------------------------------------------ */
