@@ -17,7 +17,11 @@ import { round2 } from "./payroll-engine";
 export interface PayrollBookRow {
   /** N° d'ordre continu dans le périmètre affiché. */
   order: number;
-  /** Référence du bulletin : matricule si présent, sinon identifiant salarié. */
+  /**
+   * N° du bulletin de paie = MATRICULE du salarié (identifiant de paie que l'employeur attribue),
+   * ou chaîne vide si aucun matricule n'est renseigné. On n'utilise JAMAIS l'identifiant technique
+   * interne du salarié ici : il n'a aucun sens pour l'utilisateur.
+   */
   bulletin: string;
   matricule: string;
   /** Période « mm/aaaa ». */
@@ -150,7 +154,7 @@ export function buildPayrollBook(
       const netFinal = round2(r.netAPayer - avances);
       rows.push({
         order,
-        bulletin: (e?.matricule ?? sl.employee_id).trim(),
+        bulletin: (e?.matricule ?? "").trim(),
         matricule: e?.matricule ?? "",
         period: `${two(per.month)}/${per.year}`,
         year: per.year,
