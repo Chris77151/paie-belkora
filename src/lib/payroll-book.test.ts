@@ -100,6 +100,21 @@ describe("payroll-book — livre de paie", () => {
     expect(b.totals.fraisPro).toBeCloseTo(b.rows.reduce((a, r) => a + r.fraisPro, 0), 2);
   });
 
+  it("auto-suit l'ancienneté depuis la date d'embauche ACTUELLE (résultat figé périmé recalculé)", () => {
+    const e1 = emp({ id: "e1", matricule: "010", hire_date: "2019-01-01" }); // ≥ 2 ans au 07/2026
+    const per = period("per7", 2026, 7);
+    // Bulletin dont le résultat FIGÉ portait une ancienneté à 0 (ex. validé sans date d'embauche).
+    const stale = slip("s1", "per7", "e1", e1, input());
+    stale.result = { ...stale.result!, primeAnciennete: 0, seniorityRate: 0, seniorityYears: 0 };
+    const s = {
+      firms: [firm], employees: [e1], periods: [per], payslips: [stale], current_firm_id: "f1",
+    } as unknown as AppState;
+    const b = buildPayrollBook(s, firm, 2026, 7);
+    // Le registre recalcule sur les données ACTUELLES → l'ancienneté s'automatise.
+    expect(b.rows[0].primeAnciennete).toBeGreaterThan(0);
+    expect(b.rows[0].seniorityRate).toBeGreaterThan(0);
+  });
+
   it("les totaux somment les lignes (net, brut, retenues)", () => {
     const b = buildPayrollBook(state(), firm, 2026, 7);
     const sumNet = b.rows.reduce((a, r) => a + r.netAPayer, 0);

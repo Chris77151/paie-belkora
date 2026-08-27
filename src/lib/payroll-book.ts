@@ -1,10 +1,15 @@
 /**
  * Livre de paie légal (art. 371 du Code du Travail) — moteur PUR, testé.
  *
- * Agrège les bulletins RÉELLEMENT figés d'une société (Payslip.result != null) au format du
- * registre officiel : une ligne par bulletin, triée par période puis par salarié. AUCUN recalcul —
- * les montants proviennent des bulletins validés (mêmes chiffres que la paie, les écritures et la
- * BDS). Les heures et jours viennent de `Payslip.input` ; les montants de `Payslip.result`.
+ * Agrège les bulletins d'une société (Payslip.result != null) au format du registre officiel : une
+ * ligne par bulletin, triée par période puis par salarié. Le registre reflète les données ACTUELLES
+ * du salarié : à partir de l'input figé de la période (heures, jours, primes réellement saisis), le
+ * résultat est RECALCULÉ avec les attributs courants du salarié (date d'embauche → ancienneté
+ * AUTO-SUIVIE, charges de famille, taux horaire, exonérations…). Ainsi, compléter une date
+ * d'embauche ou une info salarié après coup met automatiquement le registre à jour — à l'identique
+ * des colonnes d'identité (poste, naissance, N° CNSS…) déjà lues en direct. Les majorations et
+ * overrides saisis dans l'input (heures supp., prime d'ancienneté forcée…) restent respectés. Repli
+ * sur le résultat figé du bulletin si le salarié a été supprimé.
  *
  * Le livre de paie doit être tenu par établissement, conforme au modèle réglementaire, et conservé
  * au moins deux ans (art. 371-373). Ce volet le PRODUIT à partir des données de paie ; il ne
@@ -12,6 +17,7 @@
  */
 import type { AppState, Employee, Firm } from "@/data/types";
 import { round2 } from "./payroll-engine";
+import { computeFor } from "./payroll-helpers";
 
 /** Une ligne du livre de paie (un bulletin d'un salarié pour une période). */
 export interface PayrollBookRow {
@@ -140,8 +146,11 @@ export function buildPayrollBook(
 
     let seq = 0; // séquence des bulletins DANS la période (remise à 1 chaque mois)
     for (const { sl, e } of slips) {
-      const r = sl.result!;
       const inp = sl.input;
+      // Recalcul sur l'input figé + attributs ACTUELS du salarié → ancienneté et dérivés
+      // s'automatisent (date d'embauche, charges de famille, taux…). Repli sur le résultat figé
+      // si le salarié a été supprimé.
+      const r = e ? computeFor(e, firm, per.year, per.month, inp) : sl.result!;
       order += 1;
       seq += 1;
       const totalHours = round2(inp.hours_normal + inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100);
