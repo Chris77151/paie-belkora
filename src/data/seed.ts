@@ -6,6 +6,32 @@
 import type { AppState, AppUser, Firm } from "./types";
 
 /**
+ * Template LaTeX « Document RH » par défaut pour Miya Belkora Design — bâti sur le package maison
+ * `mbd-style.sty` (à conserver dans le projet LaTeX de l'utilisateur, avec le logo). L'app remplace
+ * les tokens ; le `.tex` produit se compile là où `mbd-style.sty` + le logo sont présents.
+ * `{{doc.body}}` est déjà du LaTeX prêt (paragraphes, listes, tableaux). N'affecte PAS le bulletin.
+ */
+export const MIYA_RH_LATEX_TEMPLATE = String.raw`\documentclass[11pt,a4paper]{article}
+\usepackage{mbd-style}
+\begin{document}
+\thispagestyle{firstpagembd}
+
+\enteteMBD
+
+{\centering{\Large\bfseries\color{mbdvertfonce} {{doc.title}}}\par}
+\vspace{0.8cm}
+
+{{doc.body}}
+
+\vspace{0.6cm}
+{\raggedleft\important{ {{doc.faitA}} }\par}
+
+\signaturemiya
+
+\end{document}
+`;
+
+/**
  * Super utilisateur racine de l'application (authentification locale).
  *
  * Identifiant : christian.agnamon@pepinierebelkora.com
@@ -49,6 +75,7 @@ export function seed(): AppState {
     address: "Route de l'Ourika, Marrakech",
     signatory_name: "Miya BELKORA",
     signatory_role: "Gérante",
+    rh_template_latex: MIYA_RH_LATEX_TEMPLATE, // gabarit LaTeX RH « mbd-style » (sans impact bulletin)
     odoo_company_id: 2, // Odoo res.company : Miya Belkora Design
   };
   const pep: Firm = {

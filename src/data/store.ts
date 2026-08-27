@@ -28,7 +28,7 @@ import { capDocEvents } from "@/lib/doc-log";
 import { findGhostPayslips } from "@/lib/stability-engine";
 import { buildPeriodEntries } from "@/lib/payroll-period-accounting";
 import { documentRequestDeadline } from "@/lib/document-requests";
-import { seed, SUPER_ADMIN } from "./seed";
+import { seed, SUPER_ADMIN, MIYA_RH_LATEX_TEMPLATE } from "./seed";
 import { isSupabaseConfigured, loadRemoteState, saveRemoteState } from "@/lib/supabase";
 
 const KEY = "gca-paie-rh-state-v1";
@@ -76,6 +76,13 @@ function migrate(s: AppState): AppState {
       if ((cur == null || cur === "") && seeded[k] != null) {
         (f[k] as Firm[keyof Firm]) = seeded[k];
       }
+    }
+  }
+  // Applique le template LaTeX « Document RH » à Miya Belkora Design s'il n'en a JAMAIS eu
+  // (garde `=== undefined` : un champ vidé volontairement par l'utilisateur n'est PAS réécrasé).
+  for (const f of s.firms) {
+    if (f.rh_template_latex === undefined && /miya\s+belkora/i.test(f.name)) {
+      f.rh_template_latex = MIYA_RH_LATEX_TEMPLATE;
     }
   }
   // Backfill des champs ajoutés après la 1re écriture localStorage.

@@ -508,6 +508,18 @@ describe("buildRhDocLatex — export LaTeX des documents RH (indépendant du bul
     expect(tex).toBe("\\doc{ATTESTATION DE TRAVAIL} par Miya Belkora Design SARL pour El Amrani — Gérante");
     expect(tex).not.toContain("{{"); // tous les tokens remplacés
   });
+
+  it("échappe les caractères LaTeX des valeurs (un « 25 % » ne casse plus la compilation)", () => {
+    const docPct: LegalDoc = {
+      fileTitle: "T",
+      heading: "Prime & taux",
+      blocks: [{ k: "p", t: "Majoration de 25 % appliquée." }],
+    };
+    const tex = buildRhDocLatex(firm, docPct, emp(), "T={{doc.title}} | B={{doc.body}}");
+    expect(tex).toContain("Prime \\& taux"); // & échappé dans doc.title
+    expect(tex).toContain("25 \\%"); // % échappé dans doc.body
+    expect(tex).not.toContain("25 %"); // plus aucun % nu (qui démarrerait un commentaire)
+  });
 });
 
 describe("sanitizeLegalText — retrait des caractères « IA » superflus des documents", () => {

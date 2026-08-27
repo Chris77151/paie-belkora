@@ -661,64 +661,18 @@ function runsToLatex(s: string): string {
     })
     .join("");
 }
-/** Texte brut d'un texte balisé (astérisques retirées), pour substitution dans un template. */
-function plainRunText(s: string): string {
-  return parseRuns(s).map((r) => r.t).join("");
-}
-/** Corps du document en texte brut (paragraphe par paragraphe) — token `{{doc.body}}`. */
-function docBodyPlain(d: LegalDoc): string {
-  const out: string[] = [];
-  for (const b of d.blocks) {
-    if (b.k === "h" || b.k === "p" || b.k === "center") out.push(plainRunText(b.t));
-    else if (b.k === "ul") out.push(b.items.map((i) => `- ${plainRunText(i)}`).join("\n"));
-    else if (b.k === "check") out.push(b.items.map((i, idx) => `${b.checked?.[idx] ? "[X]" : "[ ]"} ${plainRunText(i)}`).join("\n"));
-    else if (b.k === "table") {
-      if (b.head) out.push(b.head.join(" | "));
-      b.rows.forEach((r) => out.push(r.join(" | ")));
-    }
-  }
-  return out.join("\n\n");
-}
-
-/** Construit le source LaTeX d'un document RH (avec ou sans template société). PURE. */
-export function buildRhDocLatex(firm: Firm, raw: LegalDoc, employee: Employee | null, template?: string): string {
-  const d = sanitizeLegalDoc(raw);
-  const sig = d.signatures?.[0];
-  const today = dateFr(new Date().toISOString());
-
-  // 1) Template société : simple substitution de tokens (le contenu LaTeX est fourni par l'utilisateur).
-  if (template && template.trim()) {
-    const map: Record<string, string> = {
-      "firm.name": firm.name,
-      "firm.ice": firm.ice ?? "",
-      "firm.if_fiscal": firm.if_fiscal ?? "",
-      "firm.rc": firm.rc ?? "",
-      "firm.cnss_affiliation": firm.cnss_affiliation ?? "",
-      "firm.address": firm.address ?? "",
-      "firm.city": firm.city ?? "",
-      "employee.first_name": employee?.first_name ?? "",
-      "employee.last_name": employee?.last_name ?? "",
-      "employee.cin": employee?.cin ?? "",
-      "employee.cnss_number": employee?.cnss_number ?? "",
-      "employee.position": employee?.position ?? "",
-      "employee.hire_date": employee?.hire_date ? dateFr(employee.hire_date) : "",
-      "doc.title": d.heading,
-      "doc.body": docBodyPlain(d),
-      "doc.faitA": d.faitA ?? "",
-      "signatory.name": sig?.title ?? "",
-      "signatory.role": sig?.lines?.[0] ?? "",
-      date: today,
-    };
-    return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k) => map[k] ?? `??${k}??`);
-  }
-
-  // 2) Gabarit LaTeX par défaut, aux couleurs de la société.
-  const pal = paletteForFirm(firm.brand_color);
-  const rgb = ([r, g, b]: RGB) => `${Math.round(r)},${Math.round(g)},${Math.round(b)}`;
-  const body = d.blocks
+/**
+ * Rend les blocs d'un LegalDoc en corps LaTeX (paragraphes, listes, tableaux ; `**gras**` rendus,
+ * contenu ÉCHAPPÉ). `colored` = titres/en-têtes de tableau aux couleurs `deep`/`olive` (définies par
+ * le gabarit par défaut) ; sinon rendu NEUTRE, sans dépendance couleur — utilisable dans n'importe
+ * quel préambule (dont un `\usepackage{mbd-style}` maison) via le token `{{doc.body}}`.
+ */
+function rhBlocksToLatex(d: LegalDoc, colored: boolean): string {
+  const hColor = colored ? "\\color{deep}" : "";
+  return d.blocks
     .map((b) => {
       switch (b.k) {
-        case "h": return `\\vspace{6pt}\\noindent{\\bfseries\\color{deep} ${runsToLatex(b.t)}}\\par\\vspace{3pt}`;
+        case "h": return `\\vspace{6pt}\\noindent{\\bfseries${hColor} ${runsToLatex(b.t)}}\\par\\vspace{3pt}`;
         case "p": return `\\noindent ${runsToLatex(b.t)}\\par\\vspace{5pt}`;
         case "center": return `\\begin{center}${b.strong ? "\\bfseries " : ""}${runsToLatex(b.t)}\\end{center}`;
         case "ul": return `\\begin{itemize}\\setlength{\\itemsep}{1pt}\n${b.items.map((i) => `\\item ${runsToLatex(i)}`).join("\n")}\n\\end{itemize}`;
@@ -727,7 +681,11 @@ export function buildRhDocLatex(firm: Firm, raw: LegalDoc, employee: Employee | 
         case "table": {
           const cols = b.head?.length ?? b.rows[0]?.length ?? 1;
           const spec = `|${"l|".repeat(cols)}`;
-          const head = b.head ? `\\rowcolor{olive}${b.head.map((h) => `\\textcolor{white}{\\textbf{${escapeLatex(h)}}}`).join(" & ")}\\\\\\hline\n` : "";
+          const head = b.head
+            ? colored
+              ? `\\rowcolor{olive}${b.head.map((h) => `\\textcolor{white}{\\textbf{${escapeLatex(h)}}}`).join(" & ")}\\\\\\hline\n`
+              : `${b.head.map((h) => `\\textbf{${escapeLatex(h)}}`).join(" & ")}\\\\\\hline\n`
+            : "";
           const rows = b.rows.map((r) => `${r.map(escapeLatex).join(" & ")}\\\\\\hline`).join("\n");
           return `\\vspace{4pt}\\noindent\\begin{tabular}{${spec}}\\hline\n${head}${rows}\n\\end{tabular}\\vspace{4pt}`;
         }
@@ -735,6 +693,48 @@ export function buildRhDocLatex(firm: Firm, raw: LegalDoc, employee: Employee | 
       }
     })
     .join("\n");
+}
+
+/** Construit le source LaTeX d'un document RH (avec ou sans template société). PURE. */
+export function buildRhDocLatex(firm: Firm, raw: LegalDoc, employee: Employee | null, template?: string): string {
+  const d = sanitizeLegalDoc(raw);
+  const sig = d.signatures?.[0];
+  const today = dateFr(new Date().toISOString());
+
+  // 1) Template société : substitution de tokens. Les valeurs de DONNÉES sont ÉCHAPPÉES pour LaTeX
+  //    (un « 25 % » deviendrait sinon un commentaire et casserait la compilation) ; seul `{{doc.body}}`
+  //    est déjà du LaTeX prêt à l'emploi (échappé bloc par bloc). Le code LaTeX du template lui-même
+  //    n'est jamais touché.
+  if (template && template.trim()) {
+    const E = escapeLatex;
+    const map: Record<string, string> = {
+      "firm.name": E(firm.name),
+      "firm.ice": E(firm.ice ?? ""),
+      "firm.if_fiscal": E(firm.if_fiscal ?? ""),
+      "firm.rc": E(firm.rc ?? ""),
+      "firm.cnss_affiliation": E(firm.cnss_affiliation ?? ""),
+      "firm.address": E(firm.address ?? ""),
+      "firm.city": E(firm.city ?? ""),
+      "employee.first_name": E(employee?.first_name ?? ""),
+      "employee.last_name": E(employee?.last_name ?? ""),
+      "employee.cin": E(employee?.cin ?? ""),
+      "employee.cnss_number": E(employee?.cnss_number ?? ""),
+      "employee.position": E(employee?.position ?? ""),
+      "employee.hire_date": E(employee?.hire_date ? dateFr(employee.hire_date) : ""),
+      "doc.title": E(d.heading),
+      "doc.body": rhBlocksToLatex(d, false), // déjà échappé (runsToLatex), neutre en couleurs
+      "doc.faitA": E(d.faitA ?? ""),
+      "signatory.name": E(sig?.title ?? ""),
+      "signatory.role": E(sig?.lines?.[0] ?? ""),
+      date: E(today),
+    };
+    return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k) => map[k] ?? `??${k}??`);
+  }
+
+  // 2) Gabarit LaTeX par défaut, aux couleurs de la société.
+  const pal = paletteForFirm(firm.brand_color);
+  const rgb = ([r, g, b]: RGB) => `${Math.round(r)},${Math.round(g)},${Math.round(b)}`;
+  const body = rhBlocksToLatex(d, true);
   const sigTex = sig
     ? `\\vspace{20pt}\\noindent\\textbf{${escapeLatex(sig.title)}}\\\\ ${sig.lines.map(escapeLatex).join("\\\\ ")}${sig.caption ? `\\\\ \\textit{\\footnotesize ${escapeLatex(sig.caption)}}` : ""}`
     : "";
