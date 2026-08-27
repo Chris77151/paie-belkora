@@ -51,6 +51,11 @@ export interface PayrollBookRow {
   /** « À ajouter » du registre officiel : part imposable au-delà du brut (imposable − brut, si > 0). */
   imposableAAjouter: number;
   sbi: number;
+  /** Frais professionnels (colonne « À déduire » du registre) : abattement fiscal sur l'assiette IR
+   *  — informatif, il n'est PAS prélevé en trésorerie (n'entre pas dans le total des retenues). */
+  fraisPro: number;
+  /** Taux des frais professionnels appliqué (0,35 ou 0,25), pour l'en-tête « (…%) ». */
+  fraisProRate: number;
   /* --- retenues salariales --- */
   cnssSalarie: number;
   amoSalarie: number;
@@ -75,6 +80,7 @@ export interface PayrollBookTotals {
   imposableADeduire: number;
   imposableAAjouter: number;
   sbi: number;
+  fraisPro: number;
   cnssSalarie: number;
   amoSalarie: number;
   ir: number;
@@ -170,6 +176,8 @@ export function buildPayrollBook(
         imposableADeduire,
         imposableAAjouter,
         sbi: r.sbi,
+        fraisPro: r.fraisPro,
+        fraisProRate: r.fraisProRate,
         cnssSalarie: r.cnssSalarie,
         amoSalarie: r.amoSalarie,
         ir: r.ir,
@@ -193,6 +201,7 @@ export function buildPayrollBook(
       acc.imposableADeduire = round2(acc.imposableADeduire + r.imposableADeduire);
       acc.imposableAAjouter = round2(acc.imposableAAjouter + r.imposableAAjouter);
       acc.sbi = round2(acc.sbi + r.sbi);
+      acc.fraisPro = round2(acc.fraisPro + r.fraisPro);
       acc.cnssSalarie = round2(acc.cnssSalarie + r.cnssSalarie);
       acc.amoSalarie = round2(acc.amoSalarie + r.amoSalarie);
       acc.ir = round2(acc.ir + r.ir);
@@ -205,7 +214,7 @@ export function buildPayrollBook(
     {
       count: 0, daysWorked: 0, totalHours: 0, salaireBase: 0, primeAnciennete: 0,
       primesIndemnites: 0, salaireBrut: 0, imposableADeduire: 0, imposableAAjouter: 0,
-      sbi: 0, cnssSalarie: 0, amoSalarie: 0,
+      sbi: 0, fraisPro: 0, cnssSalarie: 0, amoSalarie: 0,
       ir: 0, totalRetenues: 0, netAPayer: 0, avances: 0, netFinal: 0,
     },
   );

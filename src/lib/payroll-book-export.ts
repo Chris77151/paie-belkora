@@ -66,15 +66,18 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
       { content: "N°", rowSpan: 2 },
       { content: "Période", rowSpan: 2 },
       { content: "Nom et prénom", rowSpan: 2 },
+      { content: "Entrée", rowSpan: 2 },
       { content: "N° CNSS", rowSpan: 2 },
+      { content: "Nb déd.", rowSpan: 2 },
       { content: "Période payée (H / J)", colSpan: 4 },
-      { content: "Salaire du poste", rowSpan: 2 },
+      { content: "Salaire de base", rowSpan: 2 },
       { content: "Ancien.", rowSpan: 2 },
       { content: "Primes / Ind.", rowSpan: 2 },
       { content: "Salaire brut", rowSpan: 2 },
       { content: "À déduire", rowSpan: 2 },
       { content: "À ajouter", rowSpan: 2 },
       { content: "Salaire imposable", rowSpan: 2 },
+      { content: "Frais prof.", rowSpan: 2 },
       { content: "À déduire (retenues)", colSpan: 4 },
       { content: "Salaire net", rowSpan: 2 },
       { content: "Avances", rowSpan: 2 },
@@ -86,7 +89,9 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
     String(r.order),
     r.period,
     r.name,
+    r.hireDate ? dateFr(r.hireDate) : "—",
     r.cnss || "—",
+    String(r.dependents),
     hrs(r.hoursNormal),
     hrs(r.hoursOt25 + r.hoursOt50 + r.hoursOt100),
     hrs(r.daysWorked),
@@ -98,6 +103,7 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
     money(r.imposableADeduire),
     money(r.imposableAAjouter),
     money(r.sbi),
+    money(r.fraisPro),
     money(r.cnssSalarie),
     money(r.amoSalarie),
     money(r.ir),
@@ -107,7 +113,7 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
     money(r.netFinal),
   ]);
   const totalRow = [
-    "", "", `Total (${b.totals.count})`, "",
+    "", "", `Total (${b.totals.count})`, "", "", "",
     "", "", hrs(b.totals.daysWorked), hrs(b.totals.totalHours),
     money(b.totals.salaireBase),
     money(b.totals.primeAnciennete),
@@ -116,6 +122,7 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
     money(b.totals.imposableADeduire),
     money(b.totals.imposableAAjouter),
     money(b.totals.sbi),
+    money(b.totals.fraisPro),
     money(b.totals.cnssSalarie),
     money(b.totals.amoSalarie),
     money(b.totals.ir),
@@ -133,19 +140,21 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
     body: [...body, totalRow],
     theme: "grid",
     ...styles,
-    styles: { ...styles.styles, fontSize: 6.2, cellPadding: 0.9 },
-    headStyles: { ...styles.headStyles, fontSize: 6.2, halign: "center", valign: "middle" },
+    styles: { ...styles.styles, fontSize: 5.6, cellPadding: 0.7, overflow: "linebreak" },
+    headStyles: { ...styles.headStyles, fontSize: 5.6, halign: "center", valign: "middle" },
     alternateRowStyles: { fillColor: [...pal.tint] },
     columnStyles: {
-      0: { halign: "right", cellWidth: 7 },
-      1: { halign: "center", cellWidth: 13 },
-      2: { halign: "left", cellWidth: 32 },
-      3: { halign: "left", cellWidth: 17 },
-      4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" },
-      8: { halign: "right" }, 9: { halign: "right" }, 10: { halign: "right" }, 11: { halign: "right" },
-      12: { halign: "right" }, 13: { halign: "right" }, 14: { halign: "right" }, 15: { halign: "right" },
-      16: { halign: "right" }, 17: { halign: "right" }, 18: { halign: "right" }, 19: { halign: "right" },
-      20: { halign: "right" }, 21: { halign: "right" },
+      0: { halign: "right", cellWidth: 6 },
+      1: { halign: "center", cellWidth: 11 },
+      2: { halign: "left", cellWidth: 26 },
+      3: { halign: "center", cellWidth: 13 },
+      4: { halign: "left", cellWidth: 15 },
+      5: { halign: "right", cellWidth: 7 },
+      6: { halign: "right" }, 7: { halign: "right" }, 8: { halign: "right" }, 9: { halign: "right" },
+      10: { halign: "right" }, 11: { halign: "right" }, 12: { halign: "right" }, 13: { halign: "right" },
+      14: { halign: "right" }, 15: { halign: "right" }, 16: { halign: "right" }, 17: { halign: "right" },
+      18: { halign: "right" }, 19: { halign: "right" }, 20: { halign: "right" }, 21: { halign: "right" },
+      22: { halign: "right" }, 23: { halign: "right" }, 24: { halign: "right" },
     },
     didParseCell: (c) => {
       if (c.section === "body" && c.row.index === totalIdx) {
@@ -156,14 +165,16 @@ export async function buildPayrollBookPdf(b: PayrollBook): Promise<jsPDF> {
   });
   afterTable(cur, 6);
 
-  doc.setFont(FONT, "italic").setFontSize(FS.micro).setTextColor(...pal.muted);
+  // Note de bas de tableau — lisible (corps « note », encre de marque) et SANS le signe moins
+  // « − » (U+2212) que les polices standard de jsPDF ne savent pas rendre (il s'affichait « " »).
+  doc.setFont(FONT, "normal").setFontSize(FS.note).setTextColor(...pal.ink);
   doc.text(
     asciiSpaces(
-      "Livre de paie (art. 371 du Code du Travail) établi à partir des bulletins validés — à conserver au moins deux ans (art. 373). Montants en dirhams ; salaire imposable = salaire brut − à déduire + à ajouter ; total des retenues = CNSS + AMO + IR ; net à payer = salaire net − avances.",
+      "Livre de paie (art. 371 du Code du Travail) établi à partir des bulletins validés, à conserver au moins deux ans (art. 373). Montants en dirhams. Salaire imposable = salaire brut - à déduire + à ajouter. Frais professionnels = abattement fiscal informatif (n'entre pas dans les retenues). Total des retenues = CNSS + AMO + IR. Net à payer = salaire net - avances.",
     ),
     M,
     cur.y,
-    { maxWidth: doc.internal.pageSize.getWidth() - 2 * M },
+    { maxWidth: doc.internal.pageSize.getWidth() - 2 * M, lineHeightFactor: 1.3 },
   );
 
   paintFooters(doc, b.firm, pal);
@@ -183,6 +194,7 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
     "H.N.", "H.S. 25%", "H.S. 50%", "H.S. 100%", "Jours travaillés", "Total heures",
     "Salaire de base", "Ancienneté", "Taux ancienneté %", "Primes/Indemnités",
     "Salaire brut", "À déduire (imposable)", "À ajouter (imposable)", "Salaire imposable (SBI)",
+    "Frais professionnels", "Taux frais prof. %",
     "CNSS sal.", "AMO sal.", "IR", "Total retenues",
     "Salaire net à payer", "Avances", "Net à payer",
   ];
@@ -199,6 +211,7 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
       r.hoursNormal, r.hoursOt25, r.hoursOt50, r.hoursOt100, r.daysWorked, r.totalHours,
       r.salaireBase, r.primeAnciennete, round1(r.seniorityRate * 100), r.primesIndemnites,
       r.salaireBrut, r.imposableADeduire, r.imposableAAjouter, r.sbi,
+      r.fraisPro, round1(r.fraisProRate * 100),
       r.cnssSalarie, r.amoSalarie, r.ir, r.totalRetenues,
       r.netAPayer, r.avances, r.netFinal,
     ]);
@@ -208,6 +221,7 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
     "", "", "", "", b.totals.daysWorked, b.totals.totalHours,
     b.totals.salaireBase, b.totals.primeAnciennete, "", b.totals.primesIndemnites,
     b.totals.salaireBrut, b.totals.imposableADeduire, b.totals.imposableAAjouter, b.totals.sbi,
+    b.totals.fraisPro, "",
     b.totals.cnssSalarie, b.totals.amoSalarie,
     b.totals.ir, b.totals.totalRetenues, b.totals.netAPayer, b.totals.avances, b.totals.netFinal,
   ]);
@@ -218,7 +232,8 @@ export function exportPayrollBookXlsx(b: PayrollBook): void {
     { wch: 13 }, { wch: 14 }, { wch: 16 }, { wch: 10 },
     { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 9 }, { wch: 10 }, { wch: 10 },
     { wch: 13 }, { wch: 11 }, { wch: 12 }, { wch: 14 },
-    { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 },
+    { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 13 },
+    { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 },
     { wch: 15 }, { wch: 11 }, { wch: 13 },
   ];
   const wb = XLSX.utils.book_new();

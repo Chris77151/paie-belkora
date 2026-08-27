@@ -87,6 +87,19 @@ describe("payroll-book — livre de paie", () => {
       b.rows.reduce((a, r) => a + r.imposableAAjouter, 0), 2);
   });
 
+  it("colonnes officielles complètes : entrée en service, nombre de déductions, frais professionnels", () => {
+    const b = buildPayrollBook(state(), firm, 2026, 7);
+    for (const r of b.rows) {
+      // Identité du registre officiel désormais portée par le livre.
+      expect(r.hireDate).toBe("2022-01-01");
+      expect(typeof r.dependents).toBe("number");
+      // Frais professionnels : abattement fiscal réel (> 0 sur un salaire imposable non nul), avec son taux.
+      expect(r.fraisPro).toBeGreaterThan(0);
+      expect(r.fraisProRate).toBeGreaterThan(0);
+    }
+    expect(b.totals.fraisPro).toBeCloseTo(b.rows.reduce((a, r) => a + r.fraisPro, 0), 2);
+  });
+
   it("les totaux somment les lignes (net, brut, retenues)", () => {
     const b = buildPayrollBook(state(), firm, 2026, 7);
     const sumNet = b.rows.reduce((a, r) => a + r.netAPayer, 0);
