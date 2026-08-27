@@ -34,7 +34,7 @@ import { cn } from "@/lib/cn";
 import { firmDescriptor, firmLegalLine } from "@/lib/firm-legal";
 import { paletteForFirm } from "@/lib/brand-color";
 import type { DocFormat, DocType, Employee, Firm } from "@/data/types";
-import { LegalDocPreview } from "@/components/LegalDocPreview";
+import { LegalDocPreview, RichText } from "@/components/LegalDocPreview";
 import {
   RH_DOC_TYPES,
   bodyParagraphs,
@@ -567,7 +567,7 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
 
               <div className="text-[13.5px] leading-[1.85] text-justify space-y-3">
                 {paras.map((p, i) => (
-                  <p key={i}>{p}</p>
+                  <p key={i}><RichText text={p} /></p>
                 ))}
               </div>
 

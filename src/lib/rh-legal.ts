@@ -180,12 +180,14 @@ export function employerParagraph(firm: Firm): string {
  */
 export function sanitizeLegalText(s: string): string {
   return asciiSpaces(s)
-    .replace(/[–—―]/g, "-")   // tirets moyen / cadratin / barre → trait d'union
+    .replace(/[–—―‒]/g, "-")   // tirets moyen / cadratin / barre / figure → trait d'union
+    .replace(/‑/g, "-")     // trait d'union insécable → trait d'union simple
     .replace(/[•‣⁃◦]/g, "-")   // puces résiduelles dans le fil du texte
     .replace(/·/g, "-")          // point médian employé comme séparateur
     .replace(/…/g, "...")             // points de suspension → trois points ASCII
     .replace(/\s*→\s*/g, " vers ")   // flèche « devient / vers »
     .replace(/\s*←\s*/g, " - ")      // flèche inverse (rare)
+    .replace(/\s*×\s*/g, " x ")       // signe multiplication → « x »
     .replace(/≤\s*/g, "au plus ")     // ≤ → « au plus »
     .replace(/≥\s*/g, "au moins ");   // ≥ → « au moins »
 }

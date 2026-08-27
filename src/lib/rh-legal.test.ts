@@ -492,6 +492,11 @@ describe("sanitizeLegalText — retrait des caractères « IA » superflus des d
     expect(sanitizeLegalText("mise à pied ≤ 8 jours")).toBe("mise à pied au plus 8 jours");
   });
 
+  it("neutralise aussi le signe multiplication et le trait d'union insécable", () => {
+    expect(sanitizeLegalText("2 × 8 heures")).toBe("2 x 8 heures");
+    expect(sanitizeLegalText("mi‑temps")).toBe("mi-temps");
+  });
+
   it("CONSERVE la typographie française légitime (guillemets, accents, apostrophe)", () => {
     const s = "L'employeur « Miya Belkora » à Témara reste équitable.";
     expect(sanitizeLegalText(s)).toBe(s);

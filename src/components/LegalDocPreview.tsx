@@ -4,14 +4,33 @@
  * société émettrice (spectre de firm.brand_color), à l'identique de l'export ; vert Miya par défaut.
  */
 import type { Firm } from "@/data/types";
-import type { LegalDoc } from "@/lib/rh-legal";
+import { sanitizeLegalDoc, sanitizeLegalText, type LegalDoc } from "@/lib/rh-legal";
 import { firmDescriptor } from "@/lib/firm-legal";
-import { firmContactLine, firmIdentifiersLine, firmLogoPath } from "@/lib/pdf-kit";
+import { firmContactLine, firmIdentifiersLine, firmLogoPath, parseRuns } from "@/lib/pdf-kit";
 import { paletteForFirm } from "@/lib/brand-color";
 
+/**
+ * Rend un texte balisé `**gras**` / `*italique*` en vrai gras/italique — JAMAIS les astérisques
+ * brutes (marqueur markdown qui « trahit » une génération automatique). Le texte est d'abord
+ * assaini (tirets cadratins, points de suspension, flèches…) comme à l'export PDF/HTML.
+ */
+export function RichText({ text }: { text: string }) {
+  const runs = parseRuns(sanitizeLegalText(text));
+  return (
+    <>
+      {runs.map((r, i) =>
+        r.b ? <b key={i}>{r.t}</b> : r.i ? <i key={i}>{r.t}</i> : <span key={i}>{r.t}</span>,
+      )}
+    </>
+  );
+}
+
 export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: LegalDoc; lang?: "fr" | "ar" }) {
-  const ar = lang === "ar" && doc.ar ? doc.ar : null;
-  const c = ar ?? doc;
+  // Assainissement typographique IDENTIQUE à l'export (PDF/HTML) : l'aperçu — et sa capture
+  // « Aperçu fidèle » — ne doivent plus laisser passer de caractères « spéciaux » d'apparence IA.
+  const d = sanitizeLegalDoc(doc);
+  const ar = lang === "ar" && d.ar ? d.ar : null;
+  const c = ar ?? d;
   const rtl = !!ar;
   const pal = paletteForFirm(firm.brand_color); // couleurs dérivées de la société (défaut = vert Miya)
   return (
@@ -35,7 +54,7 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
         </div>
       </div>
 
-      {!rtl && doc.rightHeader && <div className="mt-3 text-right text-[12px]">{doc.rightHeader}</div>}
+      {!rtl && d.rightHeader && <div className="mt-3 text-right text-[12px]">{d.rightHeader}</div>}
 
       {c.meta && c.meta.length > 0 && (
         <div className="mt-2.5 space-y-0.5 text-[12px]">
@@ -61,20 +80,20 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
             case "h":
               return (
                 <div key={i} className="pt-2 font-bold text-[13px]" style={{ color: pal.deepHex }}>
-                  {b.t}
+                  <RichText text={b.t} />
                 </div>
               );
             case "p":
               return (
                 <p key={i} className="whitespace-pre-line">
-                  {b.t}
+                  <RichText text={b.t} />
                 </p>
               );
             case "ul":
               return (
                 <ul key={i} className={`list-disc space-y-0.5 ${rtl ? "pr-6" : "pl-6"}`}>
                   {b.items.map((it, j) => (
-                    <li key={j}>{it}</li>
+                    <li key={j}><RichText text={it} /></li>
                   ))}
                 </ul>
               );
@@ -82,14 +101,14 @@ export function LegalDocPreview({ firm, doc, lang = "fr" }: { firm: Firm; doc: L
               return (
                 <ul key={i} className="pl-1 space-y-0.5">
                   {b.items.map((it, j) => (
-                    <li key={j}>{b.checked?.[j] ? "☑" : "☐"}&nbsp;&nbsp;{it}</li>
+                    <li key={j}>{b.checked?.[j] ? "☑" : "☐"}&nbsp;&nbsp;<RichText text={it} /></li>
                   ))}
                 </ul>
               );
             case "center":
               return (
                 <p key={i} className={`text-center ${b.strong ? "font-bold" : ""}`}>
-                  {b.t}
+                  <RichText text={b.t} />
                 </p>
               );
             case "sp":
