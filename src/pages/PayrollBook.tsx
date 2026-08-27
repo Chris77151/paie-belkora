@@ -138,8 +138,8 @@ export default function PayrollBook() {
                       <Td className="text-right num">{num(r.salaireBase)}</Td>
                       <Td className="text-right num">{num(r.primeAnciennete)}</Td>
                       <Td className="text-right num whitespace-nowrap">
-                        {pct(r.seniorityRate)}
-                        {r.hireDate ? <span className="text-muted-foreground"> · {r.seniorityYears} an{r.seniorityYears > 1 ? "s" : ""}</span> : null}
+                        {r.seniorityRate ? <>{pct(r.seniorityRate)} · </> : null}
+                        {r.hireDate ? <span className="text-muted-foreground">{r.seniorityYears} an{r.seniorityYears > 1 ? "s" : ""}</span> : "—"}
                       </Td>
                       <Td className="text-right num">{r.primesIndemnites ? num(r.primesIndemnites) : "—"}</Td>
                       <Td className="text-right num">{num(r.salaireBrut)}</Td>
@@ -201,11 +201,13 @@ export default function PayrollBook() {
             <span className="font-medium">N° bulletin</span> = numéro séquentiel du bulletin de paie (format AAAAMM-NNN, remis à 001 au début de chaque mois).
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            <span className="font-medium">Ancienneté</span> : la <span className="font-medium">prime</span> légale d'ancienneté ne
-            démarre qu'à <span className="font-medium">2 ans de service</span> (5 %, puis 10 % à 5 ans… — art. 350) ; elle reste donc à
-            0,00 en deçà. L'ancienneté en <span className="font-medium">années</span> (colonne « Taux · ancienneté ») se calcule
-            automatiquement dès qu'une <span className="font-medium">date d'entrée</span> est renseignée sur la fiche du salarié — une
-            colonne « Ancienneté » vide signale le plus souvent une <span className="font-medium">date d'embauche manquante</span>.
+            <span className="font-medium">Montants figés</span> : les colonnes chiffrées (masse salariale, brut, net, prime
+            d'ancienneté…) proviennent des <span className="font-medium">bulletins validés</span> — elles ne bougent pas (cohérence
+            avec les écritures et la BDS). La <span className="font-medium">prime</span> légale d'ancienneté démarre à
+            <span className="font-medium"> 2 ans de service</span> (5 %, puis 10 % à 5 ans… — art. 350) et reste à 0,00 en deçà. Seule
+            l'<span className="font-medium">ancienneté en années</span> (colonne « Taux · ancienneté ») se calcule en direct depuis la
+            <span className="font-medium"> date d'entrée</span> de la fiche salarié. Pour appliquer rétroactivement une prime (date
+            d'embauche ajoutée après coup), <span className="font-medium">régénérez la période</span> dans le volet Paie.
           </p>
         </CardContent>
       </Card>

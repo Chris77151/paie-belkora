@@ -1,23 +1,23 @@
 /**
  * Livre de paie légal (art. 371 du Code du Travail) — moteur PUR, testé.
  *
- * Agrège les bulletins d'une société (Payslip.result != null) au format du registre officiel : une
- * ligne par bulletin, triée par période puis par salarié. Le registre reflète les données ACTUELLES
- * du salarié : à partir de l'input figé de la période (heures, jours, primes réellement saisis), le
- * résultat est RECALCULÉ avec les attributs courants du salarié (date d'embauche → ancienneté
- * AUTO-SUIVIE, charges de famille, taux horaire, exonérations…). Ainsi, compléter une date
- * d'embauche ou une info salarié après coup met automatiquement le registre à jour — à l'identique
- * des colonnes d'identité (poste, naissance, N° CNSS…) déjà lues en direct. Les majorations et
- * overrides saisis dans l'input (heures supp., prime d'ancienneté forcée…) restent respectés. Repli
- * sur le résultat figé du bulletin si le salarié a été supprimé.
+ * Agrège les bulletins RÉELLEMENT figés d'une société (Payslip.result != null) au format du
+ * registre officiel : une ligne par bulletin, triée par période puis par salarié. AUCUN recalcul
+ * des MONTANTS — ils proviennent des bulletins validés (mêmes chiffres que la paie, les écritures
+ * et la BDS), de sorte que la masse salariale et les totaux restent STABLES et conformes à ce qui a
+ * été payé. Les heures et jours viennent de `Payslip.input` ; les montants de `Payslip.result`.
+ *
+ * SEULE exception, purement informative et sans effet sur les montants : l'**ancienneté en années**
+ * (tenure) est calculée EN DIRECT depuis la date d'embauche courante du salarié, afin qu'elle
+ * s'affiche même si le bulletin figé a été validé sans date d'embauche (la PRIME d'ancienneté, elle,
+ * reste figée sur le bulletin ; pour l'appliquer rétroactivement, régénérer la période dans Paie).
  *
  * Le livre de paie doit être tenu par établissement, conforme au modèle réglementaire, et conservé
  * au moins deux ans (art. 371-373). Ce volet le PRODUIT à partir des données de paie ; il ne
  * dispense pas de la conservation légale.
  */
 import type { AppState, Employee, Firm } from "@/data/types";
-import { round2 } from "./payroll-engine";
-import { computeFor } from "./payroll-helpers";
+import { round2, seniorityYears } from "./payroll-engine";
 
 /** Une ligne du livre de paie (un bulletin d'un salarié pour une période). */
 export interface PayrollBookRow {
@@ -149,11 +149,11 @@ export function buildPayrollBook(
 
     let seq = 0; // séquence des bulletins DANS la période (remise à 1 chaque mois)
     for (const { sl, e } of slips) {
+      const r = sl.result!; // montants FIGÉS du bulletin validé (masse salariale stable)
       const inp = sl.input;
-      // Recalcul sur l'input figé + attributs ACTUELS du salarié → ancienneté et dérivés
-      // s'automatisent (date d'embauche, charges de famille, taux…). Repli sur le résultat figé
-      // si le salarié a été supprimé.
-      const r = e ? computeFor(e, firm, per.year, per.month, inp) : sl.result!;
+      // Ancienneté en ANNÉES calculée en direct depuis la date d'embauche courante (informatif,
+      // n'affecte AUCUN montant) : s'affiche même si le bulletin figé n'avait pas de date d'embauche.
+      const tenure = e?.hire_date ? seniorityYears(e.hire_date, per.year, per.month) : 0;
       order += 1;
       seq += 1;
       const totalHours = round2(inp.hours_normal + inp.hours_ot_25 + inp.hours_ot_50 + inp.hours_ot_100);
@@ -189,7 +189,7 @@ export function buildPayrollBook(
         salaireBase: r.salaireBase,
         primeAnciennete: r.primeAnciennete,
         seniorityRate: r.seniorityRate,
-        seniorityYears: r.seniorityYears,
+        seniorityYears: tenure,
         primesIndemnites,
         salaireBrut: r.salaireBrut,
         imposableADeduire,

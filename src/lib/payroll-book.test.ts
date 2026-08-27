@@ -100,19 +100,23 @@ describe("payroll-book — livre de paie", () => {
     expect(b.totals.fraisPro).toBeCloseTo(b.rows.reduce((a, r) => a + r.fraisPro, 0), 2);
   });
 
-  it("auto-suit l'ancienneté depuis la date d'embauche ACTUELLE (résultat figé périmé recalculé)", () => {
-    const e1 = emp({ id: "e1", matricule: "010", hire_date: "2019-01-01" }); // ≥ 2 ans au 07/2026
+  it("ancienneté en ANNÉES calculée en direct (tenure), montants du bulletin FIGÉS", () => {
+    const e1 = emp({ id: "e1", matricule: "010", hire_date: "2019-01-01" }); // 7 ans révolus au 07/2026
     const per = period("per7", 2026, 7);
-    // Bulletin dont le résultat FIGÉ portait une ancienneté à 0 (ex. validé sans date d'embauche).
-    const stale = slip("s1", "per7", "e1", e1, input());
-    stale.result = { ...stale.result!, primeAnciennete: 0, seniorityRate: 0, seniorityYears: 0 };
+    // Bulletin FIGÉ validé sans ancienneté (prime + montants à 0 côté ancienneté).
+    const frozen = slip("s1", "per7", "e1", e1, input());
+    const frozenBrut = frozen.result!.salaireBrut;
+    frozen.result = { ...frozen.result!, primeAnciennete: 0, seniorityRate: 0, seniorityYears: 0 };
     const s = {
-      firms: [firm], employees: [e1], periods: [per], payslips: [stale], current_firm_id: "f1",
+      firms: [firm], employees: [e1], periods: [per], payslips: [frozen], current_firm_id: "f1",
     } as unknown as AppState;
     const b = buildPayrollBook(s, firm, 2026, 7);
-    // Le registre recalcule sur les données ACTUELLES → l'ancienneté s'automatise.
-    expect(b.rows[0].primeAnciennete).toBeGreaterThan(0);
-    expect(b.rows[0].seniorityRate).toBeGreaterThan(0);
+    // Tenure recalculée en direct depuis la date d'embauche → visible même si le bulletin ne l'avait pas.
+    expect(b.rows[0].seniorityYears).toBe(7);
+    // MAIS les montants restent figés (masse salariale stable) : prime et brut inchangés.
+    expect(b.rows[0].primeAnciennete).toBe(0);
+    expect(b.rows[0].salaireBrut).toBe(frozenBrut);
+    expect(b.totals.salaireBrut).toBe(frozenBrut);
   });
 
   it("les totaux somment les lignes (net, brut, retenues)", () => {
