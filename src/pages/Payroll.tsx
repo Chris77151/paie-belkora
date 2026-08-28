@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Calculator, FileDown, FileText, Printer, Lock, Unlock, CheckCircle2, X, SlidersHorizontal, Info,
-  Trash2, AlertTriangle,
+  Trash2, AlertTriangle, Wallet, Sheet,
 } from "lucide-react";
 import {
   actions, currentFirm, employeesOfFirm, getState, payslipsOfPeriod, uid, useStore,
@@ -22,6 +22,8 @@ import { exportPayslipPdf, downloadTex, openHtmlPayslip, type PayslipView } from
 import { getParams } from "@/lib/params";
 import { YearSelect } from "@/components/YearSelect";
 import { payslipLeave } from "@/lib/leave-balance";
+import { buildSettlementReport } from "@/lib/payroll-settlement";
+import { exportSettlementPdf, exportSettlementXlsx } from "@/lib/payroll-settlement-export";
 import { PinPrompt } from "@/components/PinPrompt";
 
 export default function Payroll() {
@@ -38,6 +40,9 @@ export default function Payroll() {
   const [editing, setEditing] = useState<Employee | null>(null);
   // Affichage de la « Partie réservée à l'employeur » (charges patronales) sur les bulletins exportés.
   const [showEmployer, setShowEmployer] = useState(true);
+
+  // État de règlement : salariés déclarés de la période + solde par mode de règlement (bulletins figés).
+  const settlement = useMemo(() => buildSettlementReport(s, firm, year, month), [s, firm, year, month]);
 
   const period = s.periods.find((p) => p.firm_id === firm.id && p.year === year && p.month === month);
   const locked = period?.status !== "draft" && period != null;
@@ -217,6 +222,68 @@ export default function Payroll() {
           )}
         </CardContent>
       </Card>
+
+      {settlement.total.count > 0 && (
+        <Card className="mb-4">
+          <CardContent className="pt-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Wallet size={17} className="text-primary" />
+                Règlement des salaires — {periodLabel(year, month)}
+                <span className="text-muted-foreground font-normal">· {settlement.total.count} salarié(s) déclaré(s)</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => void exportSettlementPdf(settlement)}>
+                  <FileDown size={16} /> État de règlement (PDF)
+                </Button>
+                <Button variant="sage" onClick={() => exportSettlementXlsx(settlement)}>
+                  <Sheet size={16} /> Excel
+                </Button>
+              </div>
+            </div>
+            <div className="overflow-x-auto scrollbar-thin">
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Mode de règlement</Th>
+                    <Th>Compte</Th>
+                    <Th className="text-right">Effectif</Th>
+                    <Th className="text-right">Net à payer</Th>
+                    <Th className="text-right">Avances</Th>
+                    <Th className="text-right">Net à régler</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {settlement.byMode.map((m) => (
+                    <tr key={m.mode}>
+                      <Td className="capitalize">{m.label}</Td>
+                      <Td className="num">{m.account}</Td>
+                      <Td className="text-right num">{m.count}</Td>
+                      <Td className="text-right num">{mad(m.net)}</Td>
+                      <Td className="text-right num">{m.advances ? mad(m.advances) : "—"}</Td>
+                      <Td className="text-right num font-medium">{mad(m.netToPay)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="font-semibold">
+                    <Td>Total général</Td>
+                    <Td />
+                    <Td className="text-right num">{settlement.total.count}</Td>
+                    <Td className="text-right num">{mad(settlement.total.net)}</Td>
+                    <Td className="text-right num">{mad(settlement.total.advances)}</Td>
+                    <Td className="text-right num">{mad(settlement.total.netToPay)}</Td>
+                  </tr>
+                </tfoot>
+              </Table>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Net à régler = net à payer − avances retenues. Mode par salarié : le sien (fiche), sinon celui de la société, sinon virement.
+              Virement / chèque → Banque (5141), espèces → Caisse (5161).
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {!locked && (
         <Card className="mb-4 border-warning/40">
