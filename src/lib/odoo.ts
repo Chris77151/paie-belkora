@@ -6,7 +6,7 @@
  * (voir vite.config.ts) et renseigner l'URL "/odoo" ; en production, passer par une Edge
  * Function / reverse-proxy. Le code ci-dessous appelle l'endpoint tel quel.
  */
-import type { Employee, OdooConfig } from "@/data/types";
+import type { Employee, OdooConfig, PaymentMode } from "@/data/types";
 import { uid } from "@/data/store";
 import { getParams } from "./params";
 
@@ -138,7 +138,7 @@ function splitName(raw: string): { first: string; last: string } {
  * salariés existants (import non destructif).
  */
 export type ImportElement =
-  | "identite" | "matricule" | "cin" | "cnss" | "poste" | "salaire" | "naissance" | "situation" | "contact" | "contrat";
+  | "identite" | "matricule" | "cin" | "cnss" | "poste" | "salaire" | "naissance" | "situation" | "contact" | "contrat" | "reglement";
 
 export const IMPORT_ELEMENTS: { key: ImportElement; label: string; fields: (keyof Employee)[]; hint?: string }[] = [
   { key: "identite", label: "Identité (nom, prénom)", fields: ["first_name", "last_name"], hint: "Toujours importé — nécessaire à la création." },
@@ -151,7 +151,18 @@ export const IMPORT_ELEMENTS: { key: ImportElement; label: string; fields: (keyo
   { key: "situation", label: "Situation familiale & personnes à charge", fields: ["marital_status", "dependents"] },
   { key: "contact", label: "Téléphone", fields: ["phone"] },
   { key: "contrat", label: "Type de contrat (employé / stagiaire)", fields: ["contract_type"] },
+  { key: "reglement", label: "Mode de règlement & RIB (banque / caisse)", fields: ["payment_mode", "bank_rib"], hint: "Compte bancaire présent dans Odoo → virement (RIB importé) ; sinon → espèces (caisse). Facilite le lettrage." },
 ];
+
+/**
+ * Mode de règlement déduit du compte bancaire Odoo (PUR & testable). Odoo n'a pas de « flag »
+ * paie-espèces : la présence d'un RIB (compte bancaire) est le signal — RIB présent → virement
+ * (banque 5141), absent → espèces (caisse 5161). Le mode reste corrigeable dans la fiche salarié.
+ */
+export function mapOdooPaymentMode(bank: { rib?: string | null }): { payment_mode: PaymentMode; bank_rib?: string } {
+  const rib = (bank.rib ?? "").trim();
+  return rib ? { payment_mode: "virement", bank_rib: rib } : { payment_mode: "especes" };
+}
 
 /** Champs Employee réellement écrits pour la sélection donnée (= union, sans doublon, des champs cochés). */
 export function importUpdateFields(selection: ImportElement[]): (keyof Employee)[] {
@@ -193,7 +204,7 @@ export async function odooImportEmployees(
   const p = getParams(new Date().getFullYear());
   const monthlyHours = p.legalMonthlyHours; // 191 h/mois (standard légal Maroc)
 
-  return records.map((r) => {
+  const emps: (Employee & { _odoo_id: number })[] = records.map((r) => {
     const { first, last } = splitName(r.name || "");
     const val = (v: string | false | undefined) => (v ? String(v) : undefined);
     const num = (v: number | false | undefined) => (typeof v === "number" && isFinite(v) ? v : 0);
@@ -249,6 +260,39 @@ export async function odooImportEmployees(
     if (has("contact")) emp.phone = val(r.work_phone);
     return emp;
   });
+
+  // Mode de règlement (banque / caisse) + RIB — lecture BEST-EFFORT du compte bancaire Odoo
+  // (`hr.employee.bank_account_id` → `res.partner.bank.acc_number`). Défensif : si le champ n'existe
+  // pas (version / module) ou si la lecture échoue, on laisse le mode au défaut (fiche / société).
+  if (has("reglement") && emps.length) {
+    try {
+      const ids = records.map((r) => r.id);
+      const bankRows: { id: number; bank_account_id?: [number, string] | false }[] = await jsonRpc(
+        config, "object", "execute_kw",
+        [config.db, userId, config.apiKey, "hr.employee", "read", [ids, ["bank_account_id"]]],
+      );
+      const bankIdByEmp = new Map(bankRows.map((b) => [b.id, b.bank_account_id ? b.bank_account_id[0] : 0]));
+      const bankAccIds = [...new Set([...bankIdByEmp.values()].filter((n) => n > 0))];
+      const ribByAcc = new Map<number, string>();
+      if (bankAccIds.length) {
+        const accs: { id: number; acc_number?: string | false }[] = await jsonRpc(
+          config, "object", "execute_kw",
+          [config.db, userId, config.apiKey, "res.partner.bank", "read", [bankAccIds, ["acc_number"]]],
+        );
+        for (const a of accs) ribByAcc.set(a.id, a.acc_number ? String(a.acc_number).trim() : "");
+      }
+      for (const emp of emps) {
+        const accId = bankIdByEmp.get(emp._odoo_id) ?? 0;
+        const pm = mapOdooPaymentMode({ rib: accId ? ribByAcc.get(accId) : "" });
+        emp.payment_mode = pm.payment_mode;
+        if (pm.bank_rib) emp.bank_rib = pm.bank_rib;
+      }
+    } catch {
+      /* champ bancaire absent / lecture refusée : mode de règlement laissé au défaut */
+    }
+  }
+
+  return emps;
 }
 
 /* ============================================================================

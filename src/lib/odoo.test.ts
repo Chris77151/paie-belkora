@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, odooRecordUrl, type OdooLeaveBalance } from "./odoo";
+import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, odooRecordUrl, mapOdooPaymentMode, type OdooLeaveBalance } from "./odoo";
 import type { Employee } from "@/data/types";
 
 const emp = (o: Partial<Employee>): Employee => ({
@@ -17,6 +17,15 @@ describe("odoo — import « à la carte » (choix des éléments)", () => {
     expect(importUpdateFields(["situation"])).toEqual(["marital_status", "dependents"]);
     // Aucun élément coché → aucun champ écrit (sécurité : on ne touche à rien).
     expect(importUpdateFields([])).toEqual([]);
+    // Mode de règlement : importe payment_mode + bank_rib.
+    expect(importUpdateFields(["reglement"])).toEqual(["payment_mode", "bank_rib"]);
+  });
+
+  it("mapOdooPaymentMode : RIB présent → virement ; absent → espèces (caisse)", () => {
+    expect(mapOdooPaymentMode({ rib: "007 780 0001234567890 12" })).toEqual({ payment_mode: "virement", bank_rib: "007 780 0001234567890 12" });
+    expect(mapOdooPaymentMode({ rib: "  " })).toEqual({ payment_mode: "especes" });
+    expect(mapOdooPaymentMode({ rib: null })).toEqual({ payment_mode: "especes" });
+    expect(mapOdooPaymentMode({})).toEqual({ payment_mode: "especes" });
   });
 
   it("chaque élément mappe des champs Employee réels et non vides", () => {
