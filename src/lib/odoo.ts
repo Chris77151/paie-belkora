@@ -9,6 +9,7 @@
 import type { Employee, OdooConfig, PaymentMode } from "@/data/types";
 import { uid } from "@/data/store";
 import { getParams } from "./params";
+import type { JournalEntry } from "./payroll-accounting";
 
 interface OdooEmployee {
   id: number;
@@ -1122,4 +1123,135 @@ export async function odooApplyReconcile(
     }
   }
   return out;
+}
+
+/* ============================================================================
+ * ÉCRITURES DE PAIE → ODOO — création d'`account.move` en BROUILLON (super-admin).
+ *
+ * Les écritures de paie (OD) + de règlement (ventilé Banque 5141 / Caisse 5161) sont produites par
+ * `buildPeriodEntries` (source de vérité). Ce bloc les envoie vers Odoo : il résout les CODES de
+ * compte de l'app → `account.account.id` de la société, trouve un journal « Opérations diverses »
+ * (type general), puis CRÉE les écritures **en BROUILLON** (jamais postées automatiquement — à
+ * vérifier et valider dans Odoo). Si un compte est introuvable, on ABANDONNE (aucune écriture
+ * partielle). Fonctions de mapping PURES & testées ; les appels réseau suivent le même JSON-RPC que
+ * le reste du connecteur. RÉSERVE : les formats de code (ex. app « 5141 » vs Odoo « 51410000 ») et le
+ * journal exact sont à confirmer sur l'instance — la prévisualisation les met en évidence AVANT tout écrit.
+ * ========================================================================== */
+
+/** Codes de compte distincts d'un jeu d'écritures (lignes non nulles). PURE. */
+export function collectAccountCodes(entries: JournalEntry[]): string[] {
+  const set = new Set<string>();
+  for (const e of entries) for (const l of e.lines) if (l.debit !== 0 || l.credit !== 0) set.add(l.account);
+  return [...set];
+}
+
+/** Sépare les codes résolus (présents dans `idByCode`) des manquants. PURE. */
+export function resolvePayrollAccounts(
+  codes: string[],
+  idByCode: Record<string, number>,
+): { resolved: Record<string, number>; missing: string[] } {
+  const resolved: Record<string, number> = {};
+  const missing: string[] = [];
+  for (const c of codes) {
+    if (idByCode[c] != null) resolved[c] = idByCode[c];
+    else missing.push(c);
+  }
+  return { resolved, missing };
+}
+
+export interface OdooMoveLine { account_id: number; name: string; debit: number; credit: number }
+export interface OdooMovePayload { move_type: "entry"; ref: string; date: string; journal_id: number; line_ids: [0, 0, OdooMoveLine][] }
+
+/**
+ * Payload `account.move` (BROUILLON) d'une écriture de l'app. PURE. Ignore les lignes nulles
+ * (débit = crédit = 0) qu'Odoo refuserait. Les montants sont déjà arrondis par le moteur de paie.
+ */
+export function buildOdooMovePayload(entry: JournalEntry, idByCode: Record<string, number>, journalId: number): OdooMovePayload {
+  const line_ids = entry.lines
+    .filter((l) => l.debit !== 0 || l.credit !== 0)
+    .map((l): [0, 0, OdooMoveLine] => [0, 0, {
+      account_id: idByCode[l.account],
+      name: l.label,
+      debit: l.debit,
+      credit: l.credit,
+    }]);
+  return { move_type: "entry", ref: entry.reference, date: entry.date, journal_id: journalId, line_ids };
+}
+
+/** Lit les ids `account.account` par CODE pour une société Odoo (best-effort, filtré société). */
+export async function odooFetchAccountIds(config: OdooConfig, companyId: number, codes: string[]): Promise<Record<string, number>> {
+  if (!codes.length) return {};
+  const userId = await odooAuthenticate(config);
+  const rows: { id: number; code: string; company_id?: [number, string] | false }[] = await jsonRpc(
+    config, "object", "execute_kw",
+    [config.db, userId, config.apiKey, "account.account", "search_read", [[["code", "in", codes]]], { fields: ["id", "code", "company_id"] }],
+  );
+  const byCode: Record<string, number> = {};
+  for (const r of rows) {
+    if (r.company_id && r.company_id[0] !== companyId) continue; // conserver la bonne société
+    if (byCode[r.code] == null) byCode[r.code] = r.id;
+  }
+  return byCode;
+}
+
+export interface OdooJournal { id: number; name: string; code: string }
+
+/** Trouve un journal « Opérations diverses » (type general) de la société ; `preferCode` prioritaire. */
+export async function odooFetchGeneralJournal(config: OdooConfig, companyId: number, preferCode?: string): Promise<OdooJournal | null> {
+  const userId = await odooAuthenticate(config);
+  const rows: OdooJournal[] = await jsonRpc(
+    config, "object", "execute_kw",
+    [config.db, userId, config.apiKey, "account.journal", "search_read",
+     [[["company_id", "=", companyId], ["type", "=", "general"]]], { fields: ["id", "name", "code"] }],
+  );
+  if (!rows.length) return null;
+  return (preferCode && rows.find((r) => r.code === preferCode)) || rows[0];
+}
+
+export interface OdooPayrollPreview {
+  journal: OdooJournal | null;
+  accounts: { code: string; id: number | null }[];
+  missing: string[];
+  moves: { ref: string; lineCount: number }[];
+}
+
+/** Prévisualisation LECTURE SEULE : résolution des comptes + journal, sans rien écrire. */
+export async function previewOdooPayrollPost(config: OdooConfig, companyId: number, entries: JournalEntry[], preferJournal?: string): Promise<OdooPayrollPreview> {
+  const codes = collectAccountCodes(entries);
+  const idByCode = await odooFetchAccountIds(config, companyId, codes);
+  const { missing } = resolvePayrollAccounts(codes, idByCode);
+  const journal = await odooFetchGeneralJournal(config, companyId, preferJournal);
+  return {
+    journal,
+    accounts: codes.map((c) => ({ code: c, id: idByCode[c] ?? null })),
+    missing,
+    moves: entries.map((e) => ({ ref: e.reference, lineCount: e.lines.filter((l) => l.debit !== 0 || l.credit !== 0).length })),
+  };
+}
+
+export interface OdooPostResult { moves: { id: number; ref: string; url: string }[] }
+
+/**
+ * Crée les écritures de paie dans Odoo **en BROUILLON** (jamais postées). ABANDONNE si un compte est
+ * introuvable (aucune écriture partielle) ou si aucun journal general n'existe. Réservé au super-admin
+ * + confirmation côté UI. Les écritures restent à VÉRIFIER et POSTER manuellement dans Odoo.
+ */
+export async function postOdooPayrollEntries(config: OdooConfig, companyId: number, entries: JournalEntry[], opts: { journalCode?: string } = {}): Promise<OdooPostResult> {
+  const codes = collectAccountCodes(entries);
+  const idByCode = await odooFetchAccountIds(config, companyId, codes);
+  const { missing } = resolvePayrollAccounts(codes, idByCode);
+  if (missing.length) {
+    throw new Error(`Comptes introuvables dans Odoo (société) : ${missing.join(", ")}. Créez-les ou alignez les codes, puis réessayez.`);
+  }
+  const journal = await odooFetchGeneralJournal(config, companyId, opts.journalCode);
+  if (!journal) throw new Error("Aucun journal « Opérations diverses » (type general) trouvé dans Odoo pour cette société.");
+  const userId = await odooAuthenticate(config);
+  const moves: OdooPostResult["moves"] = [];
+  for (const entry of entries) {
+    const payload = buildOdooMovePayload(entry, idByCode, journal.id);
+    const res = await jsonRpc(config, "object", "execute_kw", [config.db, userId, config.apiKey, "account.move", "create", [payload]]);
+    const id = Array.isArray(res) ? Number(res[0]) : Number(res);
+    moves.push({ id, ref: entry.reference, url: odooRecordUrl(config.url, "account.move", id, companyId) });
+  }
+  return { moves };
 }

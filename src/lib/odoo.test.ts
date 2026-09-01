@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, odooRecordUrl, mapOdooPaymentMode, type OdooLeaveBalance } from "./odoo";
+import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, odooRecordUrl, mapOdooPaymentMode, collectAccountCodes, resolvePayrollAccounts, buildOdooMovePayload, type OdooLeaveBalance } from "./odoo";
+import type { JournalEntry } from "./payroll-accounting";
 import type { Employee } from "@/data/types";
 
 const emp = (o: Partial<Employee>): Employee => ({
@@ -137,5 +138,40 @@ describe("odoo — congés : « pris » depuis les hr.leave réels vs compteurs 
     expect(r.taken).toBe(10);       // compteur résumé
     expect(r.allocated).toBe(26);
     expect(r.remaining).toBe(16);
+  });
+});
+
+describe("odoo — écritures de paie → account.move (mapping PUR)", () => {
+  const entry: JournalEntry = {
+    journal: "OD", date: "2026-07-31", reference: "PAIE-2026-07", description: "Paie",
+    lines: [
+      { account: "6171", label: "Appointements et salaires", debit: 10000, credit: 0 },
+      { account: "4432", label: "Rémunérations dues", debit: 0, credit: 8000 },
+      { account: "44525", label: "État, IGR", debit: 0, credit: 2000 },
+      { account: "61678", label: "TFP", debit: 0, credit: 0 }, // ligne nulle → ignorée
+    ],
+    totalDebit: 10000, totalCredit: 10000, balanced: true,
+  };
+
+  it("collectAccountCodes : codes distincts des lignes NON nulles", () => {
+    expect(collectAccountCodes([entry]).sort()).toEqual(["4432", "44525", "6171"]);
+  });
+
+  it("resolvePayrollAccounts : sépare résolus / manquants", () => {
+    const { resolved, missing } = resolvePayrollAccounts(["6171", "4432", "44525"], { "6171": 10, "4432": 20 });
+    expect(resolved).toEqual({ "6171": 10, "4432": 20 });
+    expect(missing).toEqual(["44525"]);
+  });
+
+  it("buildOdooMovePayload : brouillon équilibré, lignes nulles ignorées, account_id résolus", () => {
+    const p = buildOdooMovePayload(entry, { "6171": 10, "4432": 20, "44525": 30 }, 7);
+    expect(p.move_type).toBe("entry");
+    expect(p.journal_id).toBe(7);
+    expect(p.ref).toBe("PAIE-2026-07");
+    expect(p.line_ids).toHaveLength(3); // la ligne 61678 (0/0) est retirée
+    const debit = p.line_ids.reduce((a, [, , l]) => a + l.debit, 0);
+    const credit = p.line_ids.reduce((a, [, , l]) => a + l.credit, 0);
+    expect(debit).toBeCloseTo(credit, 2); // équilibré
+    expect(p.line_ids[0][2].account_id).toBe(10);
   });
 });

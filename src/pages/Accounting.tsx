@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Calculator, FileCode2, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, Sparkles, Lock, Unlock, Table2 } from "lucide-react";
+import { Calculator, FileCode2, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, Sparkles, Lock, Unlock, Table2, Cloud, Loader2, Search } from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, payslipsOfPeriod, useStore } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import { useSession, useCanWrite } from "@/lib/auth";
@@ -10,6 +10,7 @@ import { buildPeriodEntries, buildReclassementEntry, entriesDiffer, type PeriodS
 import type { Firm, PaymentMode } from "@/data/types";
 import { DEFAULT_ACCOUNTS } from "@/lib/accounting-accounts";
 import { exportEntriesPdf, exportEntriesXlsx, exportEntriesXml, exportEntriesCsvSage } from "@/lib/accounting-export";
+import { previewOdooPayrollPost, postOdooPayrollEntries, odooReadiness, odooErrorHint, type OdooPayrollPreview } from "@/lib/odoo";
 import { Badge, Button, Card, CardContent, Field, PageHeader, Select, Table, Td, Th } from "@/components/ui/kit";
 import { MONTHS_FR, dateFr, mad, num, periodLabel } from "@/lib/format";
 import { PinPrompt } from "@/components/PinPrompt";
@@ -74,6 +75,44 @@ export default function Accounting() {
   const showEntries = isValidated || generated;
 
   const [pinOpen, setPinOpen] = useState(false);
+
+  /* ---- Envoi des écritures de paie vers Odoo (brouillon) — super-admin ---- */
+  const isSuperAdmin = session?.role === "super_admin";
+  const odooConfig = s.odoo;
+  const odooReady = !!odooConfig && !!firm.odoo_company_id;
+  const [odooBusy, setOdooBusy] = useState(false);
+  const [odooPreview, setOdooPreview] = useState<OdooPayrollPreview | null>(null);
+  const [odooMsg, setOdooMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function previewOdoo() {
+    if (!odooConfig || !firm.odoo_company_id) return;
+    setOdooBusy(true); setOdooMsg(null); setOdooPreview(null);
+    try {
+      const preview = await previewOdooPayrollPost(odooConfig, firm.odoo_company_id, entries);
+      setOdooPreview(preview);
+      if (preview.missing.length) setOdooMsg({ ok: false, text: `${preview.missing.length} compte(s) introuvable(s) dans Odoo — à créer/aligner avant l'envoi.` });
+      else if (!preview.journal) setOdooMsg({ ok: false, text: "Aucun journal « Opérations diverses » (type general) trouvé pour cette société." });
+      else setOdooMsg({ ok: true, text: `Prêt : tous les comptes sont résolus, journal « ${preview.journal.code} ».` });
+    } catch (e) {
+      setOdooMsg({ ok: false, text: odooErrorHint((e as Error).message) });
+    } finally {
+      setOdooBusy(false);
+    }
+  }
+
+  async function postOdoo() {
+    if (!odooConfig || !firm.odoo_company_id) return;
+    if (!window.confirm(`Créer ${entries.length} écriture(s) de paie EN BROUILLON dans Odoo pour ${firm.name} — ${period} ?\nÀ vérifier et poster ensuite dans Odoo.`)) return;
+    setOdooBusy(true); setOdooMsg(null);
+    try {
+      const res = await postOdooPayrollEntries(odooConfig, firm.odoo_company_id, entries);
+      setOdooMsg({ ok: true, text: `${res.moves.length} écriture(s) créée(s) en brouillon dans Odoo : ${res.moves.map((m) => m.ref).join(", ")}. À vérifier et poster dans Odoo.` });
+    } catch (e) {
+      setOdooMsg({ ok: false, text: odooErrorHint((e as Error).message) });
+    } finally {
+      setOdooBusy(false);
+    }
+  }
 
   /** Fige réellement les écritures — appelé après confirmation (code de validation ou confirm simple). */
   function doValidate() {
@@ -273,6 +312,47 @@ export default function Accounting() {
               <FileDown size={16} /> PDF
             </Button>
           </div>
+
+          {isSuperAdmin && (
+            <div className="mb-4 rounded-lg border border-primary/30 bg-accent/30 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Cloud size={17} className="text-primary" /> Envoyer les écritures de paie vers Odoo (brouillon)
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={previewOdoo} disabled={!odooReady || odooBusy}>
+                    {odooBusy ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />} Prévisualiser
+                  </Button>
+                  <Button
+                    variant="sage"
+                    onClick={postOdoo}
+                    disabled={!odooReady || odooBusy || !odooPreview || odooPreview.missing.length > 0 || !odooPreview.journal}
+                    title={!odooPreview ? "Prévisualisez d'abord" : odooPreview.missing.length ? "Comptes manquants" : undefined}
+                  >
+                    <Cloud size={16} /> Créer dans Odoo (brouillon)
+                  </Button>
+                </div>
+              </div>
+              {!odooReady && (
+                <p className="text-xs text-warning">{odooReadiness(odooConfig, firm)}</p>
+              )}
+              {odooMsg && (
+                <p className={`text-xs ${odooMsg.ok ? "text-success" : "text-destructive"} flex items-start gap-1.5`}>
+                  {odooMsg.ok ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertTriangle size={14} className="mt-0.5 shrink-0" />}
+                  {odooMsg.text}
+                </p>
+              )}
+              {odooPreview && odooPreview.missing.length > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Comptes à créer / aligner dans Odoo : <span className="font-mono">{odooPreview.missing.join(", ")}</span>
+                </p>
+              )}
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Crée un <span className="font-medium">account.move par écriture</span> (OD de paie + règlement) <span className="font-medium">en BROUILLON</span> dans Odoo — jamais posté automatiquement ; à vérifier et valider dans Odoo.
+                Résolution des comptes par <span className="font-mono">code</span> (app 5141/5161/4441… → <span className="font-mono">account.account</span> de la société) ; si un code diffère (ex. « 51410000 »), la prévisualisation le signale. <span className="font-medium">Réservé au super administrateur.</span>
+              </p>
+            </div>
+          )}
 
           {entries.map((entry, i) => (
             <div key={i}>
