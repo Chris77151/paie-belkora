@@ -88,7 +88,7 @@ export default function Accounting() {
     if (!odooConfig || !firm.odoo_company_id) return;
     setOdooBusy(true); setOdooMsg(null); setOdooPreview(null);
     try {
-      const preview = await previewOdooPayrollPost(odooConfig, firm.odoo_company_id, entries);
+      const preview = await previewOdooPayrollPost(odooConfig, firm.odoo_company_id, entries, { codeMap: firm.odoo_account_map });
       setOdooPreview(preview);
       if (preview.missing.length) setOdooMsg({ ok: false, text: `${preview.missing.length} compte(s) introuvable(s) dans Odoo — à créer/aligner avant l'envoi.` });
       else if (!preview.journal) setOdooMsg({ ok: false, text: "Aucun journal « Opérations diverses » (type general) trouvé pour cette société." });
@@ -105,7 +105,7 @@ export default function Accounting() {
     if (!window.confirm(`Créer ${entries.length} écriture(s) de paie EN BROUILLON dans Odoo pour ${firm.name} — ${period} ?\nÀ vérifier et poster ensuite dans Odoo.`)) return;
     setOdooBusy(true); setOdooMsg(null);
     try {
-      const res = await postOdooPayrollEntries(odooConfig, firm.odoo_company_id, entries);
+      const res = await postOdooPayrollEntries(odooConfig, firm.odoo_company_id, entries, { codeMap: firm.odoo_account_map });
       setOdooMsg({ ok: true, text: `${res.moves.length} écriture(s) créée(s) en brouillon dans Odoo : ${res.moves.map((m) => m.ref).join(", ")}. À vérifier et poster dans Odoo.` });
     } catch (e) {
       setOdooMsg({ ok: false, text: odooErrorHint((e as Error).message) });

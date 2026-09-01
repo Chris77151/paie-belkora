@@ -1178,20 +1178,55 @@ export function buildOdooMovePayload(entry: JournalEntry, idByCode: Record<strin
   return { move_type: "entry", ref: entry.reference, date: entry.date, journal_id: journalId, line_ids };
 }
 
-/** Lit les ids `account.account` par CODE pour une société Odoo (best-effort, filtré société). */
-export async function odooFetchAccountIds(config: OdooConfig, companyId: number, codes: string[]): Promise<Record<string, number>> {
-  if (!codes.length) return {};
+/**
+ * Traduit les codes de compte de l'app en codes Odoo via `codeMap` (ex. « 5141 » → « 51410000 »),
+ * en gardant la table inverse pour recoller les résultats sur les codes APP. PURE.
+ */
+export function translateAccountCodes(appCodes: string[], codeMap?: Record<string, string>): { odooCodes: string[]; odooToApp: Record<string, string> } {
+  const odooToApp: Record<string, string> = {};
+  const odooCodes: string[] = [];
+  for (const app of appCodes) {
+    const oc = (codeMap?.[app] ?? app).trim();
+    if (!(oc in odooToApp)) { odooToApp[oc] = app; odooCodes.push(oc); }
+  }
+  return { odooCodes, odooToApp };
+}
+
+/**
+ * Lit les ids `account.account` pour une société Odoo (best-effort, filtré société), en traduisant
+ * d'abord les codes APP → codes Odoo (`codeMap`). Le résultat reste keyé par CODE DE L'APP.
+ */
+export async function odooFetchAccountIds(config: OdooConfig, companyId: number, appCodes: string[], codeMap?: Record<string, string>): Promise<Record<string, number>> {
+  if (!appCodes.length) return {};
+  const { odooCodes, odooToApp } = translateAccountCodes(appCodes, codeMap);
   const userId = await odooAuthenticate(config);
   const rows: { id: number; code: string; company_id?: [number, string] | false }[] = await jsonRpc(
     config, "object", "execute_kw",
-    [config.db, userId, config.apiKey, "account.account", "search_read", [[["code", "in", codes]]], { fields: ["id", "code", "company_id"] }],
+    [config.db, userId, config.apiKey, "account.account", "search_read", [[["code", "in", odooCodes]]], { fields: ["id", "code", "company_id"] }],
   );
-  const byCode: Record<string, number> = {};
+  const byAppCode: Record<string, number> = {};
   for (const r of rows) {
     if (r.company_id && r.company_id[0] !== companyId) continue; // conserver la bonne société
-    if (byCode[r.code] == null) byCode[r.code] = r.id;
+    const app = odooToApp[r.code];
+    if (app && byAppCode[app] == null) byAppCode[app] = r.id;
   }
-  return byCode;
+  return byAppCode;
+}
+
+/** Parse un éditeur texte « codeApp = codeOdoo » (une paire par ligne) en table de correspondance. PURE. */
+export function parseAccountMap(text: string): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\s*([\w.]+)\s*[=:]\s*([\w.]+)\s*$/.exec(line);
+    if (m && m[1] !== m[2]) map[m[1]] = m[2];
+  }
+  return map;
+}
+
+/** Rend une table de correspondance en texte éditable (« codeApp = codeOdoo » par ligne). PURE. */
+export function formatAccountMap(map?: Record<string, string>): string {
+  if (!map) return "";
+  return Object.entries(map).map(([a, o]) => `${a} = ${o}`).join("\n");
 }
 
 export interface OdooJournal { id: number; name: string; code: string }
@@ -1216,11 +1251,11 @@ export interface OdooPayrollPreview {
 }
 
 /** Prévisualisation LECTURE SEULE : résolution des comptes + journal, sans rien écrire. */
-export async function previewOdooPayrollPost(config: OdooConfig, companyId: number, entries: JournalEntry[], preferJournal?: string): Promise<OdooPayrollPreview> {
+export async function previewOdooPayrollPost(config: OdooConfig, companyId: number, entries: JournalEntry[], opts: { codeMap?: Record<string, string>; preferJournal?: string } = {}): Promise<OdooPayrollPreview> {
   const codes = collectAccountCodes(entries);
-  const idByCode = await odooFetchAccountIds(config, companyId, codes);
+  const idByCode = await odooFetchAccountIds(config, companyId, codes, opts.codeMap);
   const { missing } = resolvePayrollAccounts(codes, idByCode);
-  const journal = await odooFetchGeneralJournal(config, companyId, preferJournal);
+  const journal = await odooFetchGeneralJournal(config, companyId, opts.preferJournal);
   return {
     journal,
     accounts: codes.map((c) => ({ code: c, id: idByCode[c] ?? null })),
@@ -1236,9 +1271,9 @@ export interface OdooPostResult { moves: { id: number; ref: string; url: string 
  * introuvable (aucune écriture partielle) ou si aucun journal general n'existe. Réservé au super-admin
  * + confirmation côté UI. Les écritures restent à VÉRIFIER et POSTER manuellement dans Odoo.
  */
-export async function postOdooPayrollEntries(config: OdooConfig, companyId: number, entries: JournalEntry[], opts: { journalCode?: string } = {}): Promise<OdooPostResult> {
+export async function postOdooPayrollEntries(config: OdooConfig, companyId: number, entries: JournalEntry[], opts: { journalCode?: string; codeMap?: Record<string, string> } = {}): Promise<OdooPostResult> {
   const codes = collectAccountCodes(entries);
-  const idByCode = await odooFetchAccountIds(config, companyId, codes);
+  const idByCode = await odooFetchAccountIds(config, companyId, codes, opts.codeMap);
   const { missing } = resolvePayrollAccounts(codes, idByCode);
   if (missing.length) {
     throw new Error(`Comptes introuvables dans Odoo (société) : ${missing.join(", ")}. Créez-les ou alignez les codes, puis réessayez.`);

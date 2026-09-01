@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, odooRecordUrl, mapOdooPaymentMode, collectAccountCodes, resolvePayrollAccounts, buildOdooMovePayload, type OdooLeaveBalance } from "./odoo";
+import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, odooRecordUrl, mapOdooPaymentMode, collectAccountCodes, resolvePayrollAccounts, buildOdooMovePayload, parseAccountMap, formatAccountMap, translateAccountCodes, type OdooLeaveBalance } from "./odoo";
 import type { JournalEntry } from "./payroll-accounting";
 import type { Employee } from "@/data/types";
 
@@ -173,5 +173,24 @@ describe("odoo — écritures de paie → account.move (mapping PUR)", () => {
     const credit = p.line_ids.reduce((a, [, , l]) => a + l.credit, 0);
     expect(debit).toBeCloseTo(credit, 2); // équilibré
     expect(p.line_ids[0][2].account_id).toBe(10);
+  });
+});
+
+describe("odoo — table de correspondance des codes de compte (app → Odoo)", () => {
+  it("parseAccountMap : « codeApp = codeOdoo » par ligne, ignore le vide et l'identité", () => {
+    expect(parseAccountMap("5141 = 51410000\n5161:51610000\n\n4441=4441")).toEqual({
+      "5141": "51410000", "5161": "51610000",
+    }); // 4441=4441 (identité) ignoré, ligne vide ignorée
+  });
+
+  it("formatAccountMap : rend une paire par ligne ; vide → chaîne vide", () => {
+    expect(formatAccountMap({ "5141": "51410000" })).toBe("5141 = 51410000");
+    expect(formatAccountMap(undefined)).toBe("");
+  });
+
+  it("translateAccountCodes : traduit app → Odoo et garde la table inverse", () => {
+    const { odooCodes, odooToApp } = translateAccountCodes(["5141", "6171"], { "5141": "51410000" });
+    expect(odooCodes).toEqual(["51410000", "6171"]); // 6171 non mappé = inchangé
+    expect(odooToApp).toEqual({ "51410000": "5141", "6171": "6171" });
   });
 });

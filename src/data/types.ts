@@ -53,6 +53,12 @@ export interface Firm {
   /** Identifiant de la société correspondante dans Odoo (res.company.id) pour l'import. */
   odoo_company_id?: number;
   /**
+   * Correspondance CODE de compte app → CODE de compte Odoo, pour l'envoi des écritures de paie
+   * (ex. { "5141": "51410000", "4441": "44410000" }) quand le plan Odoo n'utilise pas les mêmes
+   * codes que le PCGE court de l'app. Vide = mêmes codes (aucune traduction).
+   */
+  odoo_account_map?: Record<string, string>;
+  /**
    * Sel (256 bits, hex) de l'audit RIB — sert à calculer l'empreinte HMAC-SHA-256 des RIB.
    * Généré automatiquement à la première base de référence. Ne contient AUCUN RIB.
    */

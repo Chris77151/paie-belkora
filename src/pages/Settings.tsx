@@ -13,7 +13,7 @@ import {
   isSupabaseConfigured, type SupabaseConfig,
 } from "@/lib/supabase";
 import { useT } from "@/lib/i18n";
-import { odooTestConnection, odooListCompanies, odooFetchLeaveBalances, matchOdooLeaves } from "@/lib/odoo";
+import { odooTestConnection, odooListCompanies, odooFetchLeaveBalances, matchOdooLeaves, parseAccountMap, formatAccountMap } from "@/lib/odoo";
 import { hashPassword, useSession, ROLE_LABELS } from "@/lib/auth";
 import type { AppUser, OdooConfig } from "@/data/types";
 import {
@@ -61,10 +61,13 @@ export default function Settings() {
   const firm = currentFirm(s);
 
   const [draft, setDraft] = useState<Firm>(firm);
+  // Texte libre de l'éditeur de correspondance des comptes (évite d'effacer une saisie partielle).
+  const [accountMapText, setAccountMapText] = useState<string>(() => formatAccountMap(firm.odoo_account_map));
   const [trackedId, setTrackedId] = useState<string>(firm.id);
   if (trackedId !== firm.id) {
     setTrackedId(firm.id);
     setDraft(firm);
+    setAccountMapText(formatAccountMap(firm.odoo_account_map));
   }
 
   const [paramYear, setParamYear] = useState<number>(AVAILABLE_YEARS[0]);
@@ -344,6 +347,24 @@ export default function Settings() {
                 type="number"
                 value={draft.odoo_company_id ?? ""}
                 onChange={(e) => patch("odoo_company_id", e.target.value ? Number(e.target.value) : undefined)}
+              />
+            </Field>
+          </div>
+
+          <div className="mt-4">
+            <Field
+              label="Correspondance des comptes app → Odoo (envoi des écritures de paie)"
+              hint="Une paire « codeApp = codeOdoo » par ligne, UNIQUEMENT si le plan Odoo n'utilise pas les mêmes codes (ex. 5141 = 51410000). Vide = mêmes codes. Sert au bouton « Envoyer vers Odoo » du volet Écritures."
+            >
+              <textarea
+                className="w-full h-28 rounded-md border border-input bg-background p-3 text-sm font-mono"
+                value={accountMapText}
+                placeholder={"5141 = 51410000\n5161 = 51610000\n4441 = 44410000"}
+                onChange={(e) => {
+                  setAccountMapText(e.target.value);
+                  const m = parseAccountMap(e.target.value);
+                  patch("odoo_account_map", Object.keys(m).length ? m : undefined);
+                }}
               />
             </Field>
           </div>
