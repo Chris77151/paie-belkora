@@ -22,6 +22,7 @@ import {
   type LegalBlock,
   type LegalDoc,
   type LegalDocAr,
+  type GeneratedPdf,
 } from "./rh-legal";
 
 export type MineurType = "autorisation" | "contrat";
@@ -299,9 +300,12 @@ export function mineurFileName(v: RhMineurView, lang: MineurLang): string {
 }
 
 /** PDF (FR uniquement — jsPDF ne rend pas l'arabe ; pour l'AR, utiliser le HTML). */
-export async function exportMineurPdf(v: RhMineurView) {
+export async function exportMineurPdf(v: RhMineurView): Promise<GeneratedPdf> {
   const doc = await renderLegalPdf(v.firm, buildMineurDoc(v));
-  doc.save(mineurFileName(v, "fr"));
+  const filename = mineurFileName(v, "fr");
+  const blob = doc.output("blob");
+  doc.save(filename);
+  return { blob, filename };
 }
 
 export function openMineurHtml(v: RhMineurView, lang: MineurLang) {

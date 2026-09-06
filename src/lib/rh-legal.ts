@@ -325,6 +325,17 @@ function drawSignatures(ctx: Ctx, cols: SignatureCol[]) {
   ctx.y = startY + BLOCK;
 }
 
+/**
+ * PDF réellement produit par un export : le fichier proposé au téléchargement ET son contenu
+ * binaire. Les deux sont renvoyés pour que l'appelant puisse ARCHIVER la pièce exacte remise —
+ * un document régénéré plus tard ne serait pas le même acte (barème, données, signataire ont pu
+ * bouger). C'est ce blob que le Journal des documents restitue tel quel.
+ */
+export interface GeneratedPdf {
+  blob: Blob;
+  filename: string;
+}
+
 export async function renderLegalPdf(firm: Firm, raw: LegalDoc): Promise<jsPDF> {
   const d = sanitizeLegalDoc(raw); // supprime les caractères spéciaux superflus (rendu sobre)
   const pal = usePalette(firm); // couleurs dérivées de la société (défaut = vert Miya)

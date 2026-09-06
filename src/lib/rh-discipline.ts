@@ -27,6 +27,7 @@ import {
   type Civility,
   type LegalBlock,
   type LegalDoc,
+  type GeneratedPdf,
 } from "./rh-legal";
 
 export type DisciplineType =
@@ -356,9 +357,12 @@ export function disciplineFileName(v: RhDisciplineView): string {
   return legalFileName(DISCIPLINE_TITLE[v.type], `${v.employee.first_name}_${v.employee.last_name}`);
 }
 
-export async function exportDisciplinePdf(v: RhDisciplineView) {
+export async function exportDisciplinePdf(v: RhDisciplineView): Promise<GeneratedPdf> {
   const doc = await renderLegalPdf(v.firm, buildDisciplineDoc(v));
-  doc.save(disciplineFileName(v));
+  const filename = disciplineFileName(v);
+  const blob = doc.output("blob");
+  doc.save(filename);
+  return { blob, filename };
 }
 
 export function openDisciplineHtml(v: RhDisciplineView) {

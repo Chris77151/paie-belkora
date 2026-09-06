@@ -304,6 +304,62 @@ export interface DocGenEvent {
   period_month?: number;
   /** Identifiant (username) du compte qui a généré. */
   by?: string;
+  /**
+   * PDF archivé de CE document, retéléchargeable tel quel depuis le Journal des documents.
+   * Absent pour un format non PDF (HTML, LaTeX, BDS) ou si l'archivage local a échoué.
+   */
+  archive?: DocArchiveRef;
+}
+
+/* ---- Pièces justificatives (dossier salarié + archive des documents produits) ---- */
+/**
+ * Nature de la pièce — nomenclature FERMÉE (cf. `src/lib/attachments.ts`). C'est elle qui rend
+ * la complétude d'un dossier calculable ; un libellé libre ne le permettrait pas.
+ */
+export type AttachmentKind =
+  | "cin" | "contrat" | "cnss" | "anapec" | "rib" | "medical"
+  | "diplome" | "famille" | "residence" | "sortie" | "autre";
+
+/**
+ * Une pièce justificative déposée dans l'application. Le BINAIRE n'est PAS ici : il vit dans
+ * IndexedDB sous la clé `id` (cf. `src/lib/blob-store.ts`), car l'`AppState` est sérialisé en un
+ * seul JSON (localStorage + ligne JSONB Supabase) qu'un PDF en base64 ferait exploser.
+ * Ce qui est stocké ici — et donc synchronisé partout — c'est la MÉTADONNÉE : qui a déposé quoi,
+ * quand, sous quelle empreinte. Une pièce déposée sur un autre poste est donc connue de tous,
+ * mais son fichier n'est téléchargeable que depuis le poste qui l'a reçue.
+ */
+export interface Attachment {
+  id: string;
+  firm_id: string;
+  /** Salarié concerné. */
+  employee_id: string;
+  kind: AttachmentKind;
+  /** Libellé libre — précision, surtout utile pour la nature « autre ». */
+  label?: string;
+  filename: string;
+  mime: string;
+  size: number;
+  /** Empreinte SHA-256 (hex) du contenu — intégrité et non-répudiation. */
+  sha256: string;
+  /** Date portée par la pièce elle-même (ISO « AAAA-MM-JJ »), si connue. */
+  issued_on?: string;
+  /** Date d'expiration (ISO) — aptitude médicale, titre de séjour, assurance. */
+  expires_on?: string;
+  /** ISO — horodatage du dépôt. */
+  uploaded_at: string;
+  /** Identifiant (username) du compte déposant. */
+  uploaded_by?: string;
+}
+
+/**
+ * Pointeur vers le PDF ARCHIVÉ d'un document produit par l'application. Le fichier lui-même est
+ * dans IndexedDB sous la clé `DocGenEvent.id` : le Journal des documents ne trace donc plus
+ * seulement qu'un document a été produit, il permet de le retélécharger TEL QUEL.
+ */
+export interface DocArchiveRef {
+  filename: string;
+  size: number;
+  sha256: string;
 }
 
 export type BankEventClass =
@@ -456,6 +512,8 @@ export interface AppState {
   workAccidents?: WorkAccident[];
   /** Demandes de documents des salariés (self-service depuis l'accueil). */
   documentRequests?: DocumentRequest[];
+  /** Pièces justificatives du dossier salarié (métadonnées ; binaire en IndexedDB). */
+  attachments?: Attachment[];
   /** Clôtures comptables validées (verrou + snapshot par période). */
   accountingClosures?: AccountingClosure[];
   /** Comptes de connexion à l'application (auth locale). */

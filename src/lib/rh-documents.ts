@@ -22,6 +22,7 @@ import {
   type Civility,
   type LegalBlock,
   type LegalDoc,
+  type GeneratedPdf,
 } from "./rh-legal";
 
 export type RhDocType =
@@ -275,9 +276,12 @@ export async function buildRhDocPdf(v: RhDocView): Promise<jsPDF> {
   return renderLegalPdf(v.firm, buildRhDoc(v));
 }
 
-export async function exportRhDocPdf(v: RhDocView) {
+export async function exportRhDocPdf(v: RhDocView): Promise<GeneratedPdf> {
   const doc = await buildRhDocPdf(v);
-  doc.save(docFileName(v));
+  const filename = docFileName(v);
+  const blob = doc.output("blob");
+  doc.save(filename);
+  return { blob, filename };
 }
 
 /* -------------------------------------------------- HTML imprimable -------------------------------------------------- */

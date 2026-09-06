@@ -23,6 +23,7 @@ import {
   type Civility,
   type LegalBlock,
   type LegalDoc,
+  type GeneratedPdf,
 } from "./rh-legal";
 import { dateFr } from "./format";
 import { buildTravailDetermineAr, buildCddCdiAr } from "./rh-contracts-ar";
@@ -783,9 +784,12 @@ export function contractFileName(v: RhContractView): string {
   return legalFileName(CONTRACT_TITLE[v.model], `${v.employee.first_name}_${v.employee.last_name}`);
 }
 
-export async function exportContractPdf(v: RhContractView) {
+export async function exportContractPdf(v: RhContractView): Promise<GeneratedPdf> {
   const doc = await renderLegalPdf(v.firm, buildContractDoc(v));
-  doc.save(contractFileName(v));
+  const filename = contractFileName(v);
+  const blob = doc.output("blob");
+  doc.save(filename);
+  return { blob, filename };
 }
 
 export function openContractHtml(v: RhContractView, lang: "fr" | "ar" = "fr") {

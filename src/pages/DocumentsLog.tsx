@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
-import { FileClock, FileText, Users, CalendarClock, Trash2, TrendingUp, TrendingDown } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { FileClock, FileText, Users, CalendarClock, Trash2, TrendingUp, TrendingDown, FileDown, CloudOff } from "lucide-react";
 import { actions, currentFirm, useStore } from "@/data/store";
 import { useT, type TKey } from "@/lib/i18n";
 import { computeDocKpis } from "@/lib/doc-log";
+import { formatBytes } from "@/lib/attachments";
+import { deleteBinary, downloadBinary, localBinaryIds } from "@/lib/blob-store";
 import type { DocFormat, DocGenEvent, DocType } from "@/data/types";
 import {
   Badge, Button, Card, CardContent, CardHeader, CardTitle, Kpi, PageHeader, Select, Table, Td, Th,
@@ -67,8 +69,28 @@ export default function DocumentsLog() {
     .reverse()
     .filter((e) => typeFilter === "all" || e.doc_type === typeFilter);
 
+  /**
+   * PDF réellement présents SUR CE POSTE. La métadonnée d'archive est synchronisée partout
+   * (tout poste sait qu'un PDF existe), le binaire ne l'est pas : on distingue donc « à
+   * télécharger » de « archivé sur un autre poste », plutôt que d'offrir un bouton qui échoue.
+   */
+  const [localIds, setLocalIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    let alive = true;
+    void localBinaryIds().then((ids) => {
+      if (alive) setLocalIds(ids);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [s.docGenerations]);
+
+  const archived = events.filter((e) => e.archive).length;
+
   function clearLog() {
-    if (window.confirm("Vider le journal des documents de cette société ? Cette action est irréversible.")) {
+    if (window.confirm("Vider le journal des documents de cette société ? Les PDF archivés sur ce poste seront eux aussi supprimés. Cette action est irréversible.")) {
+      // Les binaires d'abord : une fois la trace effacée, on ne saurait plus quelles clés purger.
+      for (const e of events) if (e.archive) void deleteBinary(e.id);
       actions.clearDocGenerations();
     }
   }
@@ -177,6 +199,11 @@ export default function DocumentsLog() {
                 </CardTitle>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground">{events.length} {t("doclog.count")}</span>
+                  {archived > 0 && (
+                    <Badge tone="sage" title="Documents dont le PDF exact est conservé et retéléchargeable comme pièce justificative.">
+                      {archived} PDF archivé{archived > 1 ? "s" : ""}
+                    </Badge>
+                  )}
                   <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)} className="w-52">
                     <option value="all">{t("doclog.filter.allTypes")}</option>
                     {(Object.keys(TYPE_KEY) as DocType[]).map((k) => (
@@ -195,6 +222,7 @@ export default function DocumentsLog() {
                   <Th>{t("doclog.col.subject")}</Th>
                   <Th>{t("doclog.col.period")}</Th>
                   <Th>{t("doclog.col.author")}</Th>
+                  <Th className="text-right">Pièce justificative</Th>
                 </tr>
               </thead>
               <tbody>
@@ -208,11 +236,14 @@ export default function DocumentsLog() {
                       {e.period_year && e.period_month ? periodLabel(e.period_year, e.period_month) : "—"}
                     </Td>
                     <Td className="text-muted-foreground text-xs">{e.by ?? "—"}</Td>
+                    <Td className="text-right whitespace-nowrap">
+                      <ArchiveCell event={e} available={localIds.has(e.id)} />
+                    </Td>
                   </tr>
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <Td colSpan={6} className="py-8 text-center text-muted-foreground">{t("doclog.empty")}</Td>
+                    <Td colSpan={7} className="py-8 text-center text-muted-foreground">{t("doclog.empty")}</Td>
                   </tr>
                 )}
               </tbody>
@@ -221,6 +252,45 @@ export default function DocumentsLog() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Cellule « pièce justificative » d'une ligne du journal. Trois états, jamais un bouton qui
+ * mentirait : le PDF est là (téléchargeable tel quel), il a été archivé ailleurs (le binaire ne
+ * suit pas la synchronisation cloud), ou le format produit n'était pas un PDF.
+ */
+function ArchiveCell({ event, available }: { event: DocGenEvent; available: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [gone, setGone] = useState(false);
+
+  if (!event.archive) return <span className="text-xs text-muted-foreground">—</span>;
+
+  if (!available || gone) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Le PDF a été archivé depuis un autre poste ou navigateur. Les fichiers restent locaux ; seule leur fiche est partagée.">
+        <CloudOff size={13} /> Archivé ailleurs
+      </span>
+    );
+  }
+
+  async function download() {
+    setBusy(true);
+    const ok = await downloadBinary(event.id, event.archive?.filename);
+    setBusy(false);
+    if (!ok) setGone(true);
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={busy}
+      onClick={() => void download()}
+      title={`${event.archive.filename} · ${formatBytes(event.archive.size)}`}
+    >
+      <FileDown size={14} /> PDF
+    </Button>
   );
 }
 

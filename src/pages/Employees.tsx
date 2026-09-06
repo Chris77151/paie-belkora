@@ -18,6 +18,8 @@ import { DEPARTURE_REASONS, type DepartureReason } from "@/lib/stc-engine";
 import {
   Badge, Button, Card, CardContent, Field, Input, PageHeader, Select, Table, Td, Th,
 } from "@/components/ui/kit";
+import { PinPrompt } from "@/components/PinPrompt";
+import { AttachmentsPanel } from "@/components/AttachmentsPanel";
 import { dateFr, mad } from "@/lib/format";
 import { getParams } from "@/lib/params";
 import { seniorityYears, seniorityRate, nextSeniorityMilestone } from "@/lib/payroll-engine";
@@ -575,7 +577,8 @@ function EmployeeDrawer({ emp, onClose, onSaved }: { emp: Employee; onClose: () 
 
   // Régime de la société (SMIG / SMAG) -> preset proposé.
   const s = useStore();
-  const regime = (s.firms.find((x) => x.id === f.firm_id) ?? currentFirm(s))?.regime ?? "SMIG";
+  const firm = s.firms.find((x) => x.id === f.firm_id) ?? currentFirm(s);
+  const regime = firm?.regime ?? "SMIG";
   const smigMonthly = regimeMonthlyMin("SMIG");
   const smagMonthly = regimeMonthlyMin("SMAG");
 
@@ -589,8 +592,19 @@ function EmployeeDrawer({ emp, onClose, onSaved }: { emp: Employee; onClose: () 
     set({ monthly_hours: h, base_hourly_rate: h > 0 ? round6(salaireMensuel / h) : 0 });
   };
 
-  function save() {
-    if (!f.first_name.trim() || !f.last_name.trim()) return;
+  /**
+   * Verrou de la fiche salarié. Toute écriture — création, modification, suppression — passe par
+   * le code de validation à 4 chiffres de la société : la fiche pilote la paie, les déclarations
+   * CNSS et les documents opposables, une saisie erronée s'y propage silencieusement.
+   *
+   * Le code est EXIGÉ, pas optionnel : sans code configuré, l'enregistrement est refusé et
+   * l'utilisateur est renvoyé vers Paramètres. Un verrou que l'on peut contourner en ne le
+   * définissant pas n'en est pas un.
+   */
+  const pinConfigured = !!firm?.validation_pin_hash;
+  const [pinFor, setPinFor] = useState<null | "save" | "delete">(null);
+
+  function commitSave() {
     // Une sortie DÉJÀ effective (date passée) implique un salarié non actif : on aligne le drapeau
     // pour que l'effectif « actif » et les vues qui s'appuient sur is_active restent cohérents.
     const left = !!f.exit_date && Date.parse(f.exit_date) <= Date.now();
@@ -599,14 +613,22 @@ function EmployeeDrawer({ emp, onClose, onSaved }: { emp: Employee; onClose: () 
     onSaved?.(saved); // garde le salarié visible même s'il vient d'être marqué « sorti »
     onClose();
   }
+  function save() {
+    if (!f.first_name.trim() || !f.last_name.trim()) return;
+    setPinFor("save");
+  }
+  function commitRemove() {
+    actions.removeEmployee(f.id);
+    onClose();
+  }
   function remove() {
     if (confirm(`${t("emp.delete.confirm1")} ${f.first_name} ${f.last_name}${t("emp.delete.confirm2")}`)) {
-      actions.removeEmployee(f.id);
-      onClose();
+      setPinFor("delete");
     }
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex justify-end bg-foreground/40" onClick={onClose}>
       <div
         className="h-full w-full max-w-lg overflow-y-auto bg-card p-6 shadow-2xl scrollbar-thin"
@@ -724,16 +746,48 @@ function EmployeeDrawer({ emp, onClose, onSaved }: { emp: Employee; onClose: () 
           <input type="checkbox" checked={!!f.hazardous_site} onChange={(e) => set({ hazardous_site: e.target.checked })} /> {t("emp.hazardCheck")}
         </label>
 
+        {/* Pièces justificatives du dossier — CIN, contrat signé, immatriculation CNSS…
+            Disponibles dès que le salarié existe : une fiche non encore enregistrée n'a pas
+            d'identifiant stable auquel rattacher un fichier. */}
+        {!isNew && <AttachmentsPanel employee={emp} asOf={new Date().toISOString().slice(0, 10)} />}
+
+        {!pinConfigured && (
+          <p className="mt-5 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+            <ShieldCheck size={16} className="mt-0.5 shrink-0" />
+            <span>
+              Aucun code de validation n'est défini pour {firm?.name ?? "cette société"}. La fiche salarié
+              ne peut pas être enregistrée tant qu'il n'est pas configuré dans <strong>Paramètres → Code de validation</strong>.
+            </span>
+          </p>
+        )}
+
         <div className="mt-6 flex items-center justify-between">
           {!isNew ? (
-            <Button variant="ghost" onClick={remove} className="text-destructive"><Trash2 size={15} /> {t("btn.delete")}</Button>
+            <Button variant="ghost" onClick={remove} className="text-destructive" disabled={!pinConfigured}><Trash2 size={15} /> {t("btn.delete")}</Button>
           ) : <span />}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>{t("btn.cancel")}</Button>
-            <Button onClick={save}>{t("btn.save")}</Button>
+            <Button
+              onClick={save}
+              disabled={!pinConfigured}
+              title={pinConfigured ? "Le code de validation à 4 chiffres sera demandé." : "Définir d'abord le code de validation dans Paramètres."}
+            >
+              {t("btn.save")}
+            </Button>
           </div>
         </div>
       </div>
     </div>
+
+    {pinFor && firm && (
+      <PinPrompt
+        firm={firm}
+        title={pinFor === "delete" ? "Supprimer le salarié" : isNew ? "Créer le salarié" : "Modifier la fiche salarié"}
+        action={pinFor === "delete" ? t("btn.delete") : t("btn.save")}
+        onSuccess={pinFor === "delete" ? commitRemove : commitSave}
+        onClose={() => setPinFor(null)}
+      />
+    )}
+    </>
   );
 }

@@ -8,6 +8,7 @@ import type {
   AppRole,
   AppState,
   AppUser,
+  Attachment,
   BankAuditEvent,
   BankBaseline,
   ComplianceAlert,
@@ -93,6 +94,7 @@ function migrate(s: AppState): AppState {
   if (!Array.isArray(s.docGenerations)) s.docGenerations = [];
   if (!Array.isArray(s.workAccidents)) s.workAccidents = [];
   if (!Array.isArray(s.documentRequests)) s.documentRequests = [];
+  if (!Array.isArray(s.attachments)) s.attachments = [];
   if (!Array.isArray(s.accountingClosures)) s.accountingClosures = [];
   if (!Array.isArray(s.salaryAdvances)) s.salaryAdvances = [];
   if (!Array.isArray(s.extraYears)) s.extraYears = [];
@@ -368,6 +370,8 @@ export const actions = {
   removeEmployee(id: string) {
     set((s) => {
       s.employees = s.employees.filter((e) => e.id !== id);
+      // Les pièces du dossier n'ont plus de titulaire : on ne laisse pas de métadonnée orpheline.
+      s.attachments = (s.attachments ?? []).filter((a) => a.employee_id !== id);
     });
   },
   ensurePeriod(firmId: string, year: number, month: number): PayrollPeriod {
@@ -542,16 +546,51 @@ export const actions = {
    * sont estampillés ici. `view: true` : exporter un document est permis même en lecture
    * seule, la trace doit donc l'être aussi. Journal borné aux plus récents.
    */
-  recordDocGeneration(input: Omit<DocGenEvent, "id" | "at" | "by">) {
+  recordDocGeneration(input: Omit<DocGenEvent, "id" | "at" | "by">): string {
     const evt: DocGenEvent = { ...input, id: uid("doc"), at: new Date().toISOString(), by: sessionUsername() };
     set((s) => {
       s.docGenerations = capDocEvents([...(s.docGenerations ?? []), evt]);
     }, { view: true });
+    return evt.id; // permet à l'appelant de rattacher ensuite le PDF archivé
   },
-  /** Purge le journal des documents générés. */
+  /**
+   * Rattache le PDF archivé à une trace du journal. `view: true` pour la même raison que
+   * `recordDocGeneration` : produire un document — donc l'archiver — reste permis en lecture seule.
+   */
+  setDocArchive(eventId: string, archive: DocGenEvent["archive"]) {
+    set((s) => {
+      const e = (s.docGenerations ?? []).find((x) => x.id === eventId);
+      if (e) e.archive = archive;
+    }, { view: true });
+  },
+  /** Purge le journal des documents générés (les PDF archivés sont supprimés par l'appelant). */
   clearDocGenerations() {
     set((s) => {
       s.docGenerations = [];
+    });
+  },
+  /* ---- Pièces justificatives (métadonnées ; binaire en IndexedDB) ---- */
+  /**
+   * Enregistre la métadonnée d'une pièce déposée. L'id, l'horodatage et l'auteur sont estampillés
+   * ici — la valeur probante d'un scan tient à ces trois éléments autant qu'à son contenu.
+   * Renvoie l'id, qui sert AUSSI de clé du binaire dans IndexedDB.
+   */
+  addAttachment(input: Omit<Attachment, "id" | "uploaded_at" | "uploaded_by">): string {
+    const att: Attachment = {
+      ...input,
+      id: uid("att"),
+      uploaded_at: new Date().toISOString(),
+      uploaded_by: sessionUsername(),
+    };
+    set((s) => {
+      s.attachments = [...(s.attachments ?? []), att];
+    });
+    return att.id;
+  },
+  /** Retire la métadonnée d'une pièce. Le binaire est supprimé par l'appelant (IndexedDB). */
+  removeAttachment(id: string) {
+    set((s) => {
+      s.attachments = (s.attachments ?? []).filter((a) => a.id !== id);
     });
   },
   /* ---- Registre des accidents du travail ---- */

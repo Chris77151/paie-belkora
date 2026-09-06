@@ -8,12 +8,17 @@
  */
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
+import type { GeneratedPdf } from "./rh-legal";
 
 const A4_W = 210; // mm
 const A4_H = 297; // mm
 
-/** Capture l'élément `el` et l'enregistre en PDF A4 fidèle sous `filename`. */
-export async function exportElementToPdf(el: HTMLElement, filename: string): Promise<void> {
+/**
+ * Capture l'élément `el` et l'enregistre en PDF A4 fidèle sous `filename`. Renvoie AUSSI le
+ * binaire produit, pour que l'appelant puisse l'archiver au Journal des documents : la pièce
+ * archivée doit être celle qui a été remise, pas une régénération ultérieure.
+ */
+export async function exportElementToPdf(el: HTMLElement, filename: string): Promise<GeneratedPdf> {
   const canvas = await html2canvas(el, {
     scale: 2, // netteté (retina)
     backgroundColor: "#ffffff", // fond blanc garanti
@@ -39,7 +44,10 @@ export async function exportElementToPdf(el: HTMLElement, filename: string): Pro
     heightLeft -= A4_H;
   }
 
-  pdf.save(filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
+  const name = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+  const blob = pdf.output("blob");
+  pdf.save(name);
+  return { blob, filename: name };
 }
 
 /** Nom de fichier normalisé (ASCII, sans espace parasite) : <titre>_<sujet>.pdf */

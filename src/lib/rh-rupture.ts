@@ -22,6 +22,7 @@ import {
   type Civility,
   type LegalBlock,
   type LegalDoc,
+  type GeneratedPdf,
 } from "./rh-legal";
 import { num, amountToWordsFr } from "./format";
 import { firmIdentityClause } from "./firm-legal";
@@ -346,9 +347,12 @@ export function ruptureFileName(v: RhRuptureView): string {
   return legalFileName(RUPTURE_TITLE[v.type], who);
 }
 
-export async function exportRupturePdf(v: RhRuptureView) {
+export async function exportRupturePdf(v: RhRuptureView): Promise<GeneratedPdf> {
   const doc = await renderLegalPdf(v.firm, buildRuptureDoc(v));
-  doc.save(ruptureFileName(v));
+  const filename = ruptureFileName(v);
+  const blob = doc.output("blob");
+  doc.save(filename);
+  return { blob, filename };
 }
 
 export function openRuptureHtml(v: RhRuptureView) {

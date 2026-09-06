@@ -91,6 +91,7 @@ import {
 } from "@/lib/stc-engine";
 import { mad, num } from "@/lib/format";
 import { exportElementToPdf, previewFileName } from "@/lib/preview-export";
+import { traceDoc, traceAndArchivePdf } from "@/lib/doc-archive";
 import { useT, type TKey } from "@/lib/i18n";
 import { Calculator, Wallet } from "lucide-react";
 import {
@@ -111,13 +112,22 @@ function todayIso(): string {
 
 /** Trace un document RH réellement produit (traçabilité + KPI du volet « Journal des documents »). */
 function trackRhDoc(firm: Firm, docType: DocType, format: DocFormat, employee?: Employee) {
-  actions.recordDocGeneration({
-    firm_id: firm.id,
-    doc_type: docType,
-    format,
-    employee_id: employee?.id,
-    subject: employee ? `${employee.first_name} ${employee.last_name}` : firm.name,
-  });
+  traceDoc({ firm, docType, format, employee });
+}
+
+/**
+ * Produit un PDF, le trace ET l'archive tel quel dans le Journal des documents — d'où il sera
+ * retéléchargeable comme pièce justificative. Utilisé pour les deux chemins qui produisent un
+ * PDF : l'export vectoriel et l'« Aperçu fidèle ». Les formats HTML / LaTeX ne sont que tracés.
+ */
+function archiveRhPdf(
+  firm: Firm,
+  docType: DocType,
+  format: DocFormat,
+  employee: Employee | undefined,
+  produce: () => Promise<{ blob: Blob; filename: string }>,
+) {
+  void traceAndArchivePdf({ firm, docType, format, employee }, produce);
 }
 
 /* ================================================================= salarié hors liste (ad-hoc) ================================================================= */
@@ -402,8 +412,12 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
   const paras = bodyParagraphs(view);
   const pal = paletteForFirm(firm.brand_color); // aperçu aux couleurs de la société (comme l'export)
   const previewRef = useRef<HTMLDivElement>(null);
-  const exportPreview = () =>
-    previewRef.current && exportElementToPdf(previewRef.current, previewFileName(DOC_TITLE[type], `${employee.first_name}_${employee.last_name}`));
+  /** Capture l'aperçu en PDF ; renvoie le binaire pour qu'il soit archivé au journal. */
+  const exportPreview = async () => {
+    const el = previewRef.current;
+    if (!el) throw new Error("Aperçu indisponible.");
+    return exportElementToPdf(el, previewFileName(DOC_TITLE[type], `${employee.first_name}_${employee.last_name}`));
+  };
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -528,13 +542,13 @@ function AttestationsPanel({ firm, employees }: { firm: Firm; employees: Employe
             <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "attestation", "html", employee); openRhDocHtml(view); }}>
               <Printer size={16} /> {t("btn.html")}
             </Button>
-            <Button className="flex-1" onClick={() => { trackRhDoc(firm, "attestation", "pdf", employee); exportRhDocPdf(view); }}>
+            <Button className="flex-1" onClick={() => archiveRhPdf(firm, "attestation", "pdf", employee, () => exportRhDocPdf(view))}>
               <FileDown size={16} /> {t("btn.pdf")}
             </Button>
             <Button variant="outline" className="flex-1" title="Source LaTeX (.tex) — gabarit Document RH" onClick={() => { trackRhDoc(firm, "attestation", "latex", employee); downloadRhDocLatex(firm, buildRhDoc(view), employee, firm.rh_template_latex, `${DOC_TITLE[type]}_${employee.last_name}`); }}>
               <FileText size={16} /> LaTeX
             </Button>
-            <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "attestation", "apercu", employee); exportPreview(); }}>
+            <Button variant="sage" className="w-full" onClick={() => archiveRhPdf(firm, "attestation", "apercu", employee, exportPreview)}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
@@ -681,8 +695,12 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
   const missing = contractMissingFields(view);
   const prefilled = contractPrefilled(view);
   const previewRef = useRef<HTMLDivElement>(null);
-  const exportPreview = () =>
-    previewRef.current && exportElementToPdf(previewRef.current, previewFileName(doc.fileTitle, `${employee.first_name}_${employee.last_name}`));
+  /** Capture l'aperçu en PDF ; renvoie le binaire pour qu'il soit archivé au journal. */
+  const exportPreview = async () => {
+    const el = previewRef.current;
+    if (!el) throw new Error("Aperçu indisponible.");
+    return exportElementToPdf(el, previewFileName(doc.fileTitle, `${employee.first_name}_${employee.last_name}`));
+  };
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -857,13 +875,13 @@ function ContractPanel({ firm, employees }: { firm: Firm; employees: Employee[] 
                 <Printer size={16} /> عربي (HTML)
               </Button>
             )}
-            <Button className="flex-1" onClick={() => { trackRhDoc(firm, "contrat", "pdf", employee); exportContractPdf(view); }}>
+            <Button className="flex-1" onClick={() => archiveRhPdf(firm, "contrat", "pdf", employee, () => exportContractPdf(view))}>
               <FileDown size={16} /> PDF (FR)
             </Button>
             <Button variant="outline" className="flex-1" title="Source LaTeX (.tex) — gabarit Document RH" onClick={() => { trackRhDoc(firm, "contrat", "latex", employee); downloadRhDocLatex(firm, doc, employee, firm.rh_template_latex, `${doc.fileTitle}_${employee.last_name}`); }}>
               <FileText size={16} /> LaTeX
             </Button>
-            <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "contrat", "apercu", employee); exportPreview(); }}>
+            <Button variant="sage" className="w-full" onClick={() => archiveRhPdf(firm, "contrat", "apercu", employee, exportPreview)}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
@@ -959,8 +977,12 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
   const prefilled = disciplinePrefilled(view);
   const current = DISCIPLINE_TYPES.find((t) => t.value === type)!;
   const previewRef = useRef<HTMLDivElement>(null);
-  const exportPreview = () =>
-    previewRef.current && exportElementToPdf(previewRef.current, previewFileName(doc.fileTitle, `${employee.first_name}_${employee.last_name}`));
+  /** Capture l'aperçu en PDF ; renvoie le binaire pour qu'il soit archivé au journal. */
+  const exportPreview = async () => {
+    const el = previewRef.current;
+    if (!el) throw new Error("Aperçu indisponible.");
+    return exportElementToPdf(el, previewFileName(doc.fileTitle, `${employee.first_name}_${employee.last_name}`));
+  };
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -1110,13 +1132,13 @@ function DisciplinePanel({ firm, employees }: { firm: Firm; employees: Employee[
             <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "disciplinaire", "html", employee); openDisciplineHtml(view); }}>
               <Printer size={16} /> HTML
             </Button>
-            <Button className="flex-1" onClick={() => { trackRhDoc(firm, "disciplinaire", "pdf", employee); exportDisciplinePdf(view); }}>
+            <Button className="flex-1" onClick={() => archiveRhPdf(firm, "disciplinaire", "pdf", employee, () => exportDisciplinePdf(view))}>
               <FileDown size={16} /> PDF
             </Button>
             <Button variant="outline" className="flex-1" title="Source LaTeX (.tex) — gabarit Document RH" onClick={() => { trackRhDoc(firm, "disciplinaire", "latex", employee); downloadRhDocLatex(firm, doc, employee, firm.rh_template_latex, `${doc.fileTitle}_${employee.last_name}`); }}>
               <FileText size={16} /> LaTeX
             </Button>
-            <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "disciplinaire", "apercu", employee); exportPreview(); }}>
+            <Button variant="sage" className="w-full" onClick={() => archiveRhPdf(firm, "disciplinaire", "apercu", employee, exportPreview)}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
@@ -1264,8 +1286,12 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
   const prefilled = rupturePrefilled(view);
   const current = RUPTURE_TYPES.find((t) => t.value === type)!;
   const previewRef = useRef<HTMLDivElement>(null);
-  const exportPreview = () =>
-    previewRef.current && exportElementToPdf(previewRef.current, previewFileName(doc.fileTitle, `${employee.first_name}_${employee.last_name}`));
+  /** Capture l'aperçu en PDF ; renvoie le binaire pour qu'il soit archivé au journal. */
+  const exportPreview = async () => {
+    const el = previewRef.current;
+    if (!el) throw new Error("Aperçu indisponible.");
+    return exportElementToPdf(el, previewFileName(doc.fileTitle, `${employee.first_name}_${employee.last_name}`));
+  };
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -1496,13 +1522,13 @@ function RupturePanel({ firm, employees }: { firm: Firm; employees: Employee[] }
             <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "rupture", "html", employee); openRuptureHtml(view); }}>
               <Printer size={16} /> HTML
             </Button>
-            <Button className="flex-1" onClick={() => { trackRhDoc(firm, "rupture", "pdf", employee); exportRupturePdf(view); }}>
+            <Button className="flex-1" onClick={() => archiveRhPdf(firm, "rupture", "pdf", employee, () => exportRupturePdf(view))}>
               <FileDown size={16} /> PDF
             </Button>
             <Button variant="outline" className="flex-1" title="Source LaTeX (.tex) — gabarit Document RH" onClick={() => { trackRhDoc(firm, "rupture", "latex", employee); downloadRhDocLatex(firm, doc, employee, firm.rh_template_latex, `${doc.fileTitle}_${employee.last_name}`); }}>
               <FileText size={16} /> LaTeX
             </Button>
-            <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "rupture", "apercu", employee); exportPreview(); }}>
+            <Button variant="sage" className="w-full" onClick={() => archiveRhPdf(firm, "rupture", "apercu", employee, exportPreview)}>
               <Camera size={16} /> {t("doc.exportPreview")}
             </Button>
           </div>
@@ -1639,8 +1665,12 @@ function MineurPanel({ firm }: { firm: Firm }) {
   const prefilled = mineurPrefilled(view);
   const current = MINEUR_TYPES.find((t) => t.value === type)!;
   const previewRef = useRef<HTMLDivElement>(null);
-  const exportPreview = () =>
-    previewRef.current && exportElementToPdf(previewRef.current, previewFileName(doc.fileTitle, `${firm.name}_${lang}`));
+  /** Capture l'aperçu en PDF ; renvoie le binaire pour qu'il soit archivé au journal. */
+  const exportPreview = async () => {
+    const el = previewRef.current;
+    if (!el) throw new Error("Aperçu indisponible.");
+    return exportElementToPdf(el, previewFileName(doc.fileTitle, `${firm.name}_${lang}`));
+  };
 
   return (
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
@@ -1709,13 +1739,13 @@ function MineurPanel({ firm }: { firm: Firm }) {
             <Button variant="outline" className="flex-1" onClick={() => { trackRhDoc(firm, "mineurs", "html"); openMineurHtml(view, "ar"); }}>
               <Printer size={16} /> Ouvrir (AR)
             </Button>
-            <Button className="flex-1" onClick={() => { trackRhDoc(firm, "mineurs", "pdf"); exportMineurPdf(view); }}>
+            <Button className="flex-1" onClick={() => archiveRhPdf(firm, "mineurs", "pdf", undefined, () => exportMineurPdf(view))}>
               <FileDown size={16} /> PDF (FR)
             </Button>
             <Button variant="outline" className="flex-1" title="Source LaTeX (.tex) — gabarit Document RH" onClick={() => { trackRhDoc(firm, "mineurs", "latex"); downloadRhDocLatex(firm, doc, null, firm.rh_template_latex, doc.fileTitle); }}>
               <FileText size={16} /> LaTeX
             </Button>
-            <Button variant="sage" className="w-full" onClick={() => { trackRhDoc(firm, "mineurs", "apercu"); exportPreview(); }}>
+            <Button variant="sage" className="w-full" onClick={() => archiveRhPdf(firm, "mineurs", "apercu", undefined, exportPreview)}>
               <Camera size={16} /> {t("doc.exportPreview")} ({lang === "ar" ? "AR" : "FR"})
             </Button>
           </div>
