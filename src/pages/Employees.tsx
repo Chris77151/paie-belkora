@@ -9,9 +9,11 @@ import { useCanWrite, useSession } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import {
   odooImportEmployees, buildEmployeeSyncPlan, applyEmployeeSyncPlan,
-  odooReadiness, odooErrorHint, IMPORT_ELEMENTS, importUpdateFields, type ImportElement,
+  odooReadiness, odooErrorHint, IMPORT_ELEMENTS, importUpdateFields, maskRib, type ImportElement,
 } from "@/lib/odoo";
-import type { SyncPlan } from "@/lib/odoo";
+import type { SyncAttachment, SyncPlan } from "@/lib/odoo";
+import { attachmentKindLabel } from "@/lib/attachments";
+import { getBinary } from "@/lib/blob-store";
 import type { ContractType, Employee, PaymentMode } from "@/data/types";
 import type { CnssExemption } from "@/lib/payroll-engine";
 import { DEPARTURE_REASONS, type DepartureReason } from "@/lib/stc-engine";
@@ -25,6 +27,20 @@ import { getParams } from "@/lib/params";
 import { seniorityYears, seniorityRate, nextSeniorityMilestone } from "@/lib/payroll-engine";
 
 const CONTRACTS: ContractType[] = ["CDI", "CDD", "ANAPEC", "Interim", "Stagiaire"];
+
+/**
+ * Contenu d'un fichier en base64 SANS le préfixe `data:` — c'est le format attendu par le champ
+ * `datas` d'`ir.attachment`. Chaîne vide si la lecture échoue : la pièce est alors omise du plan
+ * plutôt qu'envoyée tronquée.
+ */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result ?? "").split(",")[1] ?? "");
+    r.onerror = () => resolve("");
+    r.readAsDataURL(blob);
+  });
+}
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -59,6 +75,33 @@ export default function Employees() {
 
   const sites = useMemo(() => Array.from(new Set(all.map((e) => e.site).filter(Boolean))) as string[], [all]);
 
+  // Ce que la synchronisation pousse EN PLUS des champs du dossier. Les pièces justificatives
+  // et le RIB sont des données sensibles : leur envoi est explicite et révocable, jamais implicite.
+  const [syncAtt, setSyncAtt] = useState(true);
+  const [syncBank, setSyncBank] = useState(true);
+
+  /**
+   * Rassemble les pièces justificatives à pousser. Le binaire vit en IndexedDB sur CE poste : une
+   * pièce déposée ailleurs n'est pas lisible ici et est simplement omise — jamais envoyée vide.
+   */
+  async function collectAttachments(): Promise<SyncAttachment[]> {
+    const metas = (s.attachments ?? []).filter((a) => a.firm_id === firm.id);
+    const out: SyncAttachment[] = [];
+    for (const a of metas) {
+      const found = await getBinary(a.id);
+      if (!found) continue; // déposée depuis un autre poste : le fichier n'est pas ici
+      const base64 = await blobToBase64(found.blob);
+      if (!base64) continue;
+      out.push({
+        id: a.id, employee_id: a.employee_id, kind: a.kind,
+        kindLabel: attachmentKindLabel(a.kind),
+        filename: a.filename, mime: a.mime, sha256: a.sha256, base64,
+        pushedOdooId: a._odoo_attachment_id,
+      });
+    }
+    return out;
+  }
+
   async function prepareSync() {
     const cfgErr = odooReadiness(s.odoo, firm);
     if (cfgErr || !s.odoo || !firm.odoo_company_id) {
@@ -67,8 +110,11 @@ export default function Employees() {
     }
     setSyncing(true);
     try {
+      const attachments = syncAtt ? await collectAttachments() : [];
       // Lecture-avant-écriture : construit un plan (dry-run), aucune donnée n'est écrite ici.
-      const plan = await buildEmployeeSyncPlan(s.odoo, firm.odoo_company_id, all);
+      const plan = await buildEmployeeSyncPlan(s.odoo, firm.odoo_company_id, all, {
+        attachments, pushBank: syncBank,
+      });
       setSyncPlan(plan);
     } catch (e) {
       alert(`Échec de la préparation de la synchronisation : ${odooErrorHint((e as Error).message)}`);
@@ -170,6 +216,12 @@ export default function Employees() {
             {importing ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} {t("emp.importOdoo")}
           </Button>
         )}
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title="Joint les CIN, contrats et autres pièces du dossier à la fiche du salarié dans Odoo.">
+          <input type="checkbox" checked={syncAtt} onChange={(ev) => setSyncAtt(ev.target.checked)} /> pièces
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title="Renseigne le compte bancaire du salarié dans Odoo à partir du RIB de l'application.">
+          <input type="checkbox" checked={syncBank} onChange={(ev) => setSyncBank(ev.target.checked)} /> RIB
+        </label>
         <Button variant="sage" onClick={prepareSync} disabled={syncing || !canEdit} title={t("emp.syncOdoo.hint")}>
           {syncing ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />} {t("emp.syncOdoo")}
         </Button>
@@ -417,7 +469,10 @@ function OdooSyncDialog({
 }) {
   const t = useT();
   const [applying, setApplying] = useState(false);
-  const [done, setDone] = useState<{ created: number; updated: number; errors: { name: string; message: string }[] } | null>(null);
+  const [done, setDone] = useState<
+    | (Awaited<ReturnType<typeof applyEmployeeSyncPlan>> & { fatal?: string })
+    | null
+  >(null);
 
   const writable = plan.items.filter((i) => i.op === "create" || i.op === "update");
   const shown = plan.items.filter((i) => i.op !== "unchanged"); // on masque les "déjà à jour" (bruit)
@@ -427,9 +482,16 @@ function OdooSyncDialog({
     try {
       const res = await applyEmployeeSyncPlan(config, plan);
       actions.attachOdooIds(res.createdIds);
-      setDone({ created: res.created, updated: res.updated, errors: res.errors });
+      // Mémorise l'identifiant Odoo de chaque pièce poussée : une synchro ultérieure sait
+      // qu'elle est déjà là, et l'app peut y renvoyer.
+      actions.attachOdooAttachmentIds(res.pushedAttachments);
+      setDone(res);
     } catch (e) {
-      setDone({ created: 0, updated: 0, errors: [{ name: "—", message: (e as Error).message }] });
+      setDone({
+        created: 0, updated: 0, jobsCreated: 0, attachmentsPushed: 0, banksLinked: 0,
+        errors: [{ name: "—", message: (e as Error).message }], createdIds: [], pushedAttachments: [],
+        fatal: (e as Error).message,
+      });
     } finally {
       setApplying(false);
     }
@@ -464,10 +526,30 @@ function OdooSyncDialog({
           <SummaryCell label={t("emp.sync.conflict")} value={plan.summary.conflict} tone="destructive" />
         </div>
 
+        {(plan.warnings.length > 0 || plan.attachmentSummary.push + plan.attachmentSummary.present + plan.attachmentSummary.blocked > 0) && (
+          <div className="mb-4 space-y-1 rounded-md border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+            {plan.attachmentSummary.push + plan.attachmentSummary.present + plan.attachmentSummary.blocked > 0 && (
+              <p>
+                <b className="text-foreground">Pièces justificatives</b> — {plan.attachmentSummary.push} à joindre,{" "}
+                {plan.attachmentSummary.present} déjà dans Odoo, {plan.attachmentSummary.blocked} bloquée(s). Elles sont
+                attachées à la fiche du salarié (<code>ir.attachment</code> sur <code>hr.employee</code>).
+              </p>
+            )}
+            {plan.warnings.map((w, i) => (
+              <p key={i} className="flex items-start gap-1.5">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0 text-warning" /> {w}
+              </p>
+            ))}
+          </div>
+        )}
+
         {done ? (
           <div className="rounded-md border bg-muted/30 p-4">
             <p className="flex items-center gap-2 text-sm font-medium text-success">
               <CheckCircle2 size={16} /> Synchronisation terminée : {done.created} créé(s), {done.updated} mis à jour.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {done.attachmentsPushed} pièce(s) jointe(s) · {done.jobsCreated} poste(s) créé(s) · {done.banksLinked} RIB porté(s)
             </p>
             {done.errors.length > 0 && (
               <div className="mt-3">
@@ -522,6 +604,24 @@ function OdooSyncDialog({
                               </li>
                             ))}
                           </ul>
+                        )}
+                        {it.attachments.length > 0 && (
+                          <ul className="mt-1 space-y-0.5">
+                            {it.attachments.map((a) => (
+                              <li key={a.attachment.id} className="flex items-center gap-1.5">
+                                <Badge tone={a.state === "push" ? "sage" : a.state === "present" ? "muted" : "destructive"} className="shrink-0">
+                                  {a.state === "push" ? "pièce" : a.state === "present" ? "déjà là" : "bloquée"}
+                                </Badge>
+                                <span className="text-muted-foreground">{a.odooName}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {it.bankRib && (
+                          <p className="mt-1 flex items-center gap-1.5">
+                            <Badge tone="warning" className="shrink-0">RIB</Badge>
+                            <span className="text-muted-foreground">{maskRib(it.bankRib)} — porté au compte bancaire</span>
+                          </p>
                         )}
                       </Td>
                     </tr>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, odooRecordUrl, mapOdooPaymentMode, collectAccountCodes, resolvePayrollAccounts, buildOdooMovePayload, parseAccountMap, formatAccountMap, translateAccountCodes, type OdooLeaveBalance } from "./odoo";
+import { IMPORT_ELEMENTS, importUpdateFields, matchOdooLeaves, combineOdooLeave, odooRecordUrl, mapOdooPaymentMode, collectAccountCodes, resolvePayrollAccounts, buildOdooMovePayload, parseAccountMap, formatAccountMap, translateAccountCodes, odooEmployeeType, odooMarital, attachmentOdooName, attachmentTag, maskRib, type OdooLeaveBalance } from "./odoo";
 import type { JournalEntry } from "./payroll-accounting";
 import type { Employee } from "@/data/types";
 
@@ -192,5 +192,73 @@ describe("odoo — table de correspondance des codes de compte (app → Odoo)", 
     const { odooCodes, odooToApp } = translateAccountCodes(["5141", "6171"], { "5141": "51410000" });
     expect(odooCodes).toEqual(["51410000", "6171"]); // 6171 non mappé = inchangé
     expect(odooToApp).toEqual({ "51410000": "5141", "6171": "6171" });
+  });
+});
+
+/* ==================================================================================
+ * Synchronisation app → Odoo : champs RH étendus, poste, RIB et pièces justificatives
+ * ================================================================================== */
+describe("odooEmployeeType", () => {
+  it("range CDI, CDD et ANAPEC parmi les salariés", () => {
+    expect(odooEmployeeType("CDI")).toBe("employee");
+    expect(odooEmployeeType("CDD")).toBe("employee");
+    expect(odooEmployeeType("ANAPEC")).toBe("employee");
+  });
+
+  it("distingue le stagiaire et l'intérimaire — le régime social n'est pas le même", () => {
+    expect(odooEmployeeType("Stagiaire")).toBe("trainee");
+    expect(odooEmployeeType("Interim")).toBe("contractor");
+  });
+});
+
+describe("odooMarital", () => {
+  it("accepte la clé Odoo telle quelle", () => {
+    expect(odooMarital("married")).toBe("married");
+    expect(odooMarital("single")).toBe("single");
+  });
+
+  it("accepte le libellé français rendu à l'import — sinon Odoo rejette la valeur", () => {
+    expect(odooMarital("Marié(e)")).toBe("married");
+    expect(odooMarital("Célibataire")).toBe("single");
+    expect(odooMarital("Veuf(ve)")).toBe("widower");
+    expect(odooMarital("Divorcé(e)")).toBe("divorced");
+  });
+
+  it("tolère l'absence d'accent et la casse", () => {
+    expect(odooMarital("MARIE")).toBe("married");
+    expect(odooMarital("celibataire")).toBe("single");
+  });
+
+  it("ne devine rien sur une valeur inconnue ou vide", () => {
+    expect(odooMarital("pacsé")).toBeUndefined();
+    expect(odooMarital("")).toBeUndefined();
+    expect(odooMarital(undefined)).toBeUndefined();
+  });
+});
+
+describe("attachmentOdooName", () => {
+  it("nomme la pièce de façon lisible dans Odoo, extension conservée", () => {
+    expect(attachmentOdooName("CIN", "Fadwa Semlani", "scan001.PDF")).toBe("CIN - Fadwa Semlani.pdf");
+  });
+
+  it("neutralise les caractères interdits dans un nom de fichier", () => {
+    expect(attachmentOdooName("Contrat/avenant", "A:B", "c.pdf")).toBe("Contrat-avenant - A-B.pdf");
+  });
+
+  it("se passe d'extension quand le fichier n'en a pas", () => {
+    expect(attachmentOdooName("CIN", "Ali", "scan")).toBe("CIN - Ali");
+  });
+});
+
+describe("attachmentTag", () => {
+  it("porte l'empreinte, ce qui rend l'export idempotent d'une synchro à l'autre", () => {
+    expect(attachmentTag("abc123")).toBe("GCA-PAIE:abc123");
+  });
+});
+
+describe("maskRib", () => {
+  it("ne laisse jamais voir le RIB complet, même à l'écran du plan", () => {
+    expect(maskRib("011 780 0000012345678901 23")).toBe("****0123");
+    expect(maskRib("12")).toBe("****");
   });
 });

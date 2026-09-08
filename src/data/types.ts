@@ -349,6 +349,12 @@ export interface Attachment {
   uploaded_at: string;
   /** Identifiant (username) du compte déposant. */
   uploaded_by?: string;
+  /**
+   * Identifiant de l'`ir.attachment` correspondant dans Odoo, une fois la pièce poussée par la
+   * synchronisation. Sa présence signifie « déjà partie » : une synchro ultérieure ne la
+   * renverra pas.
+   */
+  _odoo_attachment_id?: number;
 }
 
 /**

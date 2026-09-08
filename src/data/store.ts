@@ -587,6 +587,20 @@ export const actions = {
     });
     return att.id;
   },
+  /**
+   * Mémorise l'identifiant `ir.attachment` des pièces poussées vers Odoo. Sans cela, l'app ne
+   * saurait pas qu'une pièce est déjà partie et ne pourrait pas y renvoyer.
+   */
+  attachOdooAttachmentIds(pairs: { attachment_id: string; odoo_attachment_id: number }[]) {
+    if (!pairs.length) return;
+    const byId = new Map(pairs.map((x) => [x.attachment_id, x.odoo_attachment_id]));
+    set((s) => {
+      for (const a of s.attachments ?? []) {
+        const odooId = byId.get(a.id);
+        if (odooId != null) a._odoo_attachment_id = odooId;
+      }
+    });
+  },
   /** Retire la métadonnée d'une pièce. Le binaire est supprimé par l'appelant (IndexedDB). */
   removeAttachment(id: string) {
     set((s) => {

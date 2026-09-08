@@ -565,9 +565,40 @@ export async function odooFetchLeaveBalances(config: OdooConfig, odooCompanyId: 
  * absent (ex. module l10n_ma non installé) est ignoré au lieu de faire échouer tout le write.
  */
 const SYNC_CANDIDATES = [
-  "name", "registration_number", "identification_id", "l10n_ma_cnss_number",
+  "name", "registration_number", "identification_id", "l10n_ma_cin_number", "l10n_ma_cnss_number",
   "job_title", "birthday", "wage", "children", "mobile_phone", "private_street",
+  "marital", "employee_type", "departure_date", "departure_description",
 ] as const;
+
+/**
+ * Situation de famille : l'app stocke soit la clé Odoo, soit le libellé français rendu à
+ * l'import. On accepte les deux pour ne jamais renvoyer un libellé là où Odoo attend une clé de
+ * sélection — un `marital: "Marié(e)"` serait rejeté par le serveur.
+ */
+const MARITAL_TO_ODOO: Record<string, string> = {
+  ...Object.fromEntries(Object.keys(MARITAL).map((k) => [k, k])),
+  ...Object.fromEntries(Object.entries(MARITAL).map(([k, label]) => [label.toLowerCase(), k])),
+  celibataire: "single", marie: "married", "marie(e)": "married",
+  veuf: "widower", "veuf(ve)": "widower", divorce: "divorced", "divorce(e)": "divorced",
+  concubinage: "cohabitant",
+};
+
+/** Clé de sélection `hr.employee.employee_type` correspondant au type de contrat de l'app. */
+export function odooEmployeeType(contract: Employee["contract_type"]): string | undefined {
+  switch (contract) {
+    case "Stagiaire": return "trainee";
+    case "Interim": return "contractor";
+    case "CDI": case "CDD": case "ANAPEC": return "employee";
+    default: return undefined;
+  }
+}
+
+/** Clé de sélection `hr.employee.marital`, à partir de la valeur stockée dans l'app. PUR. */
+export function odooMarital(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const k = raw.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  return MARITAL_TO_ODOO[k] ?? MARITAL_TO_ODOO[raw.toLowerCase().trim()];
+}
 
 type OdooEmp = {
   id: number;
@@ -582,6 +613,16 @@ type OdooEmp = {
   children?: number | false;
   mobile_phone?: string | false;
   private_street?: string | false;
+  marital?: string | false;
+  employee_type?: string | false;
+  departure_date?: string | false;
+  departure_description?: string | false;
+  active?: boolean;
+  job_id?: [number, string] | false;
+  company_id?: [number, string] | false;
+  bank_account_id?: [number, string] | false;
+  work_contact_id?: [number, string] | false;
+  address_home_id?: [number, string] | false;
 };
 
 export type SyncOp = "create" | "update" | "unchanged" | "conflict";
@@ -595,6 +636,50 @@ export interface SyncFieldChange {
   kind: "fill" | "diff";
 }
 
+/**
+ * Une pièce justificative de l'app prête à être poussée dans Odoo. Le binaire est fourni en
+ * base64 par l'appelant : ce module ignore où il est stocké (IndexedDB côté app), il ne connaît
+ * que le contenu et son empreinte.
+ */
+export interface SyncAttachment {
+  /** Identifiant de la pièce dans l'app — sert de clé du binaire côté appelant. */
+  id: string;
+  employee_id: string;
+  /** Nature (nomenclature de l'app : cin, contrat, cnss…). */
+  kind: string;
+  /** Libellé lisible de la nature, pour nommer la pièce dans Odoo. */
+  kindLabel: string;
+  filename: string;
+  mime: string;
+  sha256: string;
+  /** Contenu encodé en base64, SANS le préfixe `data:`. */
+  base64: string;
+  /**
+   * Identifiant `ir.attachment` connu de l'app : la pièce est déjà partie lors d'une synchro
+   * précédente. Sert de second garde-fou anti-doublon, au cas où la relecture des pièces
+   * présentes dans Odoo échouerait.
+   */
+  pushedOdooId?: number;
+}
+
+/** Une pièce planifiée pour un salarié, avec son sort. */
+export interface SyncAttachmentPlan {
+  attachment: SyncAttachment;
+  /** `push` = à envoyer ; `present` = déjà dans Odoo (même empreinte) ; `blocked` = salarié non résolu. */
+  state: "push" | "present" | "blocked";
+  /** Nom que portera la pièce dans Odoo. */
+  odooName: string;
+  reason?: string;
+}
+
+/** Ce que la synchronisation doit pousser en plus des champs scalaires. */
+export interface SyncOptions {
+  /** Pièces justificatives à joindre (CIN, contrat…). Vide = aucune. */
+  attachments?: SyncAttachment[];
+  /** Pousser le RIB vers le compte bancaire du salarié. */
+  pushBank?: boolean;
+}
+
 export interface SyncPlanItem {
   employee_id: string;                       // id app
   name: string;
@@ -604,6 +689,12 @@ export interface SyncPlanItem {
   matchConfidence: "forte" | "faible" | "aucune";
   changes: SyncFieldChange[];                // champs à écrire (create = tous ; update = trous)
   vals: Record<string, unknown>;             // payload Odoo effectif
+  /** Poste (`hr.job`) à rattacher : id existant, ou nom à créer. */
+  job?: { name: string; id?: number };
+  /** RIB à porter au compte bancaire du salarié (masqué à l'affichage par l'appelant). */
+  bankRib?: string;
+  /** Pièces justificatives planifiées pour ce salarié. */
+  attachments: SyncAttachmentPlan[];
   note?: string;
 }
 
@@ -612,12 +703,43 @@ export interface SyncPlan {
   odooCount: number;                         // nb d'enregistrements Odoo lus
   items: SyncPlanItem[];
   summary: { create: number; update: number; unchanged: number; conflict: number };
+  /** Champs réellement synchronisables sur CETTE instance (intersection candidats / fields_get). */
+  syncFields: string[];
+  /** Candidats absents de l'instance — affichés pour que l'écart soit visible, pas silencieux. */
+  missingFields: string[];
+  /** Pièces à envoyer, déjà présentes, bloquées. */
+  attachmentSummary: { push: number; present: number; blocked: number };
+  /** Réserves : ce que l'instance ne permet pas et pourquoi. */
+  warnings: string[];
+}
+
+/**
+ * Nom que porte la pièce dans Odoo : « CIN - Fadwa Semlani.pdf ». Lisible dans le fil de
+ * discussion du salarié, et stable — c'est lui qu'un gestionnaire cherchera. PUR.
+ */
+export function attachmentOdooName(kindLabel: string, employeeName: string, filename: string): string {
+  const ext = /\.([A-Za-z0-9]{1,5})$/.exec(filename)?.[1] ?? "";
+  const base = `${kindLabel} - ${employeeName}`.replace(/[\\/:*?"<>|]/g, "-").trim();
+  return ext ? `${base}.${ext.toLowerCase()}` : base;
+}
+
+/**
+ * Marqueur d'origine porté par la pièce dans Odoo (`ir.attachment.description`). Il rend
+ * l'export IDEMPOTENT : une pièce dont l'empreinte est déjà présente n'est pas renvoyée, si bien
+ * qu'une synchronisation relancée ne duplique jamais les documents. PUR.
+ */
+export function attachmentTag(sha256: string): string {
+  return `GCA-PAIE:${sha256}`;
 }
 
 const FIELD_LABEL: Record<string, string> = {
   name: "Nom", registration_number: "Matricule", identification_id: "CIN",
   l10n_ma_cnss_number: "N° CNSS", job_title: "Poste", birthday: "Naissance", wage: "Salaire mensuel",
   children: "Personnes à charge", mobile_phone: "Téléphone", private_street: "Adresse",
+  l10n_ma_cin_number: "CIN (champ Maroc)", marital: "Situation de famille",
+  employee_type: "Type de salarié", departure_date: "Date de sortie",
+  departure_description: "Motif de sortie", active: "Actif",
+  job_id: "Poste (fiche)", company_id: "Société", bank_account_id: "Compte bancaire (RIB)",
 };
 
 const isEmpty = (v: unknown): boolean => v === false || v == null || v === "";
@@ -647,6 +769,7 @@ function appValue(emp: Employee, field: string): string | number | undefined {
     }
     case "registration_number": return norm(emp.matricule) || undefined;
     case "identification_id": return norm(emp.cin) || undefined;
+    case "l10n_ma_cin_number": return norm(emp.cin) || undefined;
     case "l10n_ma_cnss_number": return norm(emp.cnss_number) || undefined;
     case "job_title": return norm(emp.position) || undefined;
     case "birthday": return norm(emp.birth_date) || undefined;
@@ -657,6 +780,12 @@ function appValue(emp: Employee, field: string): string | number | undefined {
     case "children": return typeof emp.dependents === "number" ? emp.dependents : undefined;
     case "mobile_phone": return norm(emp.phone) || undefined;
     case "private_street": return norm(emp.address) || undefined;
+    case "marital": return odooMarital(emp.marital_status);
+    case "employee_type": return odooEmployeeType(emp.contract_type);
+    // La sortie n'est poussée que si elle est RÉELLEMENT saisie : `undefined` sinon, pour ne
+    // jamais effacer une date de départ déjà renseignée dans Odoo.
+    case "departure_date": return norm(emp.exit_date) || undefined;
+    case "departure_description": return norm(emp.exit_reason) || undefined;
     default: return undefined;
   }
 }
@@ -697,8 +826,10 @@ export async function buildEmployeeSyncPlan(
   config: OdooConfig,
   odooCompanyId: number,
   employees: Employee[],
+  opts: SyncOptions = {},
 ): Promise<SyncPlan> {
   const userId = await odooAuthenticate(config);
+  const warnings: string[] = [];
 
   // Robustesse : ne lire/écrire QUE des champs présents sur cette instance (évite qu'un champ
   // absent — ex. module l10n_ma non installé, ou renommage de version — fasse échouer l'appel).
@@ -713,16 +844,91 @@ export async function buildEmployeeSyncPlan(
   }
   // Champs synchronisés = candidats réellement disponibles.
   const syncFields = SYNC_CANDIDATES.filter((f) => available.has(f));
-  // Champs supplémentaires utiles à l'appariement (CIN alternatif l10n_ma), s'ils existent.
+  const missingFields = SYNC_CANDIDATES.filter((f) => !available.has(f));
+  if (missingFields.length) {
+    warnings.push(
+      `Champs absents de cette instance, donc ignorés : ${missingFields.map((f) => FIELD_LABEL[f] ?? f).join(", ")}.`,
+    );
+  }
+
+  // Relations : présentes seulement si le modèle de l'instance les expose.
+  const hasJob = available.has("job_id");
+  const hasBank = available.has("bank_account_id");
+  // Le partenaire porteur du compte bancaire a changé de nom selon les versions d'Odoo.
+  const partnerField = available.has("work_contact_id")
+    ? "work_contact_id"
+    : available.has("address_home_id") ? "address_home_id" : null;
+
   const readFields = Array.from(new Set([
-    "id", ...syncFields, ...(available.has("l10n_ma_cin_number") ? ["l10n_ma_cin_number"] : []),
+    "id", "active", "company_id", ...syncFields,
+    ...(hasJob ? ["job_id"] : []),
+    ...(hasBank ? ["bank_account_id"] : []),
+    ...(partnerField ? [partnerField] : []),
   ]));
 
+  // `active_test: false` : SANS cela, un salarié archivé dans Odoo est invisible et serait
+  // recréé en double à chaque synchronisation. On lit donc actifs ET archivés.
   const existing: OdooEmp[] = await jsonRpc(config, "object", "execute_kw", [
     config.db, userId, config.apiKey, "hr.employee", "search_read",
     [[["company_id", "=", odooCompanyId]]],
-    { fields: readFields, limit: 2000 },
+    { fields: readFields, limit: 2000, context: { active_test: false } },
   ]);
+
+  /* --- Postes (hr.job) : on résout par NOM dans la société ; les manquants seront créés. --- */
+  const jobIdByName = new Map<string, number>();
+  if (hasJob) {
+    const wanted = Array.from(new Set(
+      employees.map((e) => norm(e.position)).filter(Boolean).map((n) => n.toLowerCase()),
+    ));
+    if (wanted.length) {
+      try {
+        const jobs: { id: number; name: string }[] = await jsonRpc(config, "object", "execute_kw", [
+          config.db, userId, config.apiKey, "hr.job", "search_read",
+          [[["company_id", "in", [odooCompanyId, false]]]],
+          { fields: ["id", "name"], limit: 500, context: { active_test: false } },
+        ]);
+        for (const j of jobs) {
+          const k = norm(j.name).toLowerCase();
+          if (k && !jobIdByName.has(k)) jobIdByName.set(k, j.id);
+        }
+      } catch {
+        warnings.push("Postes (hr.job) illisibles : le poste ne sera porté que sur l'intitulé libre.");
+      }
+    }
+  } else {
+    warnings.push("Champ « Poste (fiche) » absent : seul l'intitulé de poste est synchronisé.");
+  }
+
+  if (opts.pushBank && (!hasBank || !partnerField)) {
+    warnings.push(
+      "Compte bancaire non synchronisable sur cette instance (champ ou contact absent) : le RIB reste dans l'application.",
+    );
+  }
+
+  /* --- Pièces justificatives déjà présentes dans Odoo, par empreinte (idempotence). --- */
+  const attachments = opts.attachments ?? [];
+  const alreadyThere = new Set<string>();
+  if (attachments.length) {
+    try {
+      const ids = existing.map((e) => e.id);
+      if (ids.length) {
+        const rows: { description?: string | false }[] = await jsonRpc(config, "object", "execute_kw", [
+          config.db, userId, config.apiKey, "ir.attachment", "search_read",
+          [[["res_model", "=", "hr.employee"], ["res_id", "in", ids], ["description", "like", "GCA-PAIE:"]]],
+          { fields: ["description"], limit: 5000 },
+        ]);
+        for (const r of rows) if (r.description) alreadyThere.add(String(r.description));
+      }
+    } catch {
+      warnings.push("Pièces déjà présentes dans Odoo illisibles : un doublon reste possible.");
+    }
+  }
+  const attachmentsByEmp = new Map<string, SyncAttachment[]>();
+  for (const a of attachments) {
+    const list = attachmentsByEmp.get(a.employee_id) ?? [];
+    list.push(a);
+    attachmentsByEmp.set(a.employee_id, list);
+  }
 
   // Index d'appariement (clé -> id Odoo). Première occurrence gagnante.
   const byId = new Map<number, OdooEmp>(existing.map((e) => [e.id, e]));
@@ -740,6 +946,33 @@ export async function buildEmployeeSyncPlan(
 
   const claimed = new Set<number>(); // enregistrements Odoo déjà revendiqués (anti-doublon d'appariement)
   const items: SyncPlanItem[] = [];
+
+  /** Poste à rattacher : id résolu s'il existe déjà dans Odoo, sinon nom à créer. */
+  const jobOf = (emp: Employee): SyncPlanItem["job"] => {
+    if (!hasJob) return undefined;
+    const name = norm(emp.position);
+    if (!name) return undefined;
+    return { name, id: jobIdByName.get(name.toLowerCase()) };
+  };
+
+  /** Pièces du salarié : à envoyer, déjà présentes (même empreinte), ou bloquées. */
+  const attachmentsOf = (emp: Employee, displayName: string, resolved: boolean): SyncAttachmentPlan[] =>
+    (attachmentsByEmp.get(emp.id) ?? []).map((a) => {
+      const odooName = attachmentOdooName(a.kindLabel, displayName, a.filename);
+      if (a.pushedOdooId != null || alreadyThere.has(attachmentTag(a.sha256))) {
+        return { attachment: a, state: "present" as const, odooName, reason: "Déjà présente dans Odoo (même empreinte)." };
+      }
+      if (!resolved) {
+        return { attachment: a, state: "blocked" as const, odooName, reason: "Salarié non résolu dans Odoo." };
+      }
+      return { attachment: a, state: "push" as const, odooName };
+    });
+
+  /** RIB à porter, si l'instance le permet et que l'option est active. */
+  const bankOf = (emp: Employee): string | undefined => {
+    if (!opts.pushBank || !hasBank || !partnerField) return undefined;
+    return norm(emp.bank_rib) || undefined;
+  };
 
   for (const emp of employees) {
     const displayName = `${emp.first_name ?? ""} ${emp.last_name ?? ""}`.trim() || "(sans nom)";
@@ -767,9 +1000,17 @@ export async function buildEmployeeSyncPlan(
           changes.push({ field: f, label: FIELD_LABEL[f], odoo: "(vide)", app: fmt(v), kind: "fill" });
         }
       }
+      const job = jobOf(emp);
+      if (job) changes.push({ field: "job_id", label: FIELD_LABEL.job_id, odoo: "(vide)", app: job.id ? job.name : `${job.name} (à créer)`, kind: "fill" });
+      changes.push({ field: "company_id", label: FIELD_LABEL.company_id, odoo: "(vide)", app: `#${odooCompanyId}`, kind: "fill" });
+      const rib = bankOf(emp);
+      if (rib) changes.push({ field: "bank_account_id", label: FIELD_LABEL.bank_account_id, odoo: "(vide)", app: maskRib(rib), kind: "fill" });
       items.push({
         employee_id: emp.id, name: displayName, op: "create",
-        matchConfidence: "aucune", changes, vals,
+        matchConfidence: "aucune", changes, vals, job, bankRib: rib,
+        // Un salarié qui n'existe pas encore n'a pas d'id : ses pièces partiront juste après
+        // sa création, dans la même opération.
+        attachments: attachmentsOf(emp, displayName, true),
         note: "Absent d'Odoo — sera créé.",
       });
       continue;
@@ -779,7 +1020,7 @@ export async function buildEmployeeSyncPlan(
     if (claimed.has(odooId)) {
       items.push({
         employee_id: emp.id, name: displayName, op: "conflict", odooId, matchKey, matchConfidence: confidence,
-        changes: [], vals: {},
+        changes: [], vals: {}, attachments: attachmentsOf(emp, displayName, false),
         note: `Enregistrement Odoo #${odooId} déjà apparié à un autre salarié — ignoré (à lever manuellement).`,
       });
       continue;
@@ -806,14 +1047,57 @@ export async function buildEmployeeSyncPlan(
       }
     }
 
+    // Poste (hr.job) : rattaché s'il manque ou s'il ne correspond plus à l'intitulé de l'app.
+    const job = jobOf(emp);
+    if (job) {
+      const curJob = target.job_id ? target.job_id[1] : "";
+      if (!target.job_id || normName(curJob) !== normName(job.name)) {
+        changes.push({
+          field: "job_id", label: FIELD_LABEL.job_id,
+          odoo: fmt(curJob || false), app: job.id ? job.name : `${job.name} (à créer)`,
+          kind: target.job_id ? "diff" : "fill",
+        });
+      }
+    }
+
+    // Société de rattachement : le domaine de lecture la garantit déjà, on ne l'écrit que si
+    // l'enregistrement lu porte réellement une autre société (cas d'une instance multi-société
+    // mal filtrée) — jamais « par principe », un changement de société est lourd dans Odoo.
+    const curCompany = target.company_id ? target.company_id[0] : undefined;
+    if (curCompany != null && curCompany !== odooCompanyId) {
+      vals.company_id = odooCompanyId;
+      changes.push({ field: "company_id", label: FIELD_LABEL.company_id, odoo: fmt(target.company_id ? target.company_id[1] : false), app: `#${odooCompanyId}`, kind: "diff" });
+    }
+
+    // Sortie effective et déjà passée → archivage du salarié dans Odoo. On n'active JAMAIS
+    // l'inverse : ré-activer d'office ressusciterait un enregistrement archivé volontairement.
+    const left = !!emp.exit_date && emp.exit_date <= new Date().toISOString().slice(0, 10);
+    if (left && target.active !== false) {
+      vals.active = false;
+      changes.push({ field: "active", label: FIELD_LABEL.active, odoo: "Actif", app: "Archivé (sorti)", kind: "diff" });
+    }
+
+    const rib = bankOf(emp);
+    if (rib && !target.bank_account_id) {
+      changes.push({ field: "bank_account_id", label: FIELD_LABEL.bank_account_id, odoo: "(vide)", app: maskRib(rib), kind: "fill" });
+    }
+
+    const atts = attachmentsOf(emp, displayName, true);
+    const toPush = atts.filter((a) => a.state === "push").length;
+    const hasWork = changes.length > 0 || toPush > 0;
+
     const nFill = changes.filter((c) => c.kind === "fill").length;
     const nDiff = changes.filter((c) => c.kind === "diff").length;
     items.push({
       employee_id: emp.id, name: displayName,
-      op: changes.length ? "update" : "unchanged",
+      op: hasWork ? "update" : "unchanged",
       odooId, matchKey, matchConfidence: confidence, changes, vals,
-      note: changes.length
-        ? `Apparié par ${matchKey} (#${odooId}) — ${nFill} à compléter, ${nDiff} à corriger.`
+      job: job && (!target.job_id || normName(target.job_id[1]) !== normName(job.name)) ? job : undefined,
+      bankRib: rib && !target.bank_account_id ? rib : undefined,
+      attachments: atts,
+      note: hasWork
+        ? `Apparié par ${matchKey} (#${odooId}) — ${nFill} à compléter, ${nDiff} à corriger`
+          + (toPush ? `, ${toPush} pièce(s) à joindre.` : ".")
         : `Apparié par ${matchKey} (#${odooId}) — déjà à jour.`,
     });
   }
@@ -824,12 +1108,34 @@ export async function buildEmployeeSyncPlan(
     unchanged: items.filter((i) => i.op === "unchanged").length,
     conflict: items.filter((i) => i.op === "conflict").length,
   };
-  return { companyId: odooCompanyId, odooCount: existing.length, items, summary };
+  const allAtt = items.flatMap((i) => i.attachments);
+  const attachmentSummary = {
+    push: allAtt.filter((a) => a.state === "push").length,
+    present: allAtt.filter((a) => a.state === "present").length,
+    blocked: allAtt.filter((a) => a.state === "blocked").length,
+  };
+  return {
+    companyId: odooCompanyId, odooCount: existing.length, items, summary,
+    syncFields: [...syncFields], missingFields: [...missingFields],
+    attachmentSummary, warnings,
+  };
+}
+
+/** RIB masqué pour l'affichage du plan — jamais le numéro complet à l'écran. */
+export function maskRib(rib: string): string {
+  const clean = rib.replace(/\s+/g, "");
+  return clean.length <= 4 ? "****" : `****${clean.slice(-4)}`;
 }
 
 export interface SyncApplyResult {
   created: number;
   updated: number;
+  /** Postes (hr.job) créés faute d'exister dans Odoo. */
+  jobsCreated: number;
+  /** Pièces justificatives réellement jointes à un salarié. */
+  attachmentsPushed: number;
+  /** Comptes bancaires renseignés à partir du RIB de l'app. */
+  banksLinked: number;
   errors: { name: string; message: string }[];
 }
 
@@ -841,25 +1147,113 @@ export interface SyncApplyResult {
 export async function applyEmployeeSyncPlan(
   config: OdooConfig,
   plan: SyncPlan,
-): Promise<SyncApplyResult & { createdIds: { employee_id: string; odoo_id: number }[] }> {
+): Promise<SyncApplyResult & {
+  createdIds: { employee_id: string; odoo_id: number }[];
+  /** Pièces poussées, pour que l'app mémorise leur identifiant Odoo. */
+  pushedAttachments: { attachment_id: string; odoo_attachment_id: number }[];
+}> {
   const userId = await odooAuthenticate(config);
-  const res: SyncApplyResult & { createdIds: { employee_id: string; odoo_id: number }[] } = {
-    created: 0, updated: 0, errors: [], createdIds: [],
-  };
+  const call = (model: string, method: string, args: unknown[], kwargs?: Record<string, unknown>) =>
+    jsonRpc(config, "object", "execute_kw", [config.db, userId, config.apiKey, model, method, args, ...(kwargs ? [kwargs] : [])]);
+
+  const res: SyncApplyResult & {
+    createdIds: { employee_id: string; odoo_id: number }[];
+    pushedAttachments: { attachment_id: string; odoo_attachment_id: number }[];
+  } = { created: 0, updated: 0, jobsCreated: 0, attachmentsPushed: 0, banksLinked: 0, errors: [], createdIds: [], pushedAttachments: [] };
+
+  // Postes créés au fil de l'eau : deux salariés du même poste ne doivent pas créer deux fiches.
+  const jobCache = new Map<string, number>();
+
+  /** Identifiant du poste : celui résolu au plan, sinon création (mémorisée). */
+  async function resolveJob(job: NonNullable<SyncPlanItem["job"]>): Promise<number> {
+    if (job.id != null) return job.id;
+    const key = job.name.toLowerCase();
+    const cached = jobCache.get(key);
+    if (cached != null) return cached;
+    const id: number = await call("hr.job", "create", [{ name: job.name, company_id: plan.companyId }]);
+    jobCache.set(key, id);
+    res.jobsCreated += 1;
+    return id;
+  }
+
+  /**
+   * Porte le RIB au compte bancaire du salarié. Best-effort et jamais bloquant : l'échec est
+   * consigné en erreur, le reste de la synchronisation se poursuit. Le partenaire porteur du
+   * compte diffère selon la version d'Odoo — on lit celui de l'enregistrement plutôt que de le
+   * deviner.
+   */
+  async function linkBank(employeeOdooId: number, rib: string): Promise<void> {
+    const rows: { work_contact_id?: [number, string] | false; address_home_id?: [number, string] | false }[] =
+      await call("hr.employee", "read", [[employeeOdooId], ["work_contact_id", "address_home_id"]]);
+    const row = rows?.[0] ?? {};
+    const partner = (row.work_contact_id || row.address_home_id) as [number, string] | false | undefined;
+    if (!partner) throw new Error("aucun contact rattaché au salarié — RIB non porté");
+    const partnerId = partner[0];
+    const acc = rib.replace(/\s+/g, "");
+    // Idempotence : ne pas recréer un compte que ce partenaire possède déjà.
+    const found: { id: number }[] = await call("res.partner.bank", "search_read",
+      [[["partner_id", "=", partnerId], ["acc_number", "=", acc]]], { fields: ["id"], limit: 1 });
+    const bankId = found?.[0]?.id
+      ?? (await call("res.partner.bank", "create", [{ acc_number: acc, partner_id: partnerId, company_id: plan.companyId }]) as number);
+    await call("hr.employee", "write", [[employeeOdooId], { bank_account_id: bankId }]);
+    res.banksLinked += 1;
+  }
+
+  /** Joint les pièces d'un salarié à son enregistrement (`ir.attachment` sur hr.employee). */
+  async function pushAttachments(employeeOdooId: number, atts: SyncAttachmentPlan[]): Promise<void> {
+    for (const a of atts) {
+      if (a.state !== "push") continue;
+      const id: number = await call("ir.attachment", "create", [{
+        name: a.odooName,
+        res_model: "hr.employee",
+        res_id: employeeOdooId,
+        type: "binary",
+        datas: a.attachment.base64,
+        mimetype: a.attachment.mime,
+        // L'empreinte portée en description rend l'export idempotent d'une synchro à l'autre.
+        description: attachmentTag(a.attachment.sha256),
+      }]);
+      res.attachmentsPushed += 1;
+      res.pushedAttachments.push({ attachment_id: a.attachment.id, odoo_attachment_id: id });
+    }
+  }
 
   for (const it of plan.items) {
     try {
+      let odooId = it.odooId;
+
       if (it.op === "create") {
-        const newId: number = await jsonRpc(config, "object", "execute_kw", [
-          config.db, userId, config.apiKey, "hr.employee", "create", [it.vals],
-        ]);
+        const vals = { ...it.vals };
+        if (it.job) vals.job_id = await resolveJob(it.job);
+        odooId = await call("hr.employee", "create", [vals]) as number;
         res.created += 1;
-        res.createdIds.push({ employee_id: it.employee_id, odoo_id: newId });
-      } else if (it.op === "update" && it.odooId != null && Object.keys(it.vals).length) {
-        await jsonRpc(config, "object", "execute_kw", [
-          config.db, userId, config.apiKey, "hr.employee", "write", [[it.odooId], it.vals],
-        ]);
-        res.updated += 1;
+        res.createdIds.push({ employee_id: it.employee_id, odoo_id: odooId });
+      } else if (it.op === "update" && odooId != null) {
+        const vals = { ...it.vals };
+        if (it.job) vals.job_id = await resolveJob(it.job);
+        if (Object.keys(vals).length) {
+          await call("hr.employee", "write", [[odooId], vals]);
+          res.updated += 1;
+        }
+      } else {
+        continue; // unchanged / conflict : jamais écrits
+      }
+
+      // Relations secondaires : leur échec ne doit pas annuler l'écriture du salarié, qui a
+      // réussi. On consigne et on continue.
+      if (odooId != null && it.bankRib) {
+        try {
+          await linkBank(odooId, it.bankRib);
+        } catch (e) {
+          res.errors.push({ name: it.name, message: `RIB : ${(e as Error).message}` });
+        }
+      }
+      if (odooId != null && it.attachments.length) {
+        try {
+          await pushAttachments(odooId, it.attachments);
+        } catch (e) {
+          res.errors.push({ name: it.name, message: `Pièces jointes : ${(e as Error).message}` });
+        }
       }
     } catch (e) {
       res.errors.push({ name: it.name, message: (e as Error).message });
