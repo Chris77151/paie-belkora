@@ -558,6 +558,7 @@ export const DICT = {
   // Journal des documents générés (traçabilité + KPI)
   "nav.doclog": { fr: "Journal des documents", ar: "سجل الوثائق" },
   "nav.register": { fr: "Registre des salariés", ar: "سجل الأجراء" },
+  "nav.risks": { fr: "Cartographie des risques", ar: "خريطة المخاطر" },
   "page.doclog.title": { fr: "Journal des documents", ar: "سجل الوثائق" },
   "page.doclog.sub": { fr: "Documents générés et indicateurs mensuels", ar: "الوثائق المُنشأة والمؤشرات الشهرية" },
   "doclog.kpi.total": { fr: "Total généré", ar: "الإجمالي المُنشأ" },

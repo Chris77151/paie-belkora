@@ -19,6 +19,7 @@ import Accidents from "./pages/Accidents";
 import Leaves from "./pages/Leaves";
 import Security from "./pages/Security";
 import Audit from "./pages/Audit";
+import Risks from "./pages/Risks";
 import Assistant from "./pages/Assistant";
 import Settings from "./pages/Settings";
 import Stability from "./pages/Stability";
@@ -59,6 +60,7 @@ const router = createHashRouter([
       { path: "leaves", element: g(<Leaves />) },
       { path: "securite", element: g(<Security />) },
       { path: "audit", element: g(<Audit />) },
+      { path: "risques", element: g(<Risks />) },
       { path: "assistant", element: g(<Assistant />) },
       { path: "stability", element: g(<Stability />) },
       { path: "settings", element: g(<Settings />) },

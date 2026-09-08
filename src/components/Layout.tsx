@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Calculator, FileText, ShieldAlert,
   CalendarDays, Settings, Moon, Sun, Sprout, BookText, FileSignature,
   Search, UserRound, ShieldCheck, Bot, ScanSearch, LogOut, Menu, X, HardHat, Languages, Lock as LockIcon, Activity, FileClock,
-  ClipboardList, BookMarked,
+  ClipboardList, BookMarked, Radar,
 } from "lucide-react";
 import { actions, currentFirm, deriveAlerts, useStore } from "@/data/store";
 import { Select } from "@/components/ui/kit";
@@ -16,6 +16,7 @@ type NavItem = { to: string; labelKey: TKey; icon: typeof LayoutDashboard };
 const NAV_GROUPS: { labelKey: TKey; items: NavItem[] }[] = [
   { labelKey: "nav.group.pilotage", items: [
     { to: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
+    { to: "/risques", labelKey: "nav.risks", icon: Radar },
   ] },
   { labelKey: "nav.group.paierh", items: [
     { to: "/employees", labelKey: "nav.employees", icon: Users },
