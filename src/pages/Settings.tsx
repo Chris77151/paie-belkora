@@ -779,7 +779,7 @@ function UsersCard() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <Table>
+        <Table wide>
           <thead>
             <tr>
               <Th>{t("set.users.col.login")}</Th><Th>{t("set.users.col.name")}</Th><Th>{t("set.roles.col.role")}</Th><Th>{t("set.users.col.firm")}</Th><Th>{t("set.users.col.state")}</Th><Th></Th>
@@ -940,7 +940,7 @@ function LoginAuditCard() {
           <span className="text-xs text-muted-foreground">
             {all.length} {t("set.login.count")}
           </span>
-          <Select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} className="ml-auto w-44">
+          <Select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} className="ml-auto w-full sm:w-44">
             <option value="all">{t("set.login.filter.all")}</option>
             <option value="success">{t("set.login.filter.success")}</option>
             <option value="failed">{t("set.login.filter.failed")}</option>
@@ -1081,10 +1081,10 @@ function FirmsCard() {
         {creating ? (
           <div className="mt-4 flex flex-wrap items-end gap-3 rounded-md border bg-muted/40 p-4">
             <Field label={t("set.firm.raison")}>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nouvelle société SARL" className="w-64" />
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nouvelle société SARL" className="w-full sm:w-64" />
             </Field>
             <Field label={t("set.firm.regime")}>
-              <Select value={regime} onChange={(e) => setRegime(e.target.value as "SMIG" | "SMAG")} className="w-40">
+              <Select value={regime} onChange={(e) => setRegime(e.target.value as "SMIG" | "SMAG")} className="w-full sm:w-40">
                 <option value="SMIG">SMIG (général)</option>
                 <option value="SMAG">SMAG (agricole)</option>
               </Select>

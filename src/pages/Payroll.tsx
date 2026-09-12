@@ -180,7 +180,7 @@ export default function Payroll() {
             <YearSelect value={year} onChange={setYear} />
           </Field>
           <Field label={t("pay.month")}>
-            <Select value={month} onChange={(e) => setMonth(+e.target.value)} className="w-40">
+            <Select value={month} onChange={(e) => setMonth(+e.target.value)} className="w-full sm:w-40">
               {MONTHS_FR.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
             </Select>
           </Field>
@@ -242,7 +242,7 @@ export default function Payroll() {
               </div>
             </div>
             <div className="overflow-x-auto scrollbar-thin">
-              <Table>
+              <Table wide>
                 <thead>
                   <tr>
                     <Th>Mode de règlement</Th>
@@ -312,7 +312,7 @@ export default function Payroll() {
           <Calculator size={16} className="text-primary" />
           {t("pay.slipsOf")} {periodLabel(year, month)} {locked && <Badge tone="muted" className="ml-1">{t("pay.frozen")}</Badge>}
         </div>
-        <Table>
+        <Table wide>
           <thead>
             <tr>
               <Th>{t("doc.employee")}</Th>
@@ -592,7 +592,7 @@ function AdvancesPanel({
 
       {open ? (
         <div className="mt-3 space-y-2 rounded-md border border-border/70 p-3">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Field label={t("adv.kind")}>
               <Select value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value as "acompte" | "avance" }))}>
                 <option value="avance">{t("adv.kind.avance")}</option>

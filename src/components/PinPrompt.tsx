@@ -43,7 +43,7 @@ export function PinPrompt({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-lg bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm rounded-lg bg-card p-4 shadow-2xl sm:p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-1 flex items-center justify-between">
           <h2 className="inline-flex items-center gap-2 text-lg font-display">
             <KeyRound size={18} className="text-primary" />

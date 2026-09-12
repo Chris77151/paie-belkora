@@ -97,7 +97,7 @@ export default function Accidents() {
           {accidents.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("acc.empty")}</p>
           ) : (
-            <Table>
+            <Table wide>
               <thead>
                 <tr>
                   <Th>{t("acc.col.date")}</Th>

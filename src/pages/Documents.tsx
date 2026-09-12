@@ -206,20 +206,20 @@ function useEmployeeSource(firm: Firm, employees: Employee[]): { employee: Emplo
           <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             <BadgeCheck size={13} className="text-primary" /> {t("doc.manual.title")}
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label={t("emp.firstName")}><Input value={m.first_name} onChange={(e) => setMf({ first_name: e.target.value })} /></Field>
             <Field label={t("emp.lastName")}><Input value={m.last_name} onChange={(e) => setMf({ last_name: e.target.value })} /></Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label={t("emp.cin")}><Input value={m.cin} onChange={(e) => setMf({ cin: e.target.value })} /></Field>
             <Field label={t("doc.cnss")} hint={t("doc.manual.cnss.hint")}><Input value={m.cnss_number} onChange={(e) => setMf({ cnss_number: e.target.value })} /></Field>
           </div>
           <Field label={t("emp.position")}><Input value={m.position} onChange={(e) => setMf({ position: e.target.value })} /></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label={t("doc.hireDate")}><Input type="date" value={m.hire_date} onChange={(e) => setMf({ hire_date: e.target.value })} /></Field>
             <Field label={t("emp.birth")}><Input type="date" value={m.birth_date} onChange={(e) => setMf({ birth_date: e.target.value })} /></Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label={t("emp.site")}><Input value={m.site} onChange={(e) => setMf({ site: e.target.value })} /></Field>
             <Field label={t("doc.manual.address")}><Input value={m.address} onChange={(e) => setMf({ address: e.target.value })} /></Field>
           </div>

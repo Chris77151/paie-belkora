@@ -203,7 +203,7 @@ export default function Accounting() {
             <YearSelect value={year} onChange={changeYear} />
           </Field>
           <Field label="Mois">
-            <Select value={month} onChange={(e) => changeMonth(+e.target.value)} className="w-40">
+            <Select value={month} onChange={(e) => changeMonth(+e.target.value)} className="w-full sm:w-40">
               {MONTHS_FR.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
             </Select>
           </Field>
@@ -212,7 +212,7 @@ export default function Accounting() {
               value={paymentMode}
               onChange={(e) => changePaymentMode(e.target.value as PaymentMode)}
               disabled={isValidated}
-              className="w-48"
+              className="w-full sm:w-48"
               title="Pilote le compte de trésorerie du règlement des salaires : Banque (5141) ou Caisse (5161)"
             >
               <option value="virement">Virement bancaire (5141)</option>

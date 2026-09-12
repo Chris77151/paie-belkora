@@ -69,7 +69,7 @@ export default function PayrollBook() {
             <p className="text-sm text-muted-foreground">{t("lp.empty")}</p>
           ) : (
             <div className="overflow-x-auto scrollbar-thin">
-              <Table>
+              <Table wide className="min-w-[120rem]">
                 {/* En-têtes groupés calqués sur le registre officiel (2 pages) : identité, période
                     payée (H/J + Total), rémunération, pont brut→imposable (à déduire / à ajouter),
                     retenues (CNSS/AMO/IR + Total), net. */}

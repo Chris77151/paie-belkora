@@ -145,7 +145,7 @@ export default function Compliance() {
             </div>
           </div>
 
-          <Table>
+          <Table wide>
             <thead>
               <tr>
                 <Th>{t("doc.employee")}</Th>

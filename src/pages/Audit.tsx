@@ -174,7 +174,7 @@ export default function Audit() {
             <YearSelect value={year} onChange={(y) => { setYear(y); setReport(null); }} />
           </Field>
           <Field label="Mois">
-            <Select value={month} onChange={(e) => { setMonth(+e.target.value); setReport(null); }} className="w-40">
+            <Select value={month} onChange={(e) => { setMonth(+e.target.value); setReport(null); }} className="w-full sm:w-40">
               {MONTHS_FR.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
             </Select>
           </Field>

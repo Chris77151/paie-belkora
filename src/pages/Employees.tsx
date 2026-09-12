@@ -234,15 +234,15 @@ export default function Employees() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("emp.search")} className="pl-9" />
           </div>
-          <Select value={site} onChange={(e) => setSite(e.target.value)} className="w-44">
+          <Select value={site} onChange={(e) => setSite(e.target.value)} className="w-full sm:w-44">
             <option value="all">{t("emp.allSites")}</option>
             {sites.map((si) => <option key={si} value={si}>{si}</option>)}
           </Select>
-          <Select value={contract} onChange={(e) => setContract(e.target.value)} className="w-40">
+          <Select value={contract} onChange={(e) => setContract(e.target.value)} className="w-full sm:w-40">
             <option value="all">{t("emp.allContracts")}</option>
             {CONTRACTS.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-44">
+          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full sm:w-44">
             <option value="active">{t("emp.active")}</option>
             <option value="entered">{t("emp.filterEntered")}{enteredCount ? ` (${enteredCount})` : ""}</option>
             <option value="exited">{t("emp.filterExited")}{exitedCount ? ` (${exitedCount})` : ""}</option>
@@ -287,7 +287,7 @@ export default function Employees() {
       )}
 
       <Card>
-        <Table>
+        <Table wide>
           <thead>
             <tr>
               <Th>{t("doc.employee")}</Th><Th>{t("emp.matricule")}</Th><Th>{t("emp.contract")}</Th><Th>{t("emp.site")}</Th>
@@ -389,7 +389,7 @@ function OdooImportDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-lg bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md rounded-lg bg-card p-4 shadow-2xl sm:p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-1 flex items-center justify-between">
           <h2 className="inline-flex items-center gap-2 text-lg font-display">
             <DownloadCloud size={18} className="text-primary" /> Importer depuis Odoo
@@ -500,7 +500,7 @@ function OdooSyncDialog({
   return (
     <div className="fixed inset-0 z-50 flex justify-center bg-foreground/40 p-4 overflow-y-auto" onClick={onClose}>
       <div
-        className="my-8 h-fit w-full max-w-3xl rounded-lg bg-card p-6 shadow-2xl"
+        className="my-8 h-fit w-full max-w-3xl rounded-lg bg-card p-4 shadow-2xl sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between">
@@ -804,7 +804,7 @@ function EmployeeDrawer({ emp, onClose, onSaved }: { emp: Employee; onClose: () 
         {/* Sortie des effectifs — alimente le registre des mouvements et le certificat de travail
             (art. 24 : date d'entrée, date de sortie, postes occupés). Distincte du terme prévu
             d'un CDD : un CDD peut être rompu avant son terme. */}
-        <div className="mt-4 grid grid-cols-2 gap-4 rounded-lg border border-border/60 bg-muted/30 p-3">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-lg border border-border/60 bg-muted/30 p-3">
           <Field label="Date de sortie" hint="Sortie effective des effectifs — laisser vide si le salarié est présent.">
             <Input type="date" value={f.exit_date ?? ""} onChange={(e) => set({ exit_date: e.target.value || undefined })} />
           </Field>

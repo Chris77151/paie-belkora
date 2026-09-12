@@ -185,7 +185,7 @@ export default function Register() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <Table>
+              <Table wide className="min-w-[72rem]">
                 <thead>
                   <tr>
                     <Th>N°</Th>

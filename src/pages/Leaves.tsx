@@ -145,7 +145,7 @@ export default function Leaves() {
           {leaves.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("lv.noLeave")}</p>
           ) : (
-            <Table>
+            <Table wide>
               <thead>
                 <tr>
                   <Th>{t("doc.employee")}</Th>
@@ -207,7 +207,7 @@ export default function Leaves() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table wide>
             <thead>
               <tr>
                 <Th>{t("doc.employee")}</Th>
