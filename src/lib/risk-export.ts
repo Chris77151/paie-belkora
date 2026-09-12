@@ -1,28 +1,33 @@
 /**
- * Exports de la cartographie des risques : PDF (gabarit documentaire commun) et tableur (.xlsx).
+ * Exports de la cartographie des risques — PDF « rapport » et Excel « façon finance ».
  *
- * Le PDF porte EN CLAIR la réserve : une cartographie n'est ni un certificat de conformité ni un
- * rapport d'audit. Éditée sans cette mention, elle crée chez son lecteur — direction, banque,
+ * Le premier jet empilait tout dans un unique tableau de dix colonnes en corps 6,6 : illisible,
+ * et surtout faux du point de vue de la lecture — une cartographie se lit d'abord par la
+ * SYNTHÈSE (où en est-on ?), puis par la MATRICE (où sont les risques ?), et seulement ensuite
+ * par le détail. Le PDF suit désormais cet ordre, et la matrice y est réellement DESSINÉE.
+ *
+ * Le PDF porte EN CLAIR la réserve : une cartographie n'est ni un certificat de conformité ni
+ * un rapport d'audit. Éditée sans cette mention, elle crée chez son lecteur — direction, banque,
  * commissaire aux comptes — une sécurité qu'elle ne garantit pas.
- *
- * Aucune donnée nominative n'est exportée : le moteur n'en produit pas.
  */
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
-import type { Firm } from "@/data/types";
+import type { Firm, RiskAction, RiskSnapshot } from "@/data/types";
 import { dateFr } from "./format";
 import {
   AUTOMATION_LABEL,
   CATEGORY_LABEL,
   CONTROL_TYPE_LABEL,
   RISK_DISCLAIMER,
+  STEPS,
   STEP_LABEL,
   controlGaps,
+  criticityMatrix,
   exposure,
   type AssessedRisk,
 } from "./risk-engine";
-import { LEVEL_LABEL, LEVEL_ORDER, MAX_ABATEMENT_POINTS } from "./risk-params";
+import { LEVEL_LABEL, LEVEL_ORDER, MAX_ABATEMENT_POINTS, levelOf, type RiskLevel } from "./risk-params";
 import { FACT_LABEL } from "./risk-facts";
 import {
   ALERT,
@@ -45,61 +50,51 @@ import {
 
 export const RISK_DOC_TITLE = "CARTOGRAPHIE DES RISQUES — PROCESSUS PAIE";
 
-/** Nom de fichier normalisé (ASCII) : Cartographie_Risques_Paie_<date>.<ext>. */
+/** Nom de fichier normalisé (ASCII). */
 export function riskFileName(asOf: string, ext: string): string {
   return `Cartographie_Risques_Paie_${asOf}.${ext}`;
 }
 
-/** « 4 × 5 = 20 · Critique » — la cotation lisible d'un coup d'œil. */
-function score(l: number, i: number, level: string): string {
-  return `${l} x ${i} = ${l * i} - ${level}`;
+/** Tout ce que l'export doit connaître, au-delà des risques eux-mêmes. */
+export interface RiskExportContext {
+  firm: Firm;
+  risks: AssessedRisk[];
+  appetite: number;
+  asOf: string;
+  actions: RiskAction[];
+  snapshots: RiskSnapshot[];
 }
 
-/* -------------------------------------------------- PDF -------------------------------------------------- */
+/* -------------------------------------------------- couleurs de niveau -------------------------------------------------- */
 
 /**
- * Bande d'indicateurs en cartes. Le nombre de risques HORS APPÉTENCE est mis en exergue : c'est
- * la seule valeur de la synthèse qui appelle une décision, elle ne doit pas se noyer.
+ * Teinte de fond d'un niveau de gravité. Sémantique de risque, DISTINCTE de la couleur de
+ * marque : un vert d'entreprise sur une case « critique » tromperait l'œil.
  */
-function drawKpiCards(
-  doc: jsPDF,
-  pal: ReturnType<typeof firmPalette>,
-  cur: Cursor,
-  e: ReturnType<typeof exposure>,
-): void {
-  const cards: { label: string; value: string; alert?: boolean }[] = [
-    { label: "Risques cartographiés", value: String(e.count) },
-    { label: "Exposition brute", value: String(e.grossTotal) },
-    { label: "Exposition résiduelle", value: String(e.residualTotal) },
-    { label: "Réduction", value: `${e.reductionPct} %` },
-    { label: "Hors appétence", value: String(e.aboveAppetite), alert: e.aboveAppetite > 0 },
-    { label: "Contrôles prouvés", value: `${e.controlsProven}/${e.controlsTotal}` },
-  ];
-  const pw = doc.internal.pageSize.getWidth();
-  const gap = 3;
-  const cardW = (pw - 2 * M - gap * (cards.length - 1)) / cards.length;
-  const cardH = 14;
-  const y = cur.y;
-  cards.forEach((c, idx) => {
-    const x = M + idx * (cardW + gap);
-    const hot = !!c.alert;
-    doc.setFillColor(...pal.tint);
-    doc.setDrawColor(...(hot ? ALERT : pal.olive)).setLineWidth(hot ? 0.5 : 0.3);
-    doc.roundedRect(x, y, cardW, cardH, 1.4, 1.4, "FD");
-    doc.setFont(FONT, "normal").setFontSize(FS.micro - 0.6).setTextColor(...pal.muted);
-    doc.text(asciiSpaces(c.label), x + cardW / 2, y + 5, { align: "center", maxWidth: cardW - 3 });
-    doc.setFont(FONT, "bold").setFontSize(FS.section).setTextColor(...(hot ? ALERT : pal.deep));
-    doc.text(asciiSpaces(c.value), x + cardW / 2, y + 11.2, { align: "center", maxWidth: cardW - 3 });
-  });
-  cur.y = y + cardH;
-}
+const LEVEL_FILL: Record<RiskLevel, [number, number, number]> = {
+  faible: [226, 240, 226],
+  modere: [253, 245, 214],
+  eleve: [253, 226, 197],
+  critique: [248, 209, 208],
+};
+const LEVEL_INK: Record<RiskLevel, [number, number, number]> = {
+  faible: [38, 105, 47],
+  modere: [138, 97, 0],
+  eleve: [176, 84, 12],
+  critique: [166, 43, 34],
+};
 
-/** Un paragraphe de note, replié à la largeur utile. Fait avancer le curseur. */
-function note(doc: jsPDF, pal: ReturnType<typeof firmPalette>, cur: Cursor, text: string, bold = false): void {
+/* -------------------------------------------------- primitives PDF -------------------------------------------------- */
+
+const nf = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+
+/** Paragraphe replié à la largeur utile. Fait avancer le curseur. */
+function note(doc: jsPDF, pal: ReturnType<typeof firmPalette>, cur: Cursor, text: string, opts: { bold?: boolean; alert?: boolean; size?: number } = {}): void {
   const pw = doc.internal.pageSize.getWidth();
-  doc.setFont(FONT, bold ? "bold" : "normal").setFontSize(FS.note).setTextColor(...pal.muted);
+  const size = opts.size ?? FS.note;
+  doc.setFont(FONT, opts.bold ? "bold" : "normal").setFontSize(size).setTextColor(...(opts.alert ? ALERT : pal.muted));
   const lines = doc.splitTextToSize(asciiSpaces(text), pw - 2 * M) as string[];
-  const lh = lineHeight(FS.note);
+  const lh = lineHeight(size);
   ensure(cur, lines.length * lh);
   for (const line of lines) {
     doc.text(line, M, cur.y);
@@ -107,122 +102,332 @@ function note(doc: jsPDF, pal: ReturnType<typeof firmPalette>, cur: Cursor, text
   }
 }
 
-/** Construit le PDF de la cartographie (sans le sauvegarder) — testable hors navigateur. */
-export async function buildRiskPdf(firm: Firm, risks: AssessedRisk[], appetite: number, asOf: string): Promise<jsPDF> {
+/** Titre de section : capitales espacées en vert de marque, souligné d'un filet d'accent. */
+function section(doc: jsPDF, pal: ReturnType<typeof firmPalette>, cur: Cursor, title: string): void {
+  const pw = doc.internal.pageSize.getWidth();
+  ensure(cur, 14);
+  cur.y += 2;
+  doc.setFont(FONT, "bold").setFontSize(FS.section).setTextColor(...pal.deep);
+  doc.text(asciiSpaces(title.toUpperCase()), M, cur.y, { charSpace: 0.4 });
+  cur.y += 2.2;
+  doc.setDrawColor(...pal.olive).setLineWidth(0.5).line(M, cur.y, pw - M, cur.y);
+  cur.y += 5;
+}
+
+/**
+ * Bande d'indicateurs. Le nombre de risques HORS APPÉTENCE est mis en exergue : c'est la seule
+ * valeur de la synthèse qui appelle une décision, elle ne doit pas se noyer dans les autres.
+ */
+function drawKpis(doc: jsPDF, pal: ReturnType<typeof firmPalette>, cur: Cursor, e: ReturnType<typeof exposure>, appetite: number): void {
+  const cards: { label: string; value: string; sub?: string; alert?: boolean }[] = [
+    { label: "Risques cartographiés", value: String(e.count) },
+    { label: "Exposition brute", value: nf(e.grossTotal), sub: "à dispositif nul" },
+    { label: "Exposition résiduelle", value: nf(e.residualTotal), sub: `-${e.reductionPct} % après contrôles` },
+    { label: "Hors appétence", value: String(e.aboveAppetite), sub: `seuil ${appetite}`, alert: e.aboveAppetite > 0 },
+    { label: "Contrôles prouvés", value: `${e.controlsProven}/${e.controlsTotal}` },
+  ];
+  const pw = doc.internal.pageSize.getWidth();
+  const gap = 3.5;
+  const cardW = (pw - 2 * M - gap * (cards.length - 1)) / cards.length;
+  const cardH = 19;
+  const y = cur.y;
+  cards.forEach((c, i) => {
+    const x = M + i * (cardW + gap);
+    const hot = !!c.alert;
+    doc.setFillColor(...(hot ? [253, 240, 239] as [number, number, number] : pal.tint));
+    doc.setDrawColor(...(hot ? ALERT : pal.olive)).setLineWidth(hot ? 0.55 : 0.3);
+    doc.roundedRect(x, y, cardW, cardH, 1.6, 1.6, "FD");
+    doc.setFont(FONT, "normal").setFontSize(FS.micro - 0.4).setTextColor(...pal.muted);
+    doc.text(asciiSpaces(c.label), x + cardW / 2, y + 5.2, { align: "center", maxWidth: cardW - 3 });
+    doc.setFont(FONT, "bold").setFontSize(14).setTextColor(...(hot ? ALERT : pal.deep));
+    doc.text(asciiSpaces(c.value), x + cardW / 2, y + 12.2, { align: "center", maxWidth: cardW - 3 });
+    if (c.sub) {
+      doc.setFont(FONT, "normal").setFontSize(FS.micro - 1).setTextColor(...pal.muted);
+      doc.text(asciiSpaces(c.sub), x + cardW / 2, y + 16.4, { align: "center", maxWidth: cardW - 3 });
+    }
+  });
+  cur.y = y + cardH;
+}
+
+/**
+ * Matrice de criticité 5 x 5, réellement dessinée — c'est l'objet que le lecteur attend d'une
+ * cartographie, et qu'un tableau de chiffres ne remplace pas. Deux grilles côte à côte, brute et
+ * résiduelle, pour que le DÉPLACEMENT saute aux yeux.
+ */
+function drawMatrices(doc: jsPDF, pal: ReturnType<typeof firmPalette>, cur: Cursor, risks: AssessedRisk[]): void {
+  const pw = doc.internal.pageSize.getWidth();
+  const gutter = 14;
+  const gridW = (pw - 2 * M - gutter) / 2;
+  const cell = Math.min(gridW / 5, 17);
+  const gridH = cell * 5;
+
+  ensure(cur, gridH + 24);
+  const top = cur.y;
+
+  (["gross", "residual"] as const).forEach((axis, gi) => {
+    const grid = criticityMatrix(risks, axis);
+    const x0 = M + gi * (gridW + gutter) + 6; // 6 mm réservés à l'échelle d'impact
+    const label = axis === "gross" ? "BRUT (à dispositif nul)" : "RÉSIDUEL (après contrôles)";
+
+    doc.setFont(FONT, "bold").setFontSize(FS.note).setTextColor(...pal.deep);
+    doc.text(asciiSpaces(label), x0 + (cell * 5) / 2, top, { align: "center" });
+
+    const gTop = top + 3;
+    for (let imp = 5; imp >= 1; imp -= 1) {
+      const row = 5 - imp;
+      const y = gTop + row * cell;
+      // Échelle d'impact, en ordonnée.
+      doc.setFont(FONT, "normal").setFontSize(FS.micro - 1).setTextColor(...pal.muted);
+      doc.text(String(imp), x0 - 2.5, y + cell / 2 + 1, { align: "center" });
+
+      for (let lik = 1; lik <= 5; lik += 1) {
+        const x = x0 + (lik - 1) * cell;
+        const lvl = levelOf(imp * lik);
+        const refs = grid[imp - 1][lik - 1];
+        doc.setFillColor(...LEVEL_FILL[lvl]);
+        doc.setDrawColor(255, 255, 255).setLineWidth(0.6);
+        doc.rect(x, y, cell, cell, "FD");
+        if (refs.length > 0) {
+          doc.setFont(FONT, "bold").setFontSize(refs.length > 3 ? FS.micro - 1.6 : FS.micro - 0.4).setTextColor(...LEVEL_INK[lvl]);
+          // Au-delà de trois références, on affiche le compte : entasser rendrait la case illisible.
+          const txt = refs.length > 3 ? `${refs.length} risques` : refs.join(" ");
+          doc.text(asciiSpaces(txt), x + cell / 2, y + cell / 2 + 1, { align: "center", maxWidth: cell - 1.5 });
+        }
+      }
+    }
+    // Échelle de probabilité, en abscisse.
+    doc.setFont(FONT, "normal").setFontSize(FS.micro - 1).setTextColor(...pal.muted);
+    for (let lik = 1; lik <= 5; lik += 1) {
+      doc.text(String(lik), x0 + (lik - 1) * cell + cell / 2, gTop + gridH + 3.4, { align: "center" });
+    }
+    doc.setFontSize(FS.micro - 1.4);
+    doc.text("Probabilité ->", x0 + (cell * 5) / 2, gTop + gridH + 7, { align: "center" });
+    doc.text("Impact ^", x0 - 2.5, gTop - 1.5, { align: "center" });
+  });
+
+  cur.y = top + 3 + gridH + 9;
+
+  // Légende des niveaux.
+  let lx = M;
+  doc.setFontSize(FS.micro - 0.6);
+  for (const lvl of LEVEL_ORDER) {
+    doc.setFillColor(...LEVEL_FILL[lvl]);
+    doc.setDrawColor(...LEVEL_INK[lvl]).setLineWidth(0.25);
+    doc.rect(lx, cur.y - 2.6, 4, 3.2, "FD");
+    doc.setFont(FONT, "normal").setTextColor(...pal.muted);
+    doc.text(asciiSpaces(LEVEL_LABEL[lvl]), lx + 5.4, cur.y);
+    lx += 5.4 + doc.getTextWidth(LEVEL_LABEL[lvl]) + 7;
+  }
+  cur.y += 5;
+}
+
+/** Barres comparatives brut / résiduel par niveau — le déplacement de l'exposition, en une image. */
+function drawShift(doc: jsPDF, pal: ReturnType<typeof firmPalette>, cur: Cursor, e: ReturnType<typeof exposure>): void {
+  const pw = doc.internal.pageSize.getWidth();
+  const labelW = 24;
+  const barMax = pw - 2 * M - labelW - 26;
+  const max = Math.max(1, e.count);
+  ensure(cur, LEVEL_ORDER.length * 10 + 6);
+
+  for (const lvl of LEVEL_ORDER) {
+    const g = e.grossByLevel[lvl];
+    const r = e.residualByLevel[lvl];
+    const y = cur.y;
+    doc.setFont(FONT, "normal").setFontSize(FS.micro).setTextColor(...pal.ink);
+    doc.text(asciiSpaces(LEVEL_LABEL[lvl]), M, y + 3);
+
+    // Barre pâle = brut, barre pleine = résiduel.
+    doc.setFillColor(214, 214, 210);
+    doc.rect(M + labelW, y, Math.max(0.4, (g / max) * barMax), 3, "F");
+    doc.setFillColor(...LEVEL_INK[lvl]);
+    doc.rect(M + labelW, y + 4, Math.max(0.4, (r / max) * barMax), 3, "F");
+
+    doc.setFontSize(FS.micro - 0.6).setTextColor(...pal.muted);
+    doc.text(asciiSpaces(`${g} -> ${r}`), pw - M, y + 5.4, { align: "right" });
+    cur.y = y + 10;
+  }
+  doc.setFont(FONT, "italic").setFontSize(FS.micro - 1).setTextColor(...pal.muted);
+  doc.text(asciiSpaces("Barre pâle : brut. Barre pleine : résiduel."), M, cur.y + 1);
+  cur.y += 5;
+}
+
+/* -------------------------------------------------- PDF -------------------------------------------------- */
+
+/** Construit le PDF (sans le sauvegarder) — testable hors navigateur. */
+export async function buildRiskPdf(ctx: RiskExportContext): Promise<jsPDF> {
+  const { firm, risks, appetite, asOf, actions, snapshots } = ctx;
   const pal = firmPalette(firm);
-  // Paysage : la ligne porte le brut, le dispositif et le résiduel côte à côte — c'est
-  // précisément la comparaison que le lecteur vient chercher, la couper la rendrait illisible.
-  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+  // Portrait : le rapport se lit en sections, pas en tableau géant. Les seuls tableaux larges
+  // (registre par étape) tiennent en portrait une fois la colonne « événement » repliée.
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
   doc.setProperties({ title: `Cartographie des risques — ${firm.name}` });
   const logo = await loadLogo(firmLogoPath(firm));
   const cur: Cursor = { doc, firm, pal, y: drawFullHeader(doc, firm, logo, pal), page: 1 };
 
-  cur.y = drawTitleBox(doc, pal, RISK_DOC_TITLE, cur.y) + 7;
-
-  note(doc, pal, cur, `Arrêtée au ${dateFr(asOf)} - appétence : score résiduel maximal accepté ${appetite}.`);
-  cur.y += 3;
+  cur.y = drawTitleBox(doc, pal, RISK_DOC_TITLE, cur.y) + 6;
+  note(doc, pal, cur, `Arrêtée au ${dateFr(asOf)} — appétence : score résiduel maximal accepté ${appetite}.`);
+  cur.y += 4;
 
   const e = exposure(risks);
-  drawKpiCards(doc, pal, cur, e);
-  cur.y += 7;
 
-  /* --- Registre des risques --- */
-  autoTable(doc, {
-    startY: cur.y,
-    head: [["Réf", "Étape", "Catégorie", "Événement de risque", "Base", "Brut", "Contrôles", "Résiduel", "Écart", "Traitement"]],
-    body: risks.map((r) => [
-      r.ref,
-      STEP_LABEL[r.step],
-      CATEGORY_LABEL[r.category],
-      r.event,
-      r.basis,
-      score(r.grossLikelihood, r.grossImpact, LEVEL_LABEL[r.grossLevel]),
-      `${r.provenCount}/${r.assessedControls.length} prouvés`,
-      score(r.residualLikelihood, r.residualImpact, LEVEL_LABEL[r.residualLevel]),
-      r.reduction > 0 ? `-${r.reduction} (-${r.reductionPct} %)` : "aucun",
-      r.aboveAppetite ? "Réduire" : "Accepter",
-    ]),
-    ...tableStyles(pal),
-    styles: { ...tableStyles(pal).styles, fontSize: 6.6, cellPadding: 1.3, valign: "top" },
-    columnStyles: {
-      0: { cellWidth: 10, halign: "center" },
-      3: { cellWidth: 78 },
-      4: { cellWidth: 40 },
-      5: { cellWidth: 26, halign: "center" },
-      6: { cellWidth: 20, halign: "center" },
-      7: { cellWidth: 26, halign: "center" },
-      8: { cellWidth: 20, halign: "center" },
-      9: { cellWidth: 18, halign: "center" },
-    },
-    // Le résiduel hors appétence ressort en rouge : c'est la seule information de la table qui
-    // appelle une décision immédiate.
-    didParseCell: (d) => {
-      if (d.section !== "body") return;
-      const r = risks[d.row.index];
-      if (!r) return;
-      if (d.column.index === 7 && r.aboveAppetite) {
-        d.cell.styles.textColor = ALERT;
-        d.cell.styles.fontStyle = "bold";
-      }
-      if (d.column.index === 9 && r.aboveAppetite) d.cell.styles.textColor = ALERT;
-    },
-  });
-  afterTable(cur, 8);
+  /* --- 1. Synthèse --- */
+  drawKpis(doc, pal, cur, e, appetite);
+  cur.y += 6;
 
-  /* --- Angles morts : contrôles non prouvés --- */
+  /* --- 2. Matrice de criticité --- */
+  section(doc, pal, cur, "Matrice de criticité");
+  drawMatrices(doc, pal, cur, risks);
+  cur.y += 3;
+
+  /* --- 3. Déplacement de l'exposition --- */
+  section(doc, pal, cur, "Déplacement de l'exposition");
+  drawShift(doc, pal, cur, e);
+  cur.y += 2;
+
+  /* --- 4. Registre, une table par étape du processus --- */
+  const byStep = STEPS.map((st) => ({ step: st, items: risks.filter((r) => r.step === st) })).filter((g) => g.items.length > 0);
+  for (const g of byStep) {
+    ensure(cur, 34);
+    section(doc, pal, cur, STEP_LABEL[g.step]);
+    autoTable(doc, {
+      startY: cur.y,
+      head: [["Réf", "Événement de risque", "Brut", "Contrôles", "Résiduel", "Traitement"]],
+      body: g.items.map((r) => [
+        r.ref,
+        `${r.event}\n${CATEGORY_LABEL[r.category]} · ${r.basis}`,
+        `${r.grossLikelihood}x${r.grossImpact}=${r.grossScore}\n${LEVEL_LABEL[r.grossLevel]}`,
+        `${r.provenCount}/${r.assessedControls.length}\nprouvés`,
+        `${r.residualLikelihood}x${r.residualImpact}=${r.residualScore}\n${LEVEL_LABEL[r.residualLevel]}`,
+        r.aboveAppetite ? "Réduire" : "Accepter",
+      ]),
+      ...tableStyles(pal),
+      styles: { ...tableStyles(pal).styles, fontSize: 7, cellPadding: 1.6, valign: "middle" },
+      columnStyles: {
+        0: { cellWidth: 11, halign: "center", fontStyle: "bold" },
+        1: { cellWidth: 82 },
+        2: { cellWidth: 19, halign: "center" },
+        3: { cellWidth: 17, halign: "center" },
+        4: { cellWidth: 19, halign: "center" },
+        5: { cellWidth: 18, halign: "center" },
+      },
+      // La cellule résiduelle prend la teinte de son niveau : la gravité se lit sans relire le mot.
+      didParseCell: (d) => {
+        if (d.section !== "body") return;
+        const r = g.items[d.row.index];
+        if (!r) return;
+        if (d.column.index === 4) {
+          d.cell.styles.fillColor = LEVEL_FILL[r.residualLevel];
+          d.cell.styles.textColor = LEVEL_INK[r.residualLevel];
+          d.cell.styles.fontStyle = "bold";
+        }
+        if (d.column.index === 2) d.cell.styles.textColor = [110, 110, 105];
+        if (d.column.index === 5 && r.aboveAppetite) {
+          d.cell.styles.textColor = ALERT;
+          d.cell.styles.fontStyle = "bold";
+        }
+      },
+    });
+    afterTable(cur, 5);
+  }
+
+  /* --- 5. Angles morts --- */
   const gaps = controlGaps(risks);
   if (gaps.length > 0) {
-    ensure(cur, 30);
-    note(doc, pal, cur, "Angles morts - contrôles qui n'abattent rien aujourd'hui", true);
+    ensure(cur, 34);
+    section(doc, pal, cur, "Angles morts — contrôles qui n'abattent rien");
+    note(doc, pal, cur, "Ces contrôles figurent au dispositif mais rien ne prouve leur application. Ils ne sont pas neutres : ils créent l'illusion d'une maîtrise et détournent l'attention d'une exposition réelle.");
     cur.y += 2;
     autoTable(doc, {
       startY: cur.y,
-      head: [["Contrôle attendu", "Nature", "Mise en oeuvre", "Axe abattu", "Risques couverts", "Ce qui manque"]],
-      body: gaps.map((g) => [
-        g.control.label,
-        CONTROL_TYPE_LABEL[g.control.type],
-        AUTOMATION_LABEL[g.control.automation],
-        g.axis === "likelihood" ? "Probabilité" : "Impact",
-        g.refs.join(", "),
-        g.control.note ?? (g.control.proof ? FACT_LABEL[g.control.proof] : "Contrôle déclaratif, non constatable"),
+      head: [["Contrôle attendu", "Nature", "Axe", "Risques", "Ce qui manque"]],
+      body: gaps.map((gp) => [
+        gp.control.label,
+        `${CONTROL_TYPE_LABEL[gp.control.type]}\n${AUTOMATION_LABEL[gp.control.automation]}`,
+        gp.axis === "likelihood" ? "Probabilité" : "Impact",
+        gp.refs.join(", "),
+        gp.control.note ?? (gp.control.proof ? FACT_LABEL[gp.control.proof] : "Contrôle déclaratif, non constatable"),
       ]),
       ...tableStyles(pal),
-      styles: { ...tableStyles(pal).styles, fontSize: 6.6, cellPadding: 1.3, valign: "top" },
+      styles: { ...tableStyles(pal).styles, fontSize: 7, cellPadding: 1.6, valign: "top" },
       columnStyles: {
-        0: { cellWidth: 72 },
-        1: { cellWidth: 20, halign: "center" },
-        2: { cellWidth: 26, halign: "center" },
-        3: { cellWidth: 22, halign: "center" },
-        4: { cellWidth: 30 },
+        0: { cellWidth: 56 },
+        1: { cellWidth: 22, halign: "center" },
+        2: { cellWidth: 20, halign: "center" },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 46 },
       },
     });
-    afterTable(cur, 8);
+    afterTable(cur, 5);
   }
 
-  /* --- Répartition par niveau --- */
-  ensure(cur, 26);
-  note(doc, pal, cur, "Déplacement de l'exposition", true);
-  cur.y += 2;
-  autoTable(doc, {
-    startY: cur.y,
-    head: [["Niveau", ...LEVEL_ORDER.map((l) => LEVEL_LABEL[l])]],
-    body: [
-      ["Brut", ...LEVEL_ORDER.map((l) => String(e.grossByLevel[l]))],
-      ["Résiduel", ...LEVEL_ORDER.map((l) => String(e.residualByLevel[l]))],
-    ],
-    ...tableStyles(pal),
-    styles: { ...tableStyles(pal).styles, fontSize: 7.4, halign: "center" },
-    columnStyles: { 0: { halign: "left", fontStyle: "bold", cellWidth: 30 } },
-  });
-  afterTable(cur, 8);
+  /* --- 6. Plan de traitement --- */
+  if (actions.length > 0) {
+    ensure(cur, 30);
+    section(doc, pal, cur, "Plan de traitement");
+    autoTable(doc, {
+      startY: cur.y,
+      head: [["Risque", "Action", "Responsable", "Échéance", "État", "Avanc."]],
+      body: [...actions]
+        .sort((a, b) => a.due.localeCompare(b.due))
+        .map((a) => [
+          a.risk_ref, a.action, a.owner || "—", a.due ? dateFr(a.due) : "—",
+          ACTION_LABEL[a.status] ?? a.status, `${a.progress} %`,
+        ]),
+      ...tableStyles(pal),
+      styles: { ...tableStyles(pal).styles, fontSize: 7, cellPadding: 1.6, valign: "top" },
+      columnStyles: {
+        0: { cellWidth: 14, halign: "center", fontStyle: "bold" },
+        1: { cellWidth: 74 },
+        2: { cellWidth: 28 },
+        3: { cellWidth: 20, halign: "center" },
+        4: { cellWidth: 18, halign: "center" },
+        5: { cellWidth: 12, halign: "right" },
+      },
+      // Une action en retard et non close ressort en rouge : c'est l'information utile du tableau.
+      didParseCell: (d) => {
+        if (d.section !== "body") return;
+        const sorted = [...actions].sort((x, y) => x.due.localeCompare(y.due));
+        const a = sorted[d.row.index];
+        if (a && d.column.index === 3 && a.due && a.due < asOf && a.status !== "fait" && a.status !== "abandonne") {
+          d.cell.styles.textColor = ALERT;
+          d.cell.styles.fontStyle = "bold";
+        }
+      },
+    });
+    afterTable(cur, 5);
+  }
 
-  /* --- Méthode et réserve --- */
-  ensure(cur, 34);
-  note(doc, pal, cur, "Méthode", true);
-  cur.y += 1;
+  /* --- 7. Suivi dans le temps --- */
+  if (snapshots.length > 0) {
+    ensure(cur, 26);
+    section(doc, pal, cur, "Suivi de l'amélioration");
+    const ordered = [...snapshots].sort((a, b) => a.asOf.localeCompare(b.asOf));
+    autoTable(doc, {
+      startY: cur.y,
+      head: [["Arrêté au", "Risques", "Brut", "Résiduel", "Réduction", "Hors appétence", "Contrôles prouvés"]],
+      body: ordered.map((sn, i) => {
+        const prev = i > 0 ? ordered[i - 1] : null;
+        const delta = prev ? sn.residualTotal - prev.residualTotal : null;
+        const red = sn.grossTotal > 0 ? Math.round(((sn.grossTotal - sn.residualTotal) / sn.grossTotal) * 100) : 0;
+        return [
+          dateFr(sn.asOf), String(sn.count), nf(sn.grossTotal),
+          delta == null ? nf(sn.residualTotal) : `${nf(sn.residualTotal)} (${delta > 0 ? "+" : ""}${nf(delta)})`,
+          `${red} %`, String(sn.aboveAppetite), `${sn.controlsProven}/${sn.controlsTotal}`,
+        ];
+      }),
+      ...tableStyles(pal),
+      styles: { ...tableStyles(pal).styles, fontSize: 7.2, cellPadding: 1.6, halign: "center" },
+      columnStyles: { 0: { halign: "left" } },
+    });
+    afterTable(cur, 5);
+  }
+
+  /* --- 8. Méthode et réserve --- */
+  ensure(cur, 40);
+  section(doc, pal, cur, "Méthode et réserve");
   note(
     doc, pal, cur,
-    "Le brut est coté à dispositif NUL - comme si aucun contrôle n'existait. Le résiduel n'est pas "
+    "Le brut est coté à dispositif NUL — comme si aucun contrôle n'existait. Le résiduel n'est pas "
     + "saisi, il est CALCULÉ : un contrôle préventif abat la probabilité, un contrôle détectif ou "
     + "correctif abat l'impact, à hauteur de son poids multiplié par son degré d'automatisation. "
     + `L'abattement est plafonné à ${MAX_ABATEMENT_POINTS} points par axe, plancher 1 : aucun `
@@ -230,104 +435,205 @@ export async function buildRiskPdf(firm: Firm, risks: AssessedRisk[], appetite: 
     + "prouvé n'abat rien.",
   );
   cur.y += 3;
-  note(doc, pal, cur, RISK_DISCLAIMER);
+  note(doc, pal, cur, RISK_DISCLAIMER, { size: FS.micro });
 
   paintFooters(doc, firm, pal);
   return doc;
 }
 
-export async function exportRiskPdf(firm: Firm, risks: AssessedRisk[], appetite: number, asOf: string): Promise<{ blob: Blob; filename: string }> {
-  const doc = await buildRiskPdf(firm, risks, appetite, asOf);
-  const filename = riskFileName(asOf, "pdf");
+const ACTION_LABEL: Record<string, string> = {
+  a_lancer: "À lancer", en_cours: "En cours", fait: "Fait", abandonne: "Abandonnée",
+};
+
+export async function exportRiskPdf(ctx: RiskExportContext): Promise<{ blob: Blob; filename: string }> {
+  const doc = await buildRiskPdf(ctx);
+  const filename = riskFileName(ctx.asOf, "pdf");
   const blob = doc.output("blob");
   doc.save(filename);
   return { blob, filename };
 }
 
-/* -------------------------------------------------- Excel -------------------------------------------------- */
+/* -------------------------------------------------- Excel « façon finance » -------------------------------------------------- */
+
+const MONEY = "#,##0.00";
+const INT = "0";
+const PCT = "0 %";
+
+/** Applique un format de nombre à une plage de colonnes. */
+function applyFormats(ws: XLSX.WorkSheet, fmtByCol: Record<number, string>, from: number, to: number): void {
+  for (let r = from; r <= to; r += 1) {
+    for (const key of Object.keys(fmtByCol)) {
+      const c = Number(key);
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (cell && cell.t === "n") cell.z = fmtByCol[c];
+    }
+  }
+}
 
 /**
- * Classeur à trois onglets : Registre (une ligne par risque), Contrôles (une ligne par contrôle,
- * avec son état de preuve) et Synthèse. Le détail des contrôles est séparé du registre parce que
- * c'est lui qui se retravaille en revue — le registre, lui, se lit.
+ * Classeur à cinq onglets — Registre, Contrôles, Matrice, Plan d'action, Suivi.
+ *
+ * Présentation finance alignée sur le livre de paie : titre et sous-titre fusionnés, formats de
+ * nombres normalisés, filtre automatique, volets figés, largeurs ajustées. Le premier jet
+ * utilisait `json_to_sheet` sans aucun de ces attributs — techniquement un export, visuellement
+ * un déversement.
  */
-export function exportRiskXlsx(firm: Firm, risks: AssessedRisk[], appetite: number, asOf: string): void {
+export function exportRiskXlsx(ctx: RiskExportContext): void {
+  const { firm, risks, appetite, asOf, actions, snapshots } = ctx;
+  const e = exposure(risks);
   const wb = XLSX.utils.book_new();
 
-  const registre = risks.map((r, i) => ({
-    "N°": i + 1,
-    "Réf": r.ref,
-    "Étape": STEP_LABEL[r.step],
-    "Catégorie": CATEGORY_LABEL[r.category],
-    "Événement de risque": r.event,
-    "Base normative": r.basis,
-    "Probabilité brute": r.grossLikelihood,
-    "Impact brut": r.grossImpact,
-    "Score brut": r.grossScore,
-    "Niveau brut": LEVEL_LABEL[r.grossLevel],
-    "Contrôles prouvés": r.provenCount,
-    "Contrôles total": r.assessedControls.length,
-    "Abattement probabilité": r.abatementLikelihood,
-    "Abattement impact": r.abatementImpact,
-    "Probabilité résiduelle": r.residualLikelihood,
-    "Impact résiduel": r.residualImpact,
-    "Score résiduel": r.residualScore,
-    "Niveau résiduel": LEVEL_LABEL[r.residualLevel],
-    "Réduction (points)": r.reduction,
-    "Réduction (%)": r.reductionPct / 100,
-    "Hors appétence": r.aboveAppetite ? "Oui" : "Non",
-    "Traitement": r.aboveAppetite ? "Réduire" : "Accepter",
-  }));
-
-  const controles = risks.flatMap((r) =>
-    r.assessedControls.map((ct) => ({
-      "Réf risque": r.ref,
-      "Étape": STEP_LABEL[r.step],
-      "Contrôle": ct.label,
-      "Nature": CONTROL_TYPE_LABEL[ct.type],
-      "Axe abattu": ct.axis === "likelihood" ? "Probabilité" : "Impact",
-      "Mise en oeuvre": AUTOMATION_LABEL[ct.automation],
-      "Poids": ct.strength,
-      "Prouvé": ct.proven ? "Oui" : "Non",
-      "Preuve": ct.proof ? FACT_LABEL[ct.proof] : "Déclaratif — non constatable",
-      "Abattement apporté": ct.abatement,
-      "Observation": ct.note ?? "",
-    })),
-  );
-
-  const e = exposure(risks);
-  const synthese = [
-    { Indicateur: "Date d'arrêté", Valeur: asOf },
-    { Indicateur: "Société", Valeur: firm.name },
-    { Indicateur: "Appétence (score résiduel max accepté)", Valeur: appetite },
-    { Indicateur: "Risques cartographiés", Valeur: e.count },
-    { Indicateur: "Exposition brute (somme des scores)", Valeur: e.grossTotal },
-    { Indicateur: "Exposition résiduelle", Valeur: e.residualTotal },
-    { Indicateur: "Réduction (%)", Valeur: e.reductionPct },
-    { Indicateur: "Score résiduel moyen", Valeur: e.avgResidual },
-    { Indicateur: "Risques hors appétence", Valeur: e.aboveAppetite },
-    { Indicateur: "Contrôles prouvés / total", Valeur: `${e.controlsProven}/${e.controlsTotal}` },
-    ...LEVEL_ORDER.map((l) => ({ Indicateur: `Brut - ${LEVEL_LABEL[l]}`, Valeur: e.grossByLevel[l] })),
-    ...LEVEL_ORDER.map((l) => ({ Indicateur: `Résiduel - ${LEVEL_LABEL[l]}`, Valeur: e.residualByLevel[l] })),
-    { Indicateur: "Réserve", Valeur: RISK_DISCLAIMER },
+  /* --- Onglet 1 : Registre --- */
+  const HEAD = [
+    "N°", "Réf", "Étape", "Catégorie", "Événement de risque", "Base normative",
+    "P brut", "I brut", "Score brut", "Niveau brut",
+    "Contrôles prouvés", "Contrôles total", "Abat. P", "Abat. I",
+    "P rés.", "I rés.", "Score rés.", "Niveau rés.",
+    "Réduction", "Réduction %", "Hors appétence", "Traitement",
   ];
-
-  const wsR = XLSX.utils.json_to_sheet(registre);
-  wsR["!cols"] = [
-    { wch: 5 }, { wch: 6 }, { wch: 26 }, { wch: 20 }, { wch: 80 }, { wch: 40 },
-    ...Array.from({ length: 16 }, () => ({ wch: 12 })),
+  const LAST = HEAD.length - 1;
+  const HEADER_ROW = 3;
+  const rows: (string | number)[][] = [
+    [`${RISK_DOC_TITLE} — ${firm.name}`],
+    [`Arrêtée au ${dateFr(asOf)} · appétence ${appetite} · ${e.count} risques · exposition ${e.grossTotal} -> ${e.residualTotal} (-${e.reductionPct} %)`],
+    [],
+    HEAD,
   ];
-  wsR["!autofilter"] = { ref: XLSX.utils.encode_range(XLSX.utils.decode_range(wsR["!ref"] ?? "A1")) };
-  wsR["!freeze"] = { xSplit: 2, ySplit: 1 };
+  risks.forEach((r, i) => rows.push([
+    i + 1, r.ref, STEP_LABEL[r.step], CATEGORY_LABEL[r.category], r.event, r.basis,
+    r.grossLikelihood, r.grossImpact, r.grossScore, LEVEL_LABEL[r.grossLevel],
+    r.provenCount, r.assessedControls.length, r.abatementLikelihood, r.abatementImpact,
+    r.residualLikelihood, r.residualImpact, r.residualScore, LEVEL_LABEL[r.residualLevel],
+    r.reduction, r.reductionPct / 100, r.aboveAppetite ? "Oui" : "Non", r.aboveAppetite ? "Réduire" : "Accepter",
+  ]));
+  rows.push([
+    "", "", `Total (${e.count})`, "", "", "", "", "", e.grossTotal, "", e.controlsProven, e.controlsTotal,
+    "", "", "", "", e.residualTotal, "", e.grossTotal - e.residualTotal, e.reductionPct / 100, String(e.aboveAppetite), "",
+  ]);
 
-  const wsC = XLSX.utils.json_to_sheet(controles);
-  wsC["!cols"] = [{ wch: 10 }, { wch: 26 }, { wch: 70 }, { wch: 12 }, { wch: 13 }, { wch: 16 }, { wch: 8 }, { wch: 8 }, { wch: 44 }, { wch: 12 }, { wch: 60 }];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const first = HEADER_ROW + 1;
+  const last = first + risks.length; // inclut la ligne de total
+  applyFormats(ws, {
+    6: INT, 7: INT, 8: INT, 10: INT, 11: INT, 12: INT, 13: INT,
+    14: INT, 15: INT, 16: INT, 18: INT, 19: "0%",
+  }, first, last);
+  ws["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: LAST } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: LAST } },
+  ];
+  ws["!autofilter"] = {
+    ref: `${XLSX.utils.encode_cell({ r: HEADER_ROW, c: 0 })}:${XLSX.utils.encode_cell({ r: Math.max(first, last - 1), c: LAST })}`,
+  };
+  ws["!freeze"] = {
+    xSplit: 2, ySplit: first, topLeftCell: XLSX.utils.encode_cell({ r: first, c: 2 }),
+    activePane: "bottomRight", state: "frozen",
+  };
+  ws["!cols"] = [
+    { wch: 5 }, { wch: 7 }, { wch: 26 }, { wch: 20 }, { wch: 90 }, { wch: 38 },
+    { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 12 },
+    { wch: 10 }, { wch: 10 }, { wch: 9 }, { wch: 9 },
+    { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 12 },
+    { wch: 10 }, { wch: 11 }, { wch: 14 }, { wch: 12 },
+  ];
+  ws["!rows"] = [{ hpt: 20 }, { hpt: 15 }];
+  XLSX.utils.book_append_sheet(wb, ws, "Registre");
 
-  const wsS = XLSX.utils.json_to_sheet(synthese);
-  wsS["!cols"] = [{ wch: 44 }, { wch: 60 }];
-
-  XLSX.utils.book_append_sheet(wb, wsR, "Registre");
+  /* --- Onglet 2 : Contrôles --- */
+  const cHead = ["Réf risque", "Étape", "Contrôle", "Nature", "Axe abattu", "Mise en oeuvre", "Poids", "Prouvé", "Preuve attendue", "Abattement", "Observation"];
+  const cRows: (string | number)[][] = [
+    ["DISPOSITIF DE MAÎTRISE — détail des contrôles"],
+    [`${firm.name} · arrêté au ${dateFr(asOf)} · ${e.controlsProven} contrôles prouvés sur ${e.controlsTotal}`],
+    [],
+    cHead,
+  ];
+  for (const r of risks) {
+    for (const ct of r.assessedControls) {
+      cRows.push([
+        r.ref, STEP_LABEL[r.step], ct.label, CONTROL_TYPE_LABEL[ct.type],
+        ct.axis === "likelihood" ? "Probabilité" : "Impact",
+        AUTOMATION_LABEL[ct.automation], ct.strength, ct.proven ? "Oui" : "Non",
+        ct.proof ? FACT_LABEL[ct.proof] : "Déclaratif — non constatable",
+        ct.abatement, ct.note ?? "",
+      ]);
+    }
+  }
+  const wsC = XLSX.utils.aoa_to_sheet(cRows);
+  applyFormats(wsC, { 9: MONEY }, 4, cRows.length - 1);
+  wsC["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: cHead.length - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: cHead.length - 1 } },
+  ];
+  wsC["!autofilter"] = { ref: `A4:${XLSX.utils.encode_cell({ r: Math.max(4, cRows.length - 1), c: cHead.length - 1 })}` };
+  wsC["!freeze"] = { xSplit: 1, ySplit: 4, topLeftCell: "B5", activePane: "bottomRight", state: "frozen" };
+  wsC["!cols"] = [{ wch: 10 }, { wch: 26 }, { wch: 76 }, { wch: 12 }, { wch: 13 }, { wch: 17 }, { wch: 8 }, { wch: 8 }, { wch: 44 }, { wch: 12 }, { wch: 64 }];
+  wsC["!rows"] = [{ hpt: 20 }, { hpt: 15 }];
   XLSX.utils.book_append_sheet(wb, wsC, "Contrôles");
-  XLSX.utils.book_append_sheet(wb, wsS, "Synthèse");
+
+  /* --- Onglet 3 : Matrice (deux grilles 5x5 lisibles telles quelles) --- */
+  const mRows: (string | number)[][] = [["MATRICE DE CRITICITÉ"], [`${firm.name} · arrêtée au ${dateFr(asOf)}`], []];
+  for (const axis of ["gross", "residual"] as const) {
+    const grid = criticityMatrix(risks, axis);
+    mRows.push([axis === "gross" ? "BRUT (à dispositif nul)" : "RÉSIDUEL (après contrôles)"]);
+    mRows.push(["Impact \\ Probabilité", "1", "2", "3", "4", "5"]);
+    for (let imp = 5; imp >= 1; imp -= 1) {
+      mRows.push([imp, ...Array.from({ length: 5 }, (_, i) => grid[imp - 1][i].join(" "))]);
+    }
+    mRows.push([]);
+  }
+  mRows.push(["Légende", ...LEVEL_ORDER.map((l) => `${LEVEL_LABEL[l]}`)]);
+  const wsM = XLSX.utils.aoa_to_sheet(mRows);
+  wsM["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }];
+  wsM["!cols"] = [{ wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 20 }];
+  wsM["!rows"] = [{ hpt: 20 }, { hpt: 15 }];
+  XLSX.utils.book_append_sheet(wb, wsM, "Matrice");
+
+  /* --- Onglet 4 : Plan d'action --- */
+  const aHead = ["Risque", "Action", "Responsable", "Échéance", "État", "Avancement", "En retard", "Notes"];
+  const aRows: (string | number)[][] = [
+    ["PLAN DE TRAITEMENT"],
+    [`${firm.name} · ${actions.length} action(s) · ${e.aboveAppetite} risque(s) hors appétence`],
+    [],
+    aHead,
+  ];
+  for (const a of [...actions].sort((x, y) => x.due.localeCompare(y.due))) {
+    const late = !!a.due && a.due < asOf && a.status !== "fait" && a.status !== "abandonne";
+    aRows.push([a.risk_ref, a.action, a.owner, a.due, ACTION_LABEL[a.status] ?? a.status, a.progress / 100, late ? "OUI" : "", a.notes ?? ""]);
+  }
+  const wsA = XLSX.utils.aoa_to_sheet(aRows);
+  applyFormats(wsA, { 5: PCT }, 4, aRows.length - 1);
+  wsA["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: aHead.length - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: aHead.length - 1 } }];
+  wsA["!autofilter"] = { ref: `A4:${XLSX.utils.encode_cell({ r: Math.max(4, aRows.length - 1), c: aHead.length - 1 })}` };
+  wsA["!freeze"] = { xSplit: 1, ySplit: 4, topLeftCell: "B5", activePane: "bottomRight", state: "frozen" };
+  wsA["!cols"] = [{ wch: 10 }, { wch: 70 }, { wch: 24 }, { wch: 13 }, { wch: 13 }, { wch: 12 }, { wch: 10 }, { wch: 50 }];
+  wsA["!rows"] = [{ hpt: 20 }, { hpt: 15 }];
+  XLSX.utils.book_append_sheet(wb, wsA, "Plan d'action");
+
+  /* --- Onglet 5 : Suivi de l'amélioration --- */
+  const sHead = ["Arrêté au", "Pris le", "Par", "Risques", "Brut", "Résiduel", "Δ résiduel", "Réduction %", "Hors appétence", "Contrôles prouvés", "Contrôles total", "Libellé"];
+  const sRows: (string | number)[][] = [
+    ["SUIVI DE L'AMÉLIORATION — instantanés datés"],
+    [`${firm.name} · ${snapshots.length} point(s) de mesure`],
+    [],
+    sHead,
+  ];
+  const ordered = [...snapshots].sort((a, b) => a.asOf.localeCompare(b.asOf));
+  ordered.forEach((sn, i) => {
+    const prev = i > 0 ? ordered[i - 1] : null;
+    const red = sn.grossTotal > 0 ? (sn.grossTotal - sn.residualTotal) / sn.grossTotal : 0;
+    sRows.push([
+      sn.asOf, sn.taken_at.slice(0, 10), sn.taken_by ?? "", sn.count, sn.grossTotal, sn.residualTotal,
+      prev ? sn.residualTotal - prev.residualTotal : "", red, sn.aboveAppetite,
+      sn.controlsProven, sn.controlsTotal, sn.label ?? "",
+    ]);
+  });
+  const wsS = XLSX.utils.aoa_to_sheet(sRows);
+  applyFormats(wsS, { 3: INT, 4: INT, 5: INT, 6: INT, 7: "0 %", 8: INT, 9: INT, 10: INT }, 4, sRows.length - 1);
+  wsS["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: sHead.length - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: sHead.length - 1 } }];
+  wsS["!freeze"] = { xSplit: 1, ySplit: 4, topLeftCell: "B5", activePane: "bottomRight", state: "frozen" };
+  wsS["!cols"] = [{ wch: 13 }, { wch: 13 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 13 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 34 }];
+  wsS["!rows"] = [{ hpt: 20 }, { hpt: 15 }];
+  XLSX.utils.book_append_sheet(wb, wsS, "Suivi");
+
   XLSX.writeFile(wb, riskFileName(asOf, "xlsx"));
 }

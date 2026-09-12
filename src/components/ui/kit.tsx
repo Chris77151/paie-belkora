@@ -158,10 +158,22 @@ export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLS
 }
 
 /* ---------- Table ---------- */
-export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
+/**
+ * Tableau dans son propre conteneur défilant : la page ne part JAMAIS en scroll horizontal, seul
+ * le tableau glisse.
+ *
+ * `wide` est nécessaire dès qu'un tableau porte beaucoup de colonnes. Sans largeur minimale, un
+ * `table` en `w-full` se COMPRIME pour tenir dans 375 px au lieu de déborder : les colonnes se
+ * réduisent à quelques caractères et le tableau devient illisible sans jamais déclencher le
+ * défilement. La largeur plancher inverse ce comportement — le tableau garde ses colonnes
+ * lisibles et c'est le doigt qui parcourt.
+ */
+export function Table({
+  className, wide, ...props
+}: React.HTMLAttributes<HTMLTableElement> & { wide?: boolean }) {
   return (
     <div className="w-full overflow-x-auto scrollbar-thin">
-      <table className={cn("w-full text-sm border-collapse", className)} {...props} />
+      <table className={cn("w-full text-sm border-collapse", wide && "min-w-[48rem]", className)} {...props} />
     </div>
   );
 }
@@ -191,12 +203,15 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
-      <div>
-        <h1 className="text-2xl text-foreground">{title}</h1>
-        {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
+    // `min-w-0` sur le bloc titre : sans lui un sous-titre long refuse de se replier et pousse
+    // les actions hors de l'écran. `flex-wrap` sur les actions : trois boutons ne tiennent pas
+    // sur une ligne de 375 px.
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-3 sm:gap-4">
+      <div className="min-w-0 flex-1">
+        <h1 className="text-xl text-foreground sm:text-2xl">{title}</h1>
+        {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
       </div>
-      {children && <div className="flex items-center gap-2">{children}</div>}
+      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
     </div>
   );
 }

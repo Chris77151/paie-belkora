@@ -369,7 +369,42 @@ export interface DocArchiveRef {
 }
 
 export type BankEventClass =
-  | "AUTORISE" | "NON_AUTORISE" | "A_VERIFIER" | "NOUVEAU" | "SUPPRIME";
+  | "AUTORISE" | "NON_AUTORISE" | "A_VERIFIER" | "NOUVEAU" | "SUPPRIME"
+  /**
+   * Compte re-créé sous un AUTRE identifiant Odoo, numéro de compte INCHANGÉ (empreinte
+   * identique). Ce n'est pas un changement de RIB, c'est une re-création technique — la
+   * signaler comme « supprimé + nouveau » produisait deux alertes pour un non-événement.
+   */
+  | "DEPLACE";
+
+/**
+ * Ce qui a RÉELLEMENT changé sur un compte, en clair. Sans ce détail, chaque ligne du volet se
+ * lit « ****1234 vers ****5678 » et pèse le même poids : l'utilisateur s'alarme autant d'une
+ * re-création technique que d'une substitution frauduleuse, puis cesse de lire le volet.
+ *
+ * Aucun de ces indices ne descend jamais une gravité à lui seul — seule une empreinte PROUVÉE
+ * identique le fait. Un fraudeur pourrait sinon fabriquer le signal rassurant.
+ */
+export interface BankChangeDetail {
+  /** Ce qui a changé, formulé pour être lu tel quel. */
+  nature: string;
+  /** Pourquoi cela alerte — ou pourquoi c'est classé sans gravité. */
+  whyAlert: string;
+  /** Le geste de vérification concret, quand il y en a un. */
+  whatToCheck?: string;
+  /**
+   * Les quatre derniers caractères sont identiques avant et après. Indice d'une correction de
+   * saisie plutôt que d'une substitution — INFORMATIF, ne réduit aucune gravité.
+   */
+  sameTail?: boolean;
+  /**
+   * Changement techniquement bénin : le numéro de compte est PROUVÉ inchangé (même empreinte).
+   * Seul cas où l'application se permet de ne pas alerter.
+   */
+  benign?: boolean;
+  /** Identifiant Odoo d'origine, quand le compte a été re-créé ailleurs. */
+  previousBankId?: number;
+}
 export type BankSeverity = "info" | "moyen" | "eleve" | "critique";
 
 /** Un événement de changement de RIB détecté dans Odoo (données MASQUÉES). */
@@ -389,6 +424,8 @@ export interface BankAuditEvent {
   when: string;               // ISO
   classification: BankEventClass;
   severity: BankSeverity;
+  /** Explication de CE qui a changé — pour distinguer le bruit du signal. */
+  detail?: BankChangeDetail;
 }
 
 /** Référence d'un RIB validé (empreinte, pas le clair) pour la détection d'écart. */
@@ -506,6 +543,96 @@ export interface DocumentRequest {
   processed_by?: string;
 }
 
+/* ---- Cartographie des risques : saisie manuelle, plan d'action, suivi dans le temps ---- */
+
+/**
+ * Un risque saisi À LA MAIN, en complément du référentiel intégré. Même grammaire que le
+ * référentiel (`RiskDefinition`) pour que les deux se cotent, s'exportent et se suivent
+ * exactement de la même façon — un risque propre à l'entité n'est pas un citoyen de seconde zone.
+ */
+export interface CustomRisk {
+  id: string;
+  firm_id: string;
+  /** Référence affichée. Préfixée « L » (local) à la création pour ne pas heurter R01-R25. */
+  ref: string;
+  step: string;
+  category: string;
+  event: string;
+  basis: string;
+  grossLikelihood: number;
+  grossImpact: number;
+  controls: CustomRiskControl[];
+  created_at: string;
+  created_by?: string;
+}
+
+/**
+ * Contrôle d'un risque saisi à la main. `proven` est ici DÉCLARÉ par l'utilisateur — d'où
+ * l'obligation d'une preuve écrite : sans elle, le contrôle n'abat rien, même coché.
+ */
+export interface CustomRiskControl {
+  id: string;
+  label: string;
+  /** preventif | detectif | correctif */
+  type: string;
+  /** automatique | semi | manuel */
+  automation: string;
+  /** fort | moyen | faible */
+  strength: string;
+  proven: boolean;
+  /** Nature de la preuve produite. Obligatoire dès que `proven` est vrai. */
+  evidence?: string;
+}
+
+/** Avancement du traitement d'un risque hors appétence. */
+export type RiskActionStatus = "a_lancer" | "en_cours" | "fait" | "abandonne";
+
+/**
+ * Plan de traitement d'un risque (référentiel ou saisi). Un plan sans responsable nommé ni
+ * échéance datée n'est pas un plan : les deux champs sont donc portés explicitement.
+ */
+export interface RiskAction {
+  id: string;
+  firm_id: string;
+  /** Référence du risque traité (R01… ou L01…). */
+  risk_ref: string;
+  action: string;
+  owner: string;
+  /** Échéance ISO « AAAA-MM-JJ ». */
+  due: string;
+  status: RiskActionStatus;
+  /** Avancement déclaré, 0-100. */
+  progress: number;
+  notes?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+/**
+ * Photographie datée de l'exposition, prise à un instant donné. C'est la série de ces
+ * instantanés qui rend l'amélioration VISIBLE : sans point de comparaison, un score résiduel
+ * ne dit pas si le dispositif progresse ou se dégrade.
+ */
+export interface RiskSnapshot {
+  id: string;
+  firm_id: string;
+  /** Date d'arrêté de la cartographie photographiée (ISO « AAAA-MM-JJ »). */
+  asOf: string;
+  /** ISO — horodatage de la prise. */
+  taken_at: string;
+  taken_by?: string;
+  appetite: number;
+  count: number;
+  grossTotal: number;
+  residualTotal: number;
+  aboveAppetite: number;
+  controlsProven: number;
+  controlsTotal: number;
+  /** Répartition résiduelle par niveau : faible / modere / eleve / critique. */
+  residualByLevel: Record<string, number>;
+  label?: string;
+}
+
 export interface AppState {
   firms: Firm[];
   employees: Employee[];
@@ -520,6 +647,12 @@ export interface AppState {
   documentRequests?: DocumentRequest[];
   /** Pièces justificatives du dossier salarié (métadonnées ; binaire en IndexedDB). */
   attachments?: Attachment[];
+  /** Risques saisis à la main, en complément du référentiel intégré. */
+  customRisks?: CustomRisk[];
+  /** Plans de traitement des risques (responsable, échéance, avancement). */
+  riskActions?: RiskAction[];
+  /** Instantanés datés de l'exposition — la série qui rend l'amélioration visible. */
+  riskSnapshots?: RiskSnapshot[];
   /** Clôtures comptables validées (verrou + snapshot par période). */
   accountingClosures?: AccountingClosure[];
   /** Comptes de connexion à l'application (auth locale). */

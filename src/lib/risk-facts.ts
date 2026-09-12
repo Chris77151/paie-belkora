@@ -34,6 +34,7 @@ export const FACT_LABEL: Record<FactKey, string> = {
   docArchiveActive: "Au moins un document produit est archivé en PDF",
   declarationsOnTime: "Aucune période validée ne dépasse son échéance de déclaration",
   noMinorAlert: "Aucun mineur employé sans pièce d'aptitude",
+  declaredProven: "Preuve écrite fournie à la saisie",
 };
 
 /** Salaire mensuel minimum légal du régime — repris de `params.ts`, jamais en dur. */

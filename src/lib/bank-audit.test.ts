@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   maskRib, fingerprint, ribFingerprint, isLegacyFingerprint, newAuditSalt,
   withFingerprints, buildBaseline, buildAuditEvents, FP_V2_PREFIX,
+  classify, describeChange,
 } from "./bank-audit";
 import type { OdooBankRecord } from "./odoo";
 
@@ -88,5 +89,133 @@ describe("détection d'écart — rétro-compatibilité des bases de référence
     expect(isLegacyFingerprint(legacyBase[0].fingerprint)).toBe(true);
     const records = await withFingerprints([rec()], SALT);
     expect(buildAuditEvents("f1", records, legacyBase, "2026-06-30T00:00:00Z")).toHaveLength(0);
+  });
+});
+
+/* ==================================================================================
+ * Détail des modifications — distinguer le bruit du signal SANS atténuer une fraude
+ * ================================================================================== */
+
+const AUTRE_RIB = "MA64 0111 0000 0099 8877 6655 44";
+
+describe("compte re-créé sous un autre identifiant", () => {
+  it("ne produit qu'UNE ligne « re-créé », ni supprimé ni nouveau", async () => {
+    const before = await withFingerprints([rec({ odoo_bank_id: 1 })], SALT);
+    const baseline = buildBaseline("f1", before, "admin", "2026-06-01T00:00:00Z");
+    // Même RIB, identifiant Odoo différent : Odoo a re-créé l'enregistrement.
+    const after = await withFingerprints([rec({ odoo_bank_id: 42 })], SALT);
+
+    const ev = buildAuditEvents("f1", after, baseline, "2026-06-11T00:00:00Z");
+    expect(ev).toHaveLength(1);
+    expect(ev[0].classification).toBe("DEPLACE");
+    expect(ev[0].severity).toBe("info");
+    expect(ev[0].detail?.benign).toBe(true);
+    expect(ev[0].detail?.previousBankId).toBe(1);
+  });
+
+  it("un VRAI changement de numéro sous un nouvel identifiant reste une alerte", async () => {
+    const before = await withFingerprints([rec({ odoo_bank_id: 1 })], SALT);
+    const baseline = buildBaseline("f1", before, "admin", "2026-06-01T00:00:00Z");
+    const after = await withFingerprints([rec({ odoo_bank_id: 42, acc_number: AUTRE_RIB })], SALT);
+
+    const ev = buildAuditEvents("f1", after, baseline, "2026-06-11T00:00:00Z");
+    // Un nouveau compte + l'ancien réellement disparu : deux constats, aucun « bénin ».
+    expect(ev.map((x) => x.classification).sort()).toEqual(["NOUVEAU", "SUPPRIME"]);
+    expect(ev.some((x) => x.detail?.benign)).toBe(false);
+  });
+});
+
+describe("classify — nuance sans complaisance", () => {
+  const base = { isNew: false, isDeleted: false, partner_kind: "fournisseur" as const, validated: false, on_payment: false };
+
+  it("un ajout par une personne habilitée, sans paiement rattaché, n'est pas « élevé »", () => {
+    expect(classify({ ...base, isNew: true, actor_authorized: true }).severity).toBe("moyen");
+  });
+
+  it("mais un compte inconnu DÉJÀ utilisé sur un paiement le reste", () => {
+    expect(classify({ ...base, isNew: true, actor_authorized: true, on_payment: true }).severity).toBe("eleve");
+  });
+
+  it("et un ajout par une personne non habilitée le reste aussi", () => {
+    expect(classify({ ...base, isNew: true, actor_authorized: false }).severity).toBe("eleve");
+  });
+
+  it("une modification par une personne non habilitée sur un compte payé reste CRITIQUE", () => {
+    const r = classify({ ...base, actor_authorized: false, on_payment: true });
+    expect(r.classification).toBe("NON_AUTORISE");
+    expect(r.severity).toBe("critique");
+  });
+
+  it("le déplacement prime sur tout le reste — le numéro est prouvé inchangé", () => {
+    const r = classify({ ...base, isNew: true, isMoved: true, actor_authorized: false, on_payment: true });
+    expect(r.classification).toBe("DEPLACE");
+    expect(r.severity).toBe("info");
+  });
+});
+
+describe("describeChange — l'indice rassurant n'atténue JAMAIS la gravité", () => {
+  it("signale des 4 derniers caractères identiques sans rien déclasser", () => {
+    const d = describeChange({
+      classification: "NON_AUTORISE", partner_kind: "fournisseur",
+      before: "****7890", after: "****7890",
+      actor_authorized: false, on_payment: true,
+    });
+    expect(d.sameTail).toBe(true);
+    // L'indice est porté, mais le changement n'est PAS déclaré bénin : un fraudeur qui recopie
+    // les derniers chiffres produirait exactement ce signal.
+    expect(d.benign).toBeFalsy();
+    expect(d.whyAlert).toMatch(/fraude au virement/i);
+    expect(d.whatToCheck).toMatch(/contre-appel/i);
+  });
+
+  it("ne déclare bénin QUE le compte re-créé, dont le numéro est prouvé identique", () => {
+    const moved = describeChange({
+      classification: "DEPLACE", partner_kind: "fournisseur",
+      before: "****7890", after: "****7890",
+      actor_authorized: false, on_payment: true, previousBankId: 7,
+    });
+    expect(moved.benign).toBe(true);
+    expect(moved.nature).toContain("#7");
+  });
+
+  it("distingue un ajout de routine d'un compte inconnu déjà payé", () => {
+    const routine = describeChange({
+      classification: "NOUVEAU", partner_kind: "fournisseur",
+      after: "****1234", actor_authorized: true, on_payment: false,
+    });
+    expect(routine.whyAlert).toMatch(/routine/i);
+    expect(routine.benign).toBeFalsy(); // atténué, jamais effacé
+
+    const danger = describeChange({
+      classification: "NOUVEAU", partner_kind: "fournisseur",
+      after: "****1234", actor_authorized: true, on_payment: true,
+    });
+    expect(danger.whyAlert).toMatch(/fraude au virement/i);
+  });
+
+  it("donne à chaque constat sa nature, son motif d'alerte et son geste de vérification", () => {
+    for (const c of ["NON_AUTORISE", "A_VERIFIER", "NOUVEAU", "SUPPRIME"] as const) {
+      const d = describeChange({
+        classification: c, partner_kind: "fournisseur",
+        before: "****1111", after: "****2222", actor_authorized: false, on_payment: false,
+      });
+      expect(d.nature.length, c).toBeGreaterThan(20);
+      expect(d.whyAlert.length, c).toBeGreaterThan(20);
+      expect(d.whatToCheck, c).toBeTruthy();
+    }
+  });
+});
+
+describe("chaque événement porte son explication", () => {
+  it("aucun constat n'est produit sans détail", async () => {
+    const before = await withFingerprints([rec({ odoo_bank_id: 1 }), rec({ odoo_bank_id: 2, acc_number: AUTRE_RIB })], SALT);
+    const baseline = buildBaseline("f1", before, "admin", "2026-06-01T00:00:00Z");
+    const after = await withFingerprints(
+      [rec({ odoo_bank_id: 1, acc_number: AUTRE_RIB, actor_authorized: false }), rec({ odoo_bank_id: 9 })],
+      SALT,
+    );
+    const ev = buildAuditEvents("f1", after, baseline, "2026-06-11T00:00:00Z");
+    expect(ev.length).toBeGreaterThan(0);
+    for (const e of ev) expect(e.detail, e.classification).toBeTruthy();
   });
 });

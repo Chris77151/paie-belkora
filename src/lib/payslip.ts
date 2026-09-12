@@ -78,6 +78,40 @@ function defaults(v: PayslipView): PayslipInput {
 type RowKind = "normal" | "bold" | "italic" | "net";
 interface Row { cells: [string, string, string, string, string]; kind: RowKind }
 
+/**
+ * Ajoute au bulletin les lignes d'une indemnité, en séparant la part EXONÉRÉE de la part
+ * RÉINTÉGRÉE à l'assiette.
+ *
+ * Le montant versé est celui saisi ; ce qui varie, c'est son traitement. Tant qu'il reste sous
+ * le plafond légal il est intégralement exonéré, et une seule ligne suffit. Dès qu'il le
+ * franchit, l'excédent entre dans le SBI et supporte CNSS, AMO et IR : le bulletin doit le dire,
+ * sans quoi le salarié lit « exonérée » sur une somme qui a bien été cotisée.
+ *
+ * `perDay > 0` fait apparaître le nombre de jours et le montant journalier (panier, transport) ;
+ * la salissure, forfaitaire, n'en a pas.
+ */
+function pushIndemnite(rows: Row[], label: string, montant: number, exonere: number, perDay: number): void {
+  if (!(montant > 0)) return;
+  const exo = Math.min(Math.max(exonere, 0), montant);
+  const reintegre = round2(montant - exo);
+  const nb = perDay > 0 ? f(perDay) : "";
+  const taux = perDay > 0 ? f(montant / perDay) : "";
+
+  if (reintegre <= 0) {
+    rows.push({ cells: [`${label} (exonérée)`, nb, taux, f(montant), ""], kind: "normal" });
+    return;
+  }
+  if (exo > 0) {
+    rows.push({ cells: [`${label} (part exonérée)`, nb, taux, f(exo), ""], kind: "normal" });
+  }
+  rows.push({
+    cells: [`${label} (part imposable — au-delà du plafond)`, "", "", f(reintegre), ""],
+    kind: "normal",
+  });
+}
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
 /** Lignes du tableau principal LIBELLE | Nbre/Base | TAUX | GAINS | RETENUES. */
 function mainRows(v: PayslipView): Row[] {
   const { result: r } = v;
@@ -96,16 +130,23 @@ function mainRows(v: PayslipView): Row[] {
   if (r.primeAnciennete > 0)
     rows.push({ cells: [`Prime d'ancienneté (${(r.seniorityRate * 100).toFixed(0)} %)`, "", pctv(r.seniorityRate), f(r.primeAnciennete), ""], kind: "normal" });
 
-  if (inp.panier > 0)
-    rows.push({ cells: ["Prime de panier (exonérée)", f(days), f(days > 0 ? inp.panier / days : inp.panier), f(inp.panier), ""], kind: "normal" });
-  if (inp.transport > 0)
-    rows.push({ cells: ["Indemnité de transport (exonérée)", f(days), f(days > 0 ? inp.transport / days : inp.transport), f(inp.transport), ""], kind: "normal" });
-  if (inp.salissure > 0)
-    rows.push({ cells: ["Indemnité de salissure (exonérée)", "", "", f(inp.salissure), ""], kind: "normal" });
+  // Indemnités : la part exonérée et la part RÉINTÉGRÉE sont présentées séparément. Afficher
+  // « (exonérée) » sur le montant entier serait faux dès que le plafond légal est franchi — le
+  // moteur, lui, réintègre bien l'excédent au SBI (2 x SMIG horaire par jour travaillé pour le
+  // panier, 500/750 DH pour le transport). Deux lignes plutôt qu'une : la somme des gains reste
+  // égale au brut, et l'écart « BRUT - SBI » se lit directement sur le bulletin.
+  pushIndemnite(rows, "Prime de panier", inp.panier, r.panierExonere, days);
+  pushIndemnite(rows, "Indemnité de transport", inp.transport, r.transportExonere, days);
+  pushIndemnite(rows, "Indemnité de salissure", inp.salissure, r.salissureExoneree, 0);
   if (inp.other_gross > 0)
     rows.push({ cells: ["Primes / gains soumis", "", "", f(inp.other_gross), ""], kind: "normal" });
 
   rows.push({ cells: ["SALAIRE BRUT", "", "", f(r.salaireBrut), ""], kind: "bold" });
+  // Le passage du brut à l'assiette est rendu explicite : BRUT − exonérations = SBI. Sans cette
+  // ligne, l'écart entre les deux montants n'est justifié nulle part sur le document.
+  if (r.indemnitesExonerees > 0) {
+    rows.push({ cells: ["dont indemnités exonérées (déduites de l'assiette)", "", "", f(-r.indemnitesExonerees), ""], kind: "italic" });
+  }
   rows.push({ cells: ["Salaire brut soumis à cotisations", f(r.sbi), "", "", ""], kind: "italic" });
 
   rows.push({ cells: ["CNSS prestations sociales", f(r.employerDetail.cnssBase), pctv(p.cnssEmployeeRate), "", f(r.cnssSalarie)], kind: "normal" });

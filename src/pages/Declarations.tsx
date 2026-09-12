@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { FileDown, FileText, CalendarClock, Landmark, AlertTriangle } from "lucide-react";
+import { FileDown, FileText, CalendarClock, Landmark, AlertTriangle, FileSpreadsheet } from "lucide-react";
 import { useStore, currentFirm, employeesOfFirm, periodsOfFirm, payslipsOfPeriod, actions } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import {
@@ -24,6 +24,10 @@ import { getParams } from "@/lib/params";
 import { exportDeclarationPdf } from "@/lib/declaration-export";
 import { computeDeclarationPenalty } from "@/lib/declaration-penalty";
 import { YearSelect } from "@/components/YearSelect";
+import { buildIrAnnual, irAnnualCoverageLine, IR_ANNUAL_DISCLAIMER } from "@/lib/ir-annual";
+import { exportIrAnnualPdf, exportIrAnnualXlsx } from "@/lib/ir-annual-export";
+import { traceAndArchivePdf } from "@/lib/doc-archive";
+import type { Firm } from "@/data/types";
 
 export default function Declarations() {
   const s = useStore();
@@ -240,7 +244,7 @@ export default function Declarations() {
           <CardTitle>{t("decl.cnss.title")} {periodLabel(year, month)}</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table wide>
             <thead>
               <tr>
                 <Th>{t("doc.employee")}</Th>
@@ -373,52 +377,7 @@ export default function Declarations() {
         </CardContent>
       </Card>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>
-            <span className="inline-flex items-center gap-2">
-              <Landmark size={16} className="text-sage" />
-              {t("decl.9421.title")}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <thead>
-              <tr>
-                <Th>{t("doc.employee")}</Th>
-                <Th>{t("doc.cnss")}</Th>
-                <Th className="text-right">{t("decl.col.irMonth")}</Th>
-                <Th className="text-right">{t("decl.col.irYear")}</Th>
-                <Th className="text-right">{t("decl.col.netMonth")}</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ key, name, cnss, r }) => (
-                <tr key={key}>
-                  <Td>{name}</Td>
-                  <Td>{cnss ?? "—"}</Td>
-                  <Td className="text-right num">{mad(r.ir)}</Td>
-                  <Td className="text-right num">{mad(r.ir * 12)}</Td>
-                  <Td className="text-right num">{mad(r.netAPayer)}</Td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="font-semibold">
-                <Td>{t("decl.total")}</Td>
-                <Td />
-                <Td className="text-right num">{mad(totals.ir)}</Td>
-                <Td className="text-right num">{mad(totals.ir * 12)}</Td>
-                <Td />
-              </tr>
-            </tfoot>
-          </Table>
-          <p className="mt-3 text-xs text-muted-foreground">
-            {t("decl.9421.note")}
-          </p>
-        </CardContent>
-      </Card>
+      <IrAnnualCard firm={firm} year={year} />
 
       <Card>
         <CardHeader>
@@ -438,6 +397,143 @@ export default function Declarations() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ État annuel de l'IR ------------------------------------------------------------------ */
+
+/**
+ * Déclaration annuelle des traitements et salaires (CGI art. 79), construite des BULLETINS
+ * VALIDÉS de l'exercice — jamais d'une extrapolation du mois courant.
+ *
+ * L'année est celle du sélecteur de la page. Un exercice incomplet est signalé en clair : mieux
+ * vaut un état partiel qui le dit qu'un état complet qui invente.
+ */
+function IrAnnualCard({ firm, year }: { firm: Firm; year: number }) {
+  const s = useStore();
+  const [busy, setBusy] = useState(false);
+  const st = useMemo(() => buildIrAnnual(s, firm, year), [s, firm, year]);
+  const partiel = st.monthsMissing.length > 0;
+
+  async function onPdf() {
+    setBusy(true);
+    try {
+      await traceAndArchivePdf(
+        { firm, docType: "declaration_cnss", format: "pdf", subject: `État annuel IR ${year}`, periodYear: year },
+        () => exportIrAnnualPdf(st),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle>
+            <span className="inline-flex items-center gap-2">
+              <Landmark size={16} className="text-sage" />
+              État annuel de l'IR — exercice {year}
+            </span>
+          </CardTitle>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={st.rows.length === 0} onClick={() => exportIrAnnualXlsx(st)}>
+              <FileSpreadsheet size={15} /> Excel
+            </Button>
+            <Button size="sm" disabled={busy || st.rows.length === 0} onClick={() => void onPdf()}>
+              <FileDown size={15} /> PDF
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className={partiel ? "mb-3 text-sm font-medium text-warning" : "mb-3 text-sm text-muted-foreground"}>
+          {irAnnualCoverageLine(st)}
+        </p>
+
+        {st.rows.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Aucun bulletin validé sur l'exercice {year} : il n'y a rien à déclarer.
+          </p>
+        ) : (
+          <>
+            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <IrKpi label="Salariés déclarés" value={String(st.totals.count)} />
+              <IrKpi label="Brut imposable" value={mad(st.totals.brutImposableAnnuel)} />
+              <IrKpi label="Net imposable" value={mad(st.totals.netImposableAnnuel)} />
+              <IrKpi label="IR retenu à la source" value={mad(st.totals.irRetenuAnnuel)} strong />
+            </div>
+
+            <div className="overflow-x-auto">
+              <Table wide>
+                <thead>
+                  <tr>
+                    <Th>Salarié</Th>
+                    <Th>N° CNSS</Th>
+                    <Th className="text-right">Mois</Th>
+                    <Th className="text-right">Brut annuel</Th>
+                    <Th className="text-right">Exonérations</Th>
+                    <Th className="text-right">Brut imposable</Th>
+                    <Th className="text-right">Déductions</Th>
+                    <Th className="text-right">Net imposable</Th>
+                    <Th className="text-right">IR retenu</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {st.rows.map((r) => (
+                    <tr key={r.employee_id}>
+                      <Td>
+                        {r.nom} {r.prenom}
+                        {r.matricule && <span className="ml-1 text-xs text-muted-foreground">· {r.matricule}</span>}
+                      </Td>
+                      <Td className={r.cnss ? "" : "font-medium text-destructive"}>{r.cnss || "manquant"}</Td>
+                      <Td className="text-right num">{r.moisPayes}</Td>
+                      <Td className="text-right num">{mad(r.brutAnnuel)}</Td>
+                      <Td className="text-right num">{mad(r.exonerationsAnnuelles)}</Td>
+                      <Td className="text-right num">{mad(r.brutImposableAnnuel)}</Td>
+                      <Td className="text-right num">{mad(r.deductionsAnnuelles)}</Td>
+                      <Td className="text-right num">{mad(r.netImposableAnnuel)}</Td>
+                      <Td className="text-right num font-medium">{mad(r.irRetenuAnnuel)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="font-semibold">
+                    <Td>Total ({st.totals.count})</Td>
+                    <Td />
+                    <Td className="text-right num">{st.totals.moisPayes}</Td>
+                    <Td className="text-right num">{mad(st.totals.brutAnnuel)}</Td>
+                    <Td className="text-right num">{mad(st.totals.exonerationsAnnuelles)}</Td>
+                    <Td className="text-right num">{mad(st.totals.brutImposableAnnuel)}</Td>
+                    <Td className="text-right num">{mad(st.totals.deductionsAnnuelles)}</Td>
+                    <Td className="text-right num">{mad(st.totals.netImposableAnnuel)}</Td>
+                    <Td className="text-right num">{mad(st.totals.irRetenuAnnuel)}</Td>
+                  </tr>
+                </tfoot>
+              </Table>
+            </div>
+
+            {(st.missingCnss > 0 || st.missingCin > 0) && (
+              <p className="mt-3 flex items-start gap-1.5 text-xs text-destructive">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                {st.missingCnss} salarié(s) sans n° CNSS et {st.missingCin} sans CIN : à régulariser avant le dépôt.
+              </p>
+            )}
+            <p className="mt-3 text-xs text-muted-foreground">{IR_ANNUAL_DISCLAIMER}</p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function IrKpi({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className={strong ? "rounded-md border border-primary/40 bg-primary/5 p-3" : "rounded-md border bg-muted/20 p-3"}>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={strong ? "num text-lg font-semibold text-primary" : "num text-lg font-semibold"}>{value}</p>
     </div>
   );
 }

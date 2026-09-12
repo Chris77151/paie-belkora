@@ -126,6 +126,7 @@ export const ROUTE_ACCESS: Record<string, AppRole[]> = {
   "/settings": ADMIN_ROLES, // paramétrage société (le volet persistance cloud y est réservé au super admin)
   "/securite": ["super_admin"], // ZONE SENSIBLE : audit des données bancaires (RIB) — super admin uniquement
   "/stability": ["super_admin"], // Stabilisation & Calculs : audit technique — super admin uniquement
+  "/itgc": ["super_admin"], // Contrôles généraux informatiques : expose comptes, secrets et failles — super admin uniquement
   "/assistant": ["super_admin", "firm_admin", "gestionnaire_paie"], // l'IA peut modifier/supprimer des données
 };
 

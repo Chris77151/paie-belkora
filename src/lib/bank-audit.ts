@@ -6,7 +6,7 @@
  * RIB. Aucune donnée n'est inventée ; le RIB en clair ne sort jamais d'ici.
  */
 import type {
-  BankAuditEvent, BankBaseline, BankEventClass, BankSeverity,
+  BankAuditEvent, BankBaseline, BankChangeDetail, BankEventClass, BankSeverity,
 } from "@/data/types";
 import type { OdooBankRecord } from "./odoo";
 import { uid } from "@/data/store";
@@ -90,19 +90,114 @@ export function severityRank(s: BankSeverity): number {
 export function classify(input: {
   isNew: boolean;
   isDeleted: boolean;
+  /** Compte re-créé ailleurs avec la MÊME empreinte (re-création technique, pas un changement). */
+  isMoved?: boolean;
   partner_kind: OdooBankRecord["partner_kind"];
   actor_authorized: boolean;
   validated: boolean;
   on_payment: boolean;
 }): { classification: BankEventClass; severity: BankSeverity } {
   const isSupplier = input.partner_kind === "fournisseur";
-  if (input.isNew) return { classification: "NOUVEAU", severity: isSupplier ? "eleve" : "moyen" };
+  // Compte re-créé sous un autre identifiant, NUMÉRO PROUVÉ INCHANGÉ : non-événement.
+  if (input.isMoved) return { classification: "DEPLACE", severity: "info" };
+  if (input.isNew) {
+    // Un compte ajouté par une personne HABILITÉE et pas encore utilisé sur un paiement relève
+    // de l'exploitation courante. Le classer « élevé » par principe noyait le volet sous des
+    // alertes routinières — et une alerte qu'on cesse de lire ne protège plus de rien.
+    const routine = input.actor_authorized && !input.on_payment;
+    return { classification: "NOUVEAU", severity: routine ? "moyen" : isSupplier ? "eleve" : "moyen" };
+  }
   if (input.isDeleted) return { classification: "SUPPRIME", severity: "moyen" };
   if (!input.actor_authorized) {
     return { classification: "NON_AUTORISE", severity: isSupplier || input.on_payment ? "critique" : "eleve" };
   }
   if (!input.validated) return { classification: "A_VERIFIER", severity: "moyen" };
   return { classification: "AUTORISE", severity: "info" };
+}
+
+/** Quatre derniers caractères d'un masque « ****1234 ». Vide si le masque manque. */
+function tail(masked: string | undefined): string {
+  return masked ? masked.replace(/[^A-Za-z0-9]/g, "").slice(-4) : "";
+}
+
+/**
+ * Explique ce qui a RÉELLEMENT changé sur un compte.
+ *
+ * Sans cette explication, chaque ligne du volet se lit « ****1234 vers ****5678 » et pèse le
+ * même poids : l'utilisateur s'alarme autant d'une re-création technique que d'une substitution
+ * frauduleuse, puis cesse de lire le volet — et une alerte qu'on ne lit plus ne protège de rien.
+ *
+ * Règle tenue : aucun indice rassurant ne descend une gravité à lui seul. Seule une empreinte
+ * PROUVÉE identique le fait ; un fraudeur pourrait sinon fabriquer le signal.
+ */
+export function describeChange(input: {
+  classification: BankEventClass;
+  partner_kind: OdooBankRecord["partner_kind"];
+  before?: string;
+  after?: string;
+  actor_authorized: boolean;
+  on_payment: boolean;
+  previousBankId?: number;
+}): BankChangeDetail {
+  const { classification: c, before, after } = input;
+  const sameTail = !!before && !!after && tail(before) === tail(after) && tail(before).length === 4;
+  const who = input.actor_authorized ? "une personne habilitée" : "une personne NON habilitée";
+
+  if (c === "DEPLACE") {
+    return {
+      nature: `Compte re-créé sous un autre identifiant Odoo${input.previousBankId ? ` (auparavant #${input.previousBankId})` : ""} — numéro de compte inchangé.`,
+      whyAlert: "Aucune alerte : l'empreinte du numéro est identique, le compte n'a pas changé. Seul l'enregistrement technique a été refait.",
+      benign: true,
+      previousBankId: input.previousBankId,
+    };
+  }
+
+  if (c === "NOUVEAU") {
+    const routine = input.actor_authorized && !input.on_payment;
+    return {
+      nature: `Compte absent de la base de référence — ajouté par ${who}${input.on_payment ? ", et DÉJÀ utilisé sur un paiement" : ", pas encore utilisé sur un paiement"}.`,
+      whyAlert: routine
+        ? "Ajout de routine : personne habilitée, aucun paiement encore rattaché. À confirmer lors de la prochaine revue, sans urgence."
+        : input.on_payment
+          ? "Un compte inconnu déjà rattaché à un paiement est le scénario type de la fraude au virement."
+          : "Compte fournisseur inconnu : à rapprocher d'une demande écrite avant tout règlement.",
+      whatToCheck: routine
+        ? "Vérifier au prochain contrôle que ce compte figure bien sur un document du tiers."
+        : "Rapprocher d'un RIB officiel signé, et contre-appeler le tiers sur un numéro connu — jamais celui figurant sur la demande.",
+      sameTail,
+    };
+  }
+
+  if (c === "SUPPRIME") {
+    return {
+      nature: "Compte présent dans la base de référence mais absent d'Odoo : il a été supprimé ou archivé.",
+      whyAlert: "Une suppression efface la référence qui permettait de détecter un futur changement. Elle peut aussi masquer une substitution en deux temps.",
+      whatToCheck: "Confirmer que la suppression est voulue, puis réétalonner la base de référence.",
+    };
+  }
+
+  // Le numéro de compte a changé sur le MÊME enregistrement : le cœur du dispositif.
+  const nature = sameTail
+    ? "Numéro de compte modifié — les quatre derniers caractères sont identiques, ce qui évoque une correction de saisie plutôt qu'une substitution."
+    : "Numéro de compte modifié — y compris les quatre derniers caractères.";
+
+  if (c === "NON_AUTORISE") {
+    return {
+      nature,
+      whyAlert: `Modification effectuée par ${who}${input.on_payment ? ", sur un compte utilisé pour des paiements" : ""}. C'est le scénario de la fraude au virement.`,
+      whatToCheck: "Suspendre tout règlement vers ce compte, contre-appeler le tiers sur un numéro connu, et vérifier le journal des accès Odoo.",
+      // L'indice rassurant est affiché mais ne pèse RIEN sur la gravité : un fraudeur qui
+      // recopie les derniers chiffres produirait exactement ce signal.
+      sameTail,
+    };
+  }
+
+  return {
+    nature,
+    whyAlert: `Modification effectuée par ${who}, sans trace de validation par un second regard.`,
+    whatToCheck: "Rapprocher d'un RIB officiel du tiers et faire valider la modification.",
+    sameTail,
+  };
 }
 
 /** Construit une base de référence à partir de l'état courant (RIB = validés). */
@@ -138,6 +233,17 @@ export function buildAuditEvents(
   const seen = new Set<number>();
   const events: BankAuditEvent[] = [];
 
+  // Empreintes de la base de référence, pour reconnaître un compte RE-CRÉÉ sous un autre
+  // identifiant. Odoo re-crée fréquemment un `res.partner.bank` (suppression puis ressaisie du
+  // même RIB) : sans cette reconnaissance, un non-événement produisait DEUX alertes — un
+  // « supprimé » et un « nouveau » — alors que le numéro de compte n'avait pas bougé.
+  const baselineByFp = new Map<string, BankBaseline>();
+  for (const b of baseByBank.values()) {
+    if (b.fingerprint && !baselineByFp.has(b.fingerprint)) baselineByFp.set(b.fingerprint, b);
+  }
+  /** Identifiants de la baseline retrouvés ailleurs : à ne PAS signaler comme supprimés. */
+  const rehomed = new Set<number>();
+
   for (const r of records) {
     seen.add(r.odoo_bank_id);
     const base = baseByBank.get(r.odoo_bank_id);
@@ -151,8 +257,13 @@ export function buildAuditEvents(
     if (base && base.fingerprint === currentFp) continue; // inchangé → non listé
 
     const isNew = !base;
+    // Compte inconnu sous cet identifiant, mais dont l'empreinte figure DÉJÀ dans la base sous
+    // un autre : c'est le même numéro, re-créé. On le dit, au lieu d'alerter deux fois.
+    const moved = isNew ? baselineByFp.get(currentFp) : undefined;
+    if (moved) rehomed.add(moved.odoo_bank_id);
+
     const { classification, severity } = classify({
-      isNew, isDeleted: false, partner_kind: r.partner_kind,
+      isNew, isDeleted: false, isMoved: !!moved, partner_kind: r.partner_kind,
       actor_authorized: r.actor_authorized, validated: false, on_payment: r.on_payment,
     });
 
@@ -172,12 +283,23 @@ export function buildAuditEvents(
       when: r.when || nowIso,
       classification,
       severity,
+      detail: describeChange({
+        classification,
+        partner_kind: r.partner_kind,
+        before: moved ? moved.masked : base?.masked,
+        after: maskRib(r.acc_number),
+        actor_authorized: r.actor_authorized,
+        on_payment: r.on_payment,
+        previousBankId: moved?.odoo_bank_id,
+      }),
     });
   }
 
   // Comptes présents dans la baseline mais disparus d'Odoo → SUPPRIMÉ.
   for (const b of baseByBank.values()) {
     if (seen.has(b.odoo_bank_id)) continue;
+    // Retrouvé sous un autre identifiant : déjà rapporté comme « déplacé », pas comme supprimé.
+    if (rehomed.has(b.odoo_bank_id)) continue;
     events.push({
       id: uid("bev"),
       firm_id: firmId,
@@ -194,6 +316,13 @@ export function buildAuditEvents(
       when: nowIso,
       classification: "SUPPRIME",
       severity: "moyen",
+      detail: describeChange({
+        classification: "SUPPRIME",
+        partner_kind: "fournisseur",
+        before: b.masked,
+        actor_authorized: false,
+        on_payment: false,
+      }),
     });
   }
 

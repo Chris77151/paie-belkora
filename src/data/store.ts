@@ -10,6 +10,9 @@ import type {
   AppUser,
   Attachment,
   BankAuditEvent,
+  CustomRisk,
+  RiskAction,
+  RiskSnapshot,
   BankBaseline,
   ComplianceAlert,
   DocGenEvent,
@@ -95,6 +98,9 @@ function migrate(s: AppState): AppState {
   if (!Array.isArray(s.workAccidents)) s.workAccidents = [];
   if (!Array.isArray(s.documentRequests)) s.documentRequests = [];
   if (!Array.isArray(s.attachments)) s.attachments = [];
+  if (!Array.isArray(s.customRisks)) s.customRisks = [];
+  if (!Array.isArray(s.riskActions)) s.riskActions = [];
+  if (!Array.isArray(s.riskSnapshots)) s.riskSnapshots = [];
   if (!Array.isArray(s.accountingClosures)) s.accountingClosures = [];
   if (!Array.isArray(s.salaryAdvances)) s.salaryAdvances = [];
   if (!Array.isArray(s.extraYears)) s.extraYears = [];
@@ -289,14 +295,36 @@ export function canWriteData(): boolean {
 }
 
 /**
+ * Le compte connecté est-il ADMINISTRATEUR (super administrateur ou administrateur société) ?
+ *
+ * Sert aux actions destructrices de TRAÇABILITÉ — vider un journal. Le rôle est lu depuis le
+ * compte authentifié, jamais depuis une valeur modifiable dans l'interface.
+ */
+export function canAdminister(): boolean {
+  const r = sessionRole();
+  return r === "super_admin" || r === "firm_admin";
+}
+
+/** Le compte connecté est-il SUPER administrateur ? (journal des accès, zones sensibles) */
+export function isSuperAdmin(): boolean {
+  return sessionRole() === "super_admin";
+}
+
+/**
  * Applique une mutation à l'état.
  * @param opts.view  Mutation de simple ÉTAT DE VUE (ex. société active) : autorisée même en
  *                   lecture seule. Par défaut une mutation est une écriture de DONNÉES et se
  *                   trouve neutralisée pour le rôle « lecture_seule » (défense en profondeur,
  *                   en complément de la désactivation des boutons côté UI).
+ * @param opts.admin  Mutation réservée aux ADMINISTRATEURS (super admin ou admin société).
+ *                    Réservé aux actions destructrices de traçabilité : vider un journal efface
+ *                    la preuve d'actes passés, un opérateur ne doit pas pouvoir le faire.
+ * @param opts.superAdmin  Mutation réservée au SUPER administrateur seul.
  */
-function set(mutator: (s: AppState) => void, opts?: { view?: boolean }) {
+function set(mutator: (s: AppState) => void, opts?: { view?: boolean; admin?: boolean; superAdmin?: boolean }) {
   if (!opts?.view && !canWriteData()) return; // lecture seule : écriture de données ignorée
+  if (opts?.superAdmin && !isSuperAdmin()) return; // garde de dernier ressort, côté données
+  if (opts?.admin && !canAdminister()) return;
   const next: AppState = structuredClone(state);
   mutator(next);
   state = next;
@@ -534,11 +562,17 @@ export const actions = {
       s.loginEvents = capLoginEvents([...(s.loginEvents ?? []), evt]);
     }, { view: true });
   },
-  /** Purge le journal des connexions (action réservée au super administrateur côté UI). */
+  /**
+   * Purge le journal des connexions — RÉSERVÉE AU SUPER ADMINISTRATEUR.
+   *
+   * C'est le journal qu'un intrus chercherait à effacer en premier : la garde vit donc dans le
+   * store, pas seulement dans l'interface. Un bouton masqué se contourne par un appel direct ;
+   * cette condition, non.
+   */
   clearLoginEvents() {
     set((s) => {
       s.loginEvents = [];
-    });
+    }, { superAdmin: true });
   },
   /* ---- Journal des documents générés (traçabilité + KPI) ---- */
   /**
@@ -563,11 +597,17 @@ export const actions = {
       if (e) e.archive = archive;
     }, { view: true });
   },
-  /** Purge le journal des documents générés (les PDF archivés sont supprimés par l'appelant). */
+  /**
+   * Purge le journal des documents générés — RÉSERVÉE AUX ADMINISTRATEURS.
+   *
+   * Le journal fait la preuve de ce qui a été remis à un salarié : un avertissement, un solde de
+   * tout compte, un bulletin. L'effacer détruit cette preuve, ce n'est pas un geste d'exploitation
+   * courante. Les PDF archivés sont supprimés par l'appelant, avant la purge.
+   */
   clearDocGenerations() {
     set((s) => {
       s.docGenerations = [];
-    });
+    }, { admin: true });
   },
   /* ---- Pièces justificatives (métadonnées ; binaire en IndexedDB) ---- */
   /**
@@ -599,6 +639,56 @@ export const actions = {
         const odooId = byId.get(a.id);
         if (odooId != null) a._odoo_attachment_id = odooId;
       }
+    });
+  },
+  /* ---- Cartographie des risques : saisie manuelle, plan d'action, instantanés ---- */
+  /** Crée ou met à jour un risque saisi à la main. */
+  upsertCustomRisk(r: CustomRisk) {
+    set((s) => {
+      s.customRisks = s.customRisks ?? [];
+      const i = s.customRisks.findIndex((x) => x.id === r.id);
+      if (i >= 0) s.customRisks[i] = r;
+      else s.customRisks.push(r);
+    });
+  },
+  removeCustomRisk(id: string) {
+    set((s) => {
+      s.customRisks = (s.customRisks ?? []).filter((x) => x.id !== id);
+      // Le plan de traitement d'un risque supprimé n'a plus d'objet.
+      const ref = (s.customRisks ?? []).find((x) => x.id === id)?.ref;
+      if (ref) s.riskActions = (s.riskActions ?? []).filter((a) => a.risk_ref !== ref);
+    });
+  },
+  /** Crée ou met à jour une action du plan de traitement. */
+  upsertRiskAction(a: RiskAction) {
+    set((s) => {
+      s.riskActions = s.riskActions ?? [];
+      const i = s.riskActions.findIndex((x) => x.id === a.id);
+      if (i >= 0) s.riskActions[i] = { ...a, updated_at: new Date().toISOString() };
+      else s.riskActions.push(a);
+    });
+  },
+  removeRiskAction(id: string) {
+    set((s) => {
+      s.riskActions = (s.riskActions ?? []).filter((x) => x.id !== id);
+    });
+  },
+  /**
+   * Fige un instantané de l'exposition. C'est la série de ces points qui rend l'amélioration
+   * visible : un score résiduel seul ne dit pas si le dispositif progresse ou se dégrade.
+   */
+  addRiskSnapshot(input: Omit<RiskSnapshot, "id" | "taken_at" | "taken_by">): string {
+    const snap: RiskSnapshot = {
+      ...input, id: uid("snap"), taken_at: new Date().toISOString(), taken_by: sessionUsername(),
+    };
+    set((s) => {
+      s.riskSnapshots = [...(s.riskSnapshots ?? []), snap];
+    });
+    return snap.id;
+  },
+  removeRiskSnapshot(id: string) {
+    set((s) => {
+      s.riskSnapshots = (s.riskSnapshots ?? []).filter((x) => x.id !== id);
     });
   },
   /** Retire la métadonnée d'une pièce. Le binaire est supprimé par l'appelant (IndexedDB). */

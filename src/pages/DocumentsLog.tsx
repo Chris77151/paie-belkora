@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FileClock, FileText, Users, CalendarClock, Trash2, TrendingUp, TrendingDown, FileDown, CloudOff } from "lucide-react";
 import { actions, currentFirm, useStore } from "@/data/store";
+import { ADMIN_ROLES, useSession } from "@/lib/auth";
 import { useT, type TKey } from "@/lib/i18n";
 import { computeDocKpis } from "@/lib/doc-log";
 import { formatBytes } from "@/lib/attachments";
@@ -49,6 +50,9 @@ export default function DocumentsLog() {
   const s = useStore();
   const t = useT();
   const firm = currentFirm(s);
+  // Vider le journal détruit la preuve de ce qui a été remis à un salarié : réservé aux
+  // administrateurs, et masqué — plutôt que présenté puis refusé — pour les autres rôles.
+  const isAdmin = ADMIN_ROLES.includes(useSession()?.role ?? "lecture_seule");
   const [typeFilter, setTypeFilter] = useState<"all" | DocType>("all");
 
   // Périmètre : société active (comme les autres volets). Le « maintenant » est figé au rendu.
@@ -98,8 +102,11 @@ export default function DocumentsLog() {
   return (
     <div>
       <PageHeader title={t("page.doclog.title")} subtitle={`${t("page.doclog.sub")} · ${firm.name}`}>
-        {events.length > 0 && (
-          <Button variant="outline" size="sm" className="text-destructive" onClick={clearLog}>
+        {events.length > 0 && isAdmin && (
+          <Button
+            variant="outline" size="sm" className="text-destructive" onClick={clearLog}
+            title="Action réservée aux administrateurs : la purge détruit la preuve des documents remis."
+          >
             <Trash2 size={15} /> {t("doclog.clear")}
           </Button>
         )}
@@ -204,7 +211,7 @@ export default function DocumentsLog() {
                       {archived} PDF archivé{archived > 1 ? "s" : ""}
                     </Badge>
                   )}
-                  <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)} className="w-52">
+                  <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)} className="w-full sm:w-52">
                     <option value="all">{t("doclog.filter.allTypes")}</option>
                     {(Object.keys(TYPE_KEY) as DocType[]).map((k) => (
                       <option key={k} value={k}>{t(TYPE_KEY[k])}</option>
@@ -213,7 +220,7 @@ export default function DocumentsLog() {
                 </div>
               </div>
             </CardHeader>
-            <Table>
+            <Table wide>
               <thead>
                 <tr>
                   <Th>{t("doclog.col.date")}</Th>

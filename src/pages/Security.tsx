@@ -21,6 +21,7 @@ const CLASS_META: Record<BankEventClass, { labelKey: TKey; tone: Parameters<type
   NON_AUTORISE: { labelKey: "sec.class.NON_AUTORISE", tone: "destructive" },
   A_VERIFIER: { labelKey: "sec.class.A_VERIFIER", tone: "warning" },
   NOUVEAU: { labelKey: "sec.class.NOUVEAU", tone: "primary" },
+  DEPLACE: { labelKey: "sec.class.DEPLACE", tone: "muted" },
   SUPPRIME: { labelKey: "sec.class.SUPPRIME", tone: "muted" },
   AUTORISE: { labelKey: "sec.class.AUTORISE", tone: "success" },
 };
@@ -58,6 +59,9 @@ export default function Security() {
   const [busy, setBusy] = useState<"scan" | "baseline" | null>(null);
   const [warn, setWarn] = useState<string | null>(null);
   const [classFilter, setClassFilter] = useState<string>("all");
+  // Masqués par défaut : les changements dont le numéro de compte est PROUVÉ inchangé. Les
+  // laisser dans la liste noyait les vraies alertes sous des re-créations techniques.
+  const [hideBenign, setHideBenign] = useState(true);
 
   const events = useMemo(
     () => (s.bankAudit ?? []).filter((e) => e.firm_id === firm.id),
@@ -65,9 +69,11 @@ export default function Security() {
   );
   const baselineCount = (s.bankBaseline ?? []).filter((b) => b.firm_id === firm.id).length;
   const critical = events.filter((e) => e.severity === "critique");
+  const benignCount = events.filter((e) => e.detail?.benign).length;
 
   const rows = events
     .filter((e) => classFilter === "all" || e.classification === classFilter)
+    .filter((e) => !hideBenign || !e.detail?.benign)
     .sort((a, b) => severityRank(a.severity) - severityRank(b.severity));
 
   function guardOdoo(): boolean {
@@ -179,22 +185,33 @@ export default function Security() {
           <span className="text-xs text-muted-foreground">
             {events.length} {t("sec.eventsCount1")} {baselineCount} {t("sec.eventsCount2")}
           </span>
-          <Select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="ml-auto w-48">
+          {benignCount > 0 && (
+            <label
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+              title="Comptes re-créés sous un autre identifiant Odoo, numéro de compte prouvé inchangé."
+            >
+              <input type="checkbox" checked={hideBenign} onChange={(ev) => setHideBenign(ev.target.checked)} />
+              {t("sec.hideBenign")} ({benignCount})
+            </label>
+          )}
+          <Select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="ml-auto w-full sm:w-48">
             <option value="all">{t("sec.filter.all")}</option>
             <option value="NON_AUTORISE">{t("sec.class.NON_AUTORISE")}</option>
             <option value="A_VERIFIER">{t("sec.class.A_VERIFIER")}</option>
             <option value="NOUVEAU">{t("sec.class.NOUVEAU")}</option>
             <option value="SUPPRIME">{t("sec.class.SUPPRIME")}</option>
+            <option value="DEPLACE">{t("sec.class.DEPLACE")}</option>
             <option value="AUTORISE">{t("sec.class.AUTORISE")}</option>
           </Select>
         </CardContent>
       </Card>
 
       <Card>
-        <Table>
+        <Table wide>
           <thead>
             <tr>
               <Th>{t("sec.col.partner")}</Th><Th>{t("lv.col.type")}</Th><Th>{t("sec.col.rib")}</Th><Th>{t("sec.col.actor")}</Th>
+              <Th>{t("sec.col.change")}</Th>
               <Th>{t("sec.col.class")}</Th><Th>{t("cmp.col.severity")}</Th><Th>{t("acc.col.date")}</Th>
             </tr>
           </thead>
@@ -210,6 +227,25 @@ export default function Security() {
                   <div className="font-medium">{e.actor_name}</div>
                   <div className="text-muted-foreground">{e.actor_login}</div>
                 </Td>
+                <Td className="max-w-md text-xs">
+                  {e.detail ? (
+                    <>
+                      <p className="text-foreground">{e.detail.nature}</p>
+                      <p className="mt-0.5 text-muted-foreground">{e.detail.whyAlert}</p>
+                      {e.detail.whatToCheck && (
+                        <p className="mt-0.5 text-muted-foreground">
+                          <span className="font-medium text-foreground">À vérifier — </span>{e.detail.whatToCheck}
+                        </p>
+                      )}
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {e.detail.benign && <Badge tone="muted">{t("sec.benign.badge")}</Badge>}
+                        {e.detail.sameTail && <Badge tone="muted">{t("sec.sameTail")}</Badge>}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </Td>
                 <Td><Badge tone={CLASS_META[e.classification].tone}>{t(CLASS_META[e.classification].labelKey)}</Badge></Td>
                 <Td><Badge tone={SEV_TONE[e.severity]}>{e.severity}</Badge></Td>
                 <Td className="text-muted-foreground text-xs">{e.when ? dateFr(e.when.slice(0, 10)) : "—"}</Td>
@@ -217,7 +253,7 @@ export default function Security() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <Td colSpan={7} className="py-8 text-center text-muted-foreground">
+                <Td colSpan={8} className="py-8 text-center text-muted-foreground">
                   {t("sec.empty")}
                 </Td>
               </tr>

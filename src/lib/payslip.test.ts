@@ -96,3 +96,85 @@ describe("bulletin — « Partie réservée à l'employeur » optionnelle", () =
     expect(without).toContain(net);
   });
 });
+
+/* ==================================================================================
+ * Bulletin — traitement des indemnités : la mention « exonérée » doit être VRAIE
+ * ================================================================================== */
+describe("bulletin — part exonérée et part réintégrée des indemnités", () => {
+  /** Bulletin HTML pour un mois de 26 jours avec les indemnités données. */
+  const html = (panier: number, transport: number, salissure = 0, outside = false) => {
+    const r = computePayslip({
+      year: 2026, month: 6, regime: "SMIG", hireDate: employee.hire_date, dependents: 1,
+      hourlyRate: 30, daysWorked: 26, hoursNormal: 191, hoursOt25: 0, hoursOt50: 0, hoursOt100: 0,
+      panier, transport, salissure, otherGross: 0, transportOutsideUrban: outside,
+    });
+    return {
+      out: buildPayslipHtml({
+        firm, employee, period, result: r,
+        input: { ...defaultInput(employee), panier, transport, salissure, transport_outside_urban: outside },
+      }),
+      r,
+    };
+  };
+
+  it("sous le plafond : une seule ligne, « exonérée » sans réserve", () => {
+    const { out } = html(500, 300); // plafond panier 26 j = 931,84 ; transport 500
+    expect(out).toContain("Prime de panier (exonérée)");
+    expect(out).toContain("Indemnité de transport (exonérée)");
+    expect(out).not.toContain("part imposable");
+  });
+
+  it("AU-DESSUS du plafond : la part réintégrée est affichée, plus aucune mention « exonérée » sur le tout", () => {
+    const { out, r } = html(2000, 900);
+    // Le moteur réintègre : 2000 - 931,84 = 1068,16 et 900 - 500 = 400.
+    expect(r.panierExonere).toBe(931.84);
+    expect(r.transportExonere).toBe(500);
+    expect(out).toContain("Prime de panier (part exonérée)");
+    expect(out).toContain("Prime de panier (part imposable — au-delà du plafond)");
+    expect(out).toContain("Indemnité de transport (part imposable — au-delà du plafond)");
+    // Le montant total ne doit JAMAIS être présenté comme exonéré.
+    expect(out).not.toContain("Prime de panier (exonérée)");
+  });
+
+  it("le plafond hors périmètre urbain (750) est bien celui appliqué au bulletin", () => {
+    const dansPlafond = html(0, 700, 0, true);
+    expect(dansPlafond.out).toContain("Indemnité de transport (exonérée)");
+    const horsPlafond = html(0, 800, 0, true);
+    expect(horsPlafond.out).toContain("Indemnité de transport (part imposable — au-delà du plafond)");
+  });
+
+  it("aucun jour travaillé : le plafond panier est nul, l'indemnité est donc entièrement imposable", () => {
+    const r = computePayslip({
+      year: 2026, month: 6, regime: "SMIG", hireDate: employee.hire_date, dependents: 1,
+      hourlyRate: 30, daysWorked: 0, hoursNormal: 191, hoursOt25: 0, hoursOt50: 0, hoursOt100: 0,
+      panier: 500, transport: 0, salissure: 0, otherGross: 0,
+    });
+    expect(r.panierExonere).toBe(0);
+    const out = buildPayslipHtml({
+      firm, employee, period, result: r,
+      input: { ...defaultInput(employee), days_worked: 0, panier: 500 },
+    });
+    expect(out).toContain("Prime de panier (part imposable — au-delà du plafond)");
+    expect(out).not.toContain("Prime de panier (part exonérée)"); // rien n'est exonéré
+  });
+
+  it("le bulletin justifie l'écart brut / assiette : BRUT − exonérations = SBI", () => {
+    const { out, r } = html(2000, 900);
+    expect(out).toContain("dont indemnités exonérées");
+    // L'identité doit tenir au centime, sinon la ligne ajoutée induirait en erreur.
+    expect(Math.round((r.salaireBrut - r.indemnitesExonerees) * 100) / 100).toBe(r.sbi);
+  });
+
+  it("LaTeX : même traitement que le HTML — les trois rendus partagent la source des lignes", () => {
+    const r = computePayslip({
+      year: 2026, month: 6, regime: "SMIG", hireDate: employee.hire_date, dependents: 1,
+      hourlyRate: 30, daysWorked: 26, hoursNormal: 191, hoursOt25: 0, hoursOt50: 0, hoursOt100: 0,
+      panier: 2000, transport: 0, salissure: 0, otherGross: 0,
+    });
+    const tex = buildPayslipLatex({
+      firm, employee, period, result: r,
+      input: { ...defaultInput(employee), panier: 2000 },
+    });
+    expect(tex).toContain("part imposable");
+  });
+});

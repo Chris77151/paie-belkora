@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import {
   ShieldAlert, FileDown, FileSpreadsheet, ChevronDown, ChevronRight,
-  CheckCircle2, XCircle, TrendingDown, Target, Cpu, Hand,
+  CheckCircle2, XCircle, TrendingDown, Target, Cpu, Hand, Camera,
 } from "lucide-react";
-import { currentFirm, useStore } from "@/data/store";
+import { actions, currentFirm, useStore } from "@/data/store";
 import {
   AUTOMATION_LABEL, CATEGORY_LABEL, CONTROL_TYPE_LABEL, RISK_DISCLAIMER, STEPS, STEP_LABEL,
   buildRiskMap, controlGaps, criticityMatrix, exposure,
@@ -17,6 +17,8 @@ import {
   Badge, Button, Card, CardContent, CardHeader, CardTitle, Kpi, PageHeader, Select, Table, Td, Th,
 } from "@/components/ui/kit";
 import { cn } from "@/lib/cn";
+import { useCanWrite } from "@/lib/auth";
+import { ActionPlanCard, CustomRisksCard, ImprovementCard } from "@/components/RiskPanels";
 
 /** Tons du kit par niveau — sémantique de gravité, distincte de la couleur de marque. */
 const LEVEL_TONE: Record<RiskLevel, Parameters<typeof Badge>[0]["tone"]> = {
@@ -47,8 +49,22 @@ export default function Risks() {
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const canEdit = useCanWrite();
+  const customRisks = useMemo(
+    () => (s.customRisks ?? []).filter((c) => c.firm_id === firm.id),
+    [s.customRisks, firm.id],
+  );
+  const riskActions = useMemo(
+    () => (s.riskActions ?? []).filter((a) => a.firm_id === firm.id),
+    [s.riskActions, firm.id],
+  );
+  const snapshots = useMemo(
+    () => (s.riskSnapshots ?? []).filter((x) => x.firm_id === firm.id).sort((a, b) => a.asOf.localeCompare(b.asOf)),
+    [s.riskSnapshots, firm.id],
+  );
+
   const facts = useMemo(() => collectRiskFacts(s, firm, asOf), [s, firm, asOf]);
-  const all = useMemo(() => buildRiskMap(facts, appetite), [facts, appetite]);
+  const all = useMemo(() => buildRiskMap(facts, appetite, undefined, customRisks), [facts, appetite, customRisks]);
   const risks = useMemo(
     () => (stepFilter === "all" ? all : all.filter((r) => r.step === stepFilter)),
     [all, stepFilter],
@@ -63,7 +79,7 @@ export default function Risks() {
     try {
       await traceAndArchivePdf(
         { firm, docType: "regularisation", format: "pdf", subject: `Cartographie des risques - ${asOf}` },
-        () => exportRiskPdf(firm, risks, appetite, asOf),
+        () => exportRiskPdf({ firm, risks, appetite, asOf, actions: riskActions, snapshots }),
       );
     } finally {
       setBusy(false);
@@ -76,11 +92,26 @@ export default function Risks() {
         title="Cartographie des risques"
         subtitle={`Processus paie · ${firm.name} · arrêtée au ${asOf}`}
       >
-        <Button variant="outline" onClick={() => exportRiskXlsx(firm, risks, appetite, asOf)}>
+        <Button variant="outline" onClick={() => exportRiskXlsx({ firm, risks, appetite, asOf, actions: riskActions, snapshots })}>
           <FileSpreadsheet size={16} /> Excel
         </Button>
         <Button onClick={() => void onPdf()} disabled={busy}>
           <FileDown size={16} /> PDF
+        </Button>
+        <Button
+          variant="sage"
+          disabled={!canEdit}
+          title="Fige l'exposition du jour pour pouvoir la comparer aux mesures suivantes."
+          onClick={() => {
+            actions.addRiskSnapshot({
+              firm_id: firm.id, asOf, appetite,
+              count: e.count, grossTotal: e.grossTotal, residualTotal: e.residualTotal,
+              aboveAppetite: e.aboveAppetite, controlsProven: e.controlsProven, controlsTotal: e.controlsTotal,
+              residualByLevel: { ...e.residualByLevel },
+            });
+          }}
+        >
+          <Camera size={16} /> Figer un point de mesure
         </Button>
       </PageHeader>
 
@@ -98,7 +129,7 @@ export default function Risks() {
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Périmètre
-            <Select value={stepFilter} onChange={(ev) => setStepFilter(ev.target.value as typeof stepFilter)} className="w-64">
+            <Select value={stepFilter} onChange={(ev) => setStepFilter(ev.target.value as typeof stepFilter)} className="w-full sm:w-64">
               <option value="all">Tout le processus</option>
               {STEPS.map((st) => (
                 <option key={st} value={st}>{STEP_LABEL[st]}</option>
@@ -107,7 +138,7 @@ export default function Risks() {
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             Appétence — score résiduel maximal accepté
-            <Select value={String(appetite)} onChange={(ev) => setAppetite(Number(ev.target.value))} className="w-64">
+            <Select value={String(appetite)} onChange={(ev) => setAppetite(Number(ev.target.value))} className="w-full sm:w-64">
               <option value="4">4 — n'accepter que le faible</option>
               <option value="9">9 — accepter jusqu'au modéré (défaut)</option>
               <option value="14">14 — accepter jusqu'à l'élevé</option>
@@ -233,7 +264,7 @@ export default function Risks() {
             <span className="text-xs text-muted-foreground">{risks.length} risques · cliquer une ligne pour voir son dispositif</span>
           </div>
         </CardHeader>
-        <Table>
+        <Table wide>
           <thead>
             <tr>
               <Th>Réf</Th>
@@ -292,6 +323,21 @@ export default function Risks() {
           </CardContent>
         </Card>
       )}
+
+      {/* Suivi de l'amélioration */}
+      <ImprovementCard snapshots={snapshots} current={e} asOf={asOf} canEdit={canEdit} />
+
+      {/* Risques saisis à la main */}
+      <CustomRisksCard firmId={firm.id} risks={customRisks} canEdit={canEdit} />
+
+      {/* Plan de traitement */}
+      <ActionPlanCard
+        firmId={firm.id}
+        plan={riskActions}
+        openRefs={all.filter((r) => r.aboveAppetite).map((r) => r.ref)}
+        asOf={asOf}
+        canEdit={canEdit}
+      />
 
       {/* Méthode */}
       <Card>

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Calculator, FileText, ShieldAlert,
   CalendarDays, Settings, Moon, Sun, Sprout, BookText, FileSignature,
   Search, UserRound, ShieldCheck, Bot, ScanSearch, LogOut, Menu, X, HardHat, Languages, Lock as LockIcon, Activity, FileClock,
-  ClipboardList, BookMarked, Radar,
+  ClipboardList, BookMarked, Radar, ServerCog,
 } from "lucide-react";
 import { actions, currentFirm, deriveAlerts, useStore } from "@/data/store";
 import { Select } from "@/components/ui/kit";
@@ -39,6 +39,7 @@ const NAV_GROUPS: { labelKey: TKey; items: NavItem[] }[] = [
   ] },
   { labelKey: "nav.group.systeme", items: [
     { to: "/assistant", labelKey: "nav.assistant", icon: Bot },
+    { to: "/itgc", labelKey: "nav.itgc", icon: ServerCog },
     { to: "/stability", labelKey: "nav.stability", icon: Activity },
     { to: "/settings", labelKey: "nav.settings", icon: Settings },
   ] },
@@ -264,7 +265,10 @@ export default function Layout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-5 md:p-8 max-w-[1400px] w-full mx-auto">
+        {/* `min-w-0` : un enfant flex refuse par défaut de descendre sous la largeur de son
+            contenu. Sans cette classe, un tableau large élargit toute la page au lieu de
+            défiler dans son propre conteneur — et la mise en page part en biais. */}
+        <main className="mx-auto w-full min-w-0 max-w-[1400px] flex-1 p-4 sm:p-5 md:p-8">
           <Outlet />
         </main>
       </div>

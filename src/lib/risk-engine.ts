@@ -27,6 +27,7 @@ import {
   MAX_ABATEMENT_POINTS,
   type RiskLevel,
 } from "./risk-params";
+import type { CustomRisk } from "@/data/types";
 
 /* ============================================================ types ============================================================ */
 
@@ -101,7 +102,9 @@ export type FactKey =
   | "accountingLocked"
   | "docArchiveActive"
   | "declarationsOnTime"
-  | "noMinorAlert";
+  | "noMinorAlert"
+  /** Preuve ÉCRITE fournie pour un contrôle saisi à la main. */
+  | "declaredProven";
 
 /** Un contrôle du dispositif de maîtrise. */
 export interface RiskControl {
@@ -474,6 +477,51 @@ export const RISK_CATALOGUE: RiskDefinition[] = [
   },
 ];
 
+/* ============================================================ risques saisis ============================================================ */
+
+/**
+ * Convertit un risque saisi à la main en définition du référentiel, pour qu'il soit coté,
+ * exporté et suivi EXACTEMENT comme les autres. Un risque propre à l'entité n'est pas un
+ * citoyen de seconde zone de la cartographie.
+ *
+ * Différence de fond : la preuve d'un contrôle saisi est DÉCLARÉE, pas constatée. On l'exige
+ * donc écrite — un contrôle coché « prouvé » sans preuve renseignée n'abat rien, exactement
+ * comme un contrôle déclaratif du référentiel.
+ */
+export function customToDefinition(c: CustomRisk): RiskDefinition {
+  const clamp = (n: number) => Math.min(5, Math.max(1, Math.round(n))) as 1 | 2 | 3 | 4 | 5;
+  return {
+    ref: c.ref,
+    step: (STEPS as string[]).includes(c.step) ? (c.step as RiskStep) : "collecte",
+    category: (Object.keys(CATEGORY_LABEL) as string[]).includes(c.category)
+      ? (c.category as RiskCategory) : "operationnel",
+    event: c.event,
+    basis: c.basis || "Base à préciser",
+    grossLikelihood: clamp(c.grossLikelihood),
+    grossImpact: clamp(c.grossImpact),
+    controls: c.controls.map((ct) => ({
+      id: ct.id,
+      label: ct.label,
+      type: (["preventif", "detectif", "correctif"] as string[]).includes(ct.type) ? (ct.type as ControlType) : "preventif",
+      automation: (["automatique", "semi", "manuel"] as string[]).includes(ct.automation) ? (ct.automation as ControlAutomation) : "manuel",
+      strength: (["fort", "moyen", "faible"] as string[]).includes(ct.strength) ? (ct.strength as ControlStrength) : "moyen",
+      // Preuve exigée par écrit : cocher « prouvé » ne suffit pas.
+      proof: ct.proven && ct.evidence?.trim() ? "declaredProven" : undefined,
+      note: ct.proven && !ct.evidence?.trim()
+        ? "Déclaré appliqué mais AUCUNE preuve renseignée : n'abat rien tant que la preuve manque."
+        : ct.evidence?.trim() || undefined,
+    })),
+  };
+}
+
+/** Référence libre disponible pour un nouveau risque saisi : L01, L02… */
+export function nextCustomRef(existing: CustomRisk[]): string {
+  let n = 1;
+  const used = new Set(existing.map((c) => c.ref.toUpperCase()));
+  while (used.has(`L${String(n).padStart(2, "0")}`)) n += 1;
+  return `L${String(n).padStart(2, "0")}`;
+}
+
 /* ============================================================ moteur ============================================================ */
 
 /** Le contrôle est-il PROUVÉ ? Sans clé de preuve (contrôle déclaratif), la réponse est non. */
@@ -606,9 +654,17 @@ export function exposure(risks: AssessedRisk[]): RiskExposure {
  * Cartographie complète : chaque risque du référentiel évalué contre les faits constatés,
  * trié du résiduel le plus élevé au plus faible (l'attention va où le risque reste).
  */
-export function buildRiskMap(facts: RiskFacts, appetite = DEFAULT_APPETITE, catalogue = RISK_CATALOGUE): AssessedRisk[] {
-  return catalogue
-    .map((d) => assessRisk(d, facts, appetite))
+export function buildRiskMap(
+  facts: RiskFacts,
+  appetite = DEFAULT_APPETITE,
+  catalogue = RISK_CATALOGUE,
+  custom: CustomRisk[] = [],
+): AssessedRisk[] {
+  // Un contrôle saisi ne devient « prouvé » que si sa preuve écrite a été renseignée : c'est
+  // `customToDefinition` qui pose la clé, on se contente ici de la reconnaître.
+  const merged = [...catalogue, ...custom.map(customToDefinition)];
+  return merged
+    .map((d) => assessRisk(d, { ...facts, declaredProven: true }, appetite))
     .sort((a, b) => b.residualScore - a.residualScore || b.grossScore - a.grossScore || a.ref.localeCompare(b.ref));
 }
 
