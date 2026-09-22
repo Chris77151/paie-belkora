@@ -38,6 +38,8 @@ import { DOC_TITLES } from "./doc-titles";
 export interface DeclarationRow {
   name: string;
   cnss?: string;
+  /** Salaire brut SOUMIS À COTISATIONS (assiette CNSS) — et non l'assiette fiscale : le
+   *  bordereau est une déclaration sociale. Alimenté depuis `PayrollResult.assietteCnss`. */
   sbi: number;
   plafonne: number;
   cnssSal: number;

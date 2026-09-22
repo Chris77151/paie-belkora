@@ -70,7 +70,7 @@ function defaults(v: PayslipView): PayslipInput {
     v.input ?? {
       days_worked: 26, hours_normal: v.employee.monthly_hours,
       hours_ot_25: 0, hours_ot_50: 0, hours_ot_100: 0,
-      panier: 0, transport: 0, salissure: 0, other_gross: 0,
+      panier: 0, transport: 0, salissure: 0, lait: 0, representation: 0, other_gross: 0,
     }
   );
 }
@@ -90,19 +90,26 @@ interface Row { cells: [string, string, string, string, string]; kind: RowKind }
  * `perDay > 0` fait apparaître le nombre de jours et le montant journalier (panier, transport) ;
  * la salissure, forfaitaire, n'en a pas.
  */
-function pushIndemnite(rows: Row[], label: string, montant: number, exonere: number, perDay: number): void {
+function pushIndemnite(
+  rows: Row[], label: string, montant: number, exonere: number, perDay: number, exonereCnss?: number,
+): void {
   if (!(montant > 0)) return;
   const exo = Math.min(Math.max(exonere, 0), montant);
   const reintegre = round2(montant - exo);
   const nb = perDay > 0 ? f(perDay) : "";
   const taux = perDay > 0 ? f(montant / perDay) : "";
+  // Quand le barème social diffère du barème fiscal, le libellé le dit : la part exonérée affichée
+  // est la part FISCALE, et le salarié doit savoir qu'elle n'est pas la même côté cotisations.
+  const cnssNote = exonereCnss != null && round2(exonereCnss) !== round2(exo)
+    ? ` — CNSS : exonérée ${f(Math.min(Math.max(exonereCnss, 0), montant))}`
+    : "";
 
   if (reintegre <= 0) {
-    rows.push({ cells: [`${label} (exonérée)`, nb, taux, f(montant), ""], kind: "normal" });
+    rows.push({ cells: [`${label} (exonérée)${cnssNote}`, nb, taux, f(montant), ""], kind: "normal" });
     return;
   }
   if (exo > 0) {
-    rows.push({ cells: [`${label} (part exonérée)`, nb, taux, f(exo), ""], kind: "normal" });
+    rows.push({ cells: [`${label} (part exonérée)${cnssNote}`, nb, taux, f(exo), ""], kind: "normal" });
   }
   rows.push({
     cells: [`${label} (part imposable — au-delà du plafond)`, "", "", f(reintegre), ""],
@@ -135,9 +142,21 @@ function mainRows(v: PayslipView): Row[] {
   // moteur, lui, réintègre bien l'excédent au SBI (2 x SMIG horaire par jour travaillé pour le
   // panier, 500/750 DH pour le transport). Deux lignes plutôt qu'une : la somme des gains reste
   // égale au brut, et l'écart « BRUT - SBI » se lit directement sur le bulletin.
-  pushIndemnite(rows, "Prime de panier", inp.panier, r.panierExonere, days);
-  pushIndemnite(rows, "Indemnité de transport", inp.transport, r.transportExonere, days);
-  pushIndemnite(rows, "Indemnité de salissure", inp.salissure, r.salissureExoneree, 0);
+  // Toutes les indemnités du barème, dans l'ordre du barème, depuis le détail calculé par le
+  // moteur — aucune indemnité versée ne peut donc manquer au bulletin. Un bulletin figé avant
+  // l'introduction du détail retombe sur les cinq indemnités historiques.
+  const perDayKeys = new Set(["panier", "transport", "titres_restaurant"]);
+  if (r.indemnitesDetail && r.indemnitesDetail.length > 0) {
+    for (const l of r.indemnitesDetail) {
+      pushIndemnite(rows, l.label, l.montant, l.exoIr, perDayKeys.has(l.key) ? days : 0, l.exoCnss);
+    }
+  } else {
+    pushIndemnite(rows, "Prime de panier", inp.panier, r.panierExonere, days);
+    pushIndemnite(rows, "Indemnité de transport", inp.transport, r.transportExonere, days);
+    pushIndemnite(rows, "Indemnité de salissure", inp.salissure, r.salissureExoneree, 0);
+    pushIndemnite(rows, "Indemnité de lait", inp.lait ?? 0, r.laitExonere ?? 0, 0);
+    pushIndemnite(rows, "Indemnité de représentation", inp.representation ?? 0, r.representationExonere ?? 0, 0);
+  }
   if (inp.other_gross > 0)
     rows.push({ cells: ["Primes / gains soumis", "", "", f(inp.other_gross), ""], kind: "normal" });
 
@@ -147,10 +166,16 @@ function mainRows(v: PayslipView): Row[] {
   if (r.indemnitesExonerees > 0) {
     rows.push({ cells: ["dont indemnités exonérées (déduites de l'assiette)", "", "", f(-r.indemnitesExonerees), ""], kind: "italic" });
   }
-  rows.push({ cells: ["Salaire brut soumis à cotisations", f(r.sbi), "", "", ""], kind: "italic" });
+  const assietteCnss = r.assietteCnss ?? r.sbi;
+  rows.push({ cells: ["Salaire brut soumis à cotisations", f(assietteCnss), "", "", ""], kind: "italic" });
+  // L'assiette de l'IR n'est affichée à part que si elle diffère : sans divergence de barème, une
+  // ligne de plus ne dirait rien de nouveau.
+  if (round2(assietteCnss) !== round2(r.sbi)) {
+    rows.push({ cells: ["Salaire brut imposable (IR)", f(r.sbi), "", "", ""], kind: "italic" });
+  }
 
   rows.push({ cells: ["CNSS prestations sociales", f(r.employerDetail.cnssBase), pctv(p.cnssEmployeeRate), "", f(r.cnssSalarie)], kind: "normal" });
-  rows.push({ cells: ["AMO", f(r.sbi), pctv(p.amoEmployeeRate), "", f(r.amoSalarie)], kind: "normal" });
+  rows.push({ cells: ["AMO", f(assietteCnss), pctv(p.amoEmployeeRate), "", f(r.amoSalarie)], kind: "normal" });
   rows.push({ cells: ["Total cotisations salariales", "", "", "", f(r.cnssSalarie + r.amoSalarie)], kind: "bold" });
 
   // Abattement fiscal (art. 59 CGI) : sert au SEUL calcul de l'IR, ce N'EST PAS une retenue

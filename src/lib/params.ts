@@ -83,6 +83,12 @@ export interface PayrollParams {
   panierPerDayCapFactor: number; // 2 x SMIG horaire / jour travaillé
   transportIntraUrbanCap: number; // 500 DH/mois
   transportOutsideUrbanCap: number; // 750 DH/mois
+  /**
+   * Barème des indemnités exonérées — plafonds IR et CNSS DISTINCTS (cf. `IndemniteDef`).
+   * Remplace les plafonds infinis `laitCap` / `representationCap` : une indemnité exonérée sans
+   * limite est un trou dans l'assiette, pas une exonération.
+   */
+  indemnitesBareme: IndemniteDef[];
 
   /**
    * Plafond mensuel de retenue d'une AVANCE / prêt employeur = 1/10 du salaire échu
@@ -213,6 +219,218 @@ export interface StcParams {
   cddEndRate: number;
 }
 
+/* ============================================================================================
+ * INDEMNITÉS EXONÉRÉES — barème établi sur les DEUX TEXTES OFFICIELS
+ * ============================================================================================
+ *
+ * CNSS — Arrêté de la ministre de l'Économie et des Finances n° 1314-25 du 21 kaada 1446
+ *        (19 mai 2025), pris pour l'application du décret n° 2-25-266, publié au Bulletin
+ *        officiel n° 7443 du 29 septembre 2025 (édition arabe, p. 7324-7332), en vigueur au
+ *        1er octobre 2025. Annexe : 7 titres, 44 éléments. Référencé ci-dessous « BO 7443 ».
+ *
+ * IR   — Note de service de la Direction générale des impôts du 13 mars 2017, « Exonérations
+ *        des indemnités prévues par l'article 57-1° du CGI », tableau récapitulatif des plafonds.
+ *        Référencée ci-dessous « note DGI 2017 ». Elle précise : « Le montant de ces indemnités
+ *        est indexé au SMIG horaire » pour l'outillage, la salissure et le lait. La base de
+ *        l'indexation est le SMIG horaire en vigueur à la date de la note, 13,46 DH ; la
+ *        méthode (proportionnelle) est la lecture retenue de cette mention.
+ *
+ * Les deux textes ne donnent PAS les mêmes plafonds : la CNSS exprime la caisse, le lait,
+ * l'outillage et la salissure en multiples du SMIG horaire par 26 jours travaillés ; l'IR les
+ * exprime en dirhams (indexés, sauf la caisse). D'où deux assiettes distinctes dans le moteur.
+ *
+ * À faire valider par l'expert-comptable avant tout usage déclaratif.
+ */
+
+/** Indemnités prises en charge par le barème. */
+export type IndemniteKey =
+  | "panier" | "titres_restaurant" | "transport" | "salissure" | "usure_vetements" | "lait"
+  | "caisse" | "outillage" | "representation" | "deplacement" | "kilometrique" | "tournee"
+  | "mutation" | "voiture_service" | "gratification_sociale";
+
+/** Mode de calcul d'un plafond d'exonération. */
+export type CapRule =
+  /** Montant fixe par mois. */
+  | { kind: "fixe_mois"; amount: number }
+  /** Montant fixe par jour travaillé, borné le cas échéant à un % du brut imposable. */
+  | { kind: "fixe_jour"; amount: number; maxPctBrut?: number }
+  /** Multiple du SMIG horaire par jour travaillé, borné le cas échéant à un % du brut imposable. */
+  | { kind: "smig_jour"; factor: number; maxPctBrut?: number }
+  /** Multiple du SMIG horaire par tranche de 26 jours travaillés (formulation du BO 7443). */
+  | { kind: "smig_26j"; factor: number }
+  /** Montant fixé à une date, indexé proportionnellement au SMIG horaire (note DGI 2017). */
+  | { kind: "indexe_smig"; base: number; smigRef: number }
+  /** Pourcentage du salaire de base du mois, avec un plafond absolu éventuel. */
+  | { kind: "pct_base"; rate: number; max?: number }
+  /** Montant par kilomètre déclaré (`kmField` : quel kilométrage). */
+  | { kind: "par_km"; rate: number; kmField: "km_professionnels" | "km_mutation" }
+  /** Montant fixe par an : le plafond se CONSOMME d'un mois sur l'autre. */
+  | { kind: "fixe_an"; amount: number }
+  /** 500 DH en périmètre urbain, 750 DH au-delà. */
+  | { kind: "transport" }
+  /** Exonéré en totalité SI la condition du texte est remplie et justifiée, sinon soumis. */
+  | { kind: "si_justifie" };
+
+export type CapStatus = "confirme" | "a_confirmer";
+export type Regime = "ir" | "cnss";
+
+/**
+ * Règle de NON-CUMUL : l'exonération tombe dans les régimes indiqués quand la situation se
+ * présente. Elle vient des textes eux-mêmes — le panier n'est exonéré que si le salarié ne
+ * reçoit pas de titres-restaurant ; l'indemnité kilométrique ne se cumule pas avec une voiture
+ * de service.
+ */
+export interface Exclusion {
+  when: "titres_restaurant" | "voiture_service";
+  regimes: Regime[];
+  reason: string;
+}
+
+export interface IndemniteDef {
+  key: IndemniteKey;
+  label: string;
+  /** Condition d'exonération, en clair — ce que l'employeur doit pouvoir justifier. */
+  condition: string;
+  ir: CapRule;
+  cnss: CapRule;
+  irStatus: CapStatus;
+  cnssStatus: CapStatus;
+  /** Groupe partageant UN SEUL plafond par régime (salissure et usure de vêtements). */
+  group?: string;
+  /** Non-cumuls prévus par les textes. */
+  excludedBy?: Exclusion[];
+  /** Références exactes. */
+  source: string;
+}
+
+/** SMIG horaire à la date de la note DGI du 13 mars 2017 — base de son indexation. */
+const SMIG_NOTE_DGI_2017 = 13.46;
+const BO = "BO 7443 (arrêté 1314-25)";
+const DGI = "note DGI 2017";
+
+export const INDEMNITES_BAREME_2025_10: IndemniteDef[] = [
+  {
+    key: "panier", label: "Prime de panier",
+    condition: "Pas de restaurant d'entreprise ; le salarié ne reçoit pas de titres-restaurant. Par jour effectivement travaillé.",
+    ir: { kind: "smig_jour", factor: 2 }, cnss: { kind: "smig_jour", factor: 2 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    excludedBy: [{ when: "titres_restaurant", regimes: ["ir", "cnss"], reason: "Non cumulable avec les titres-restaurant (BO 7443, él. 12-13 ; note DGI 2017)." }],
+    source: `CNSS : ${BO}, titre IV él. 12 — 2 x SMIG horaire par jour de travail. IR : ${DGI} — 2 x SMIG horaire ; non cumulable avec les bons de nourriture.`,
+  },
+  {
+    key: "titres_restaurant", label: "Titres-restaurant",
+    condition: "Remis à l'ensemble du personnel. Par jour effectivement travaillé ; non cumulables avec le panier.",
+    ir: { kind: "fixe_jour", amount: 20, maxPctBrut: 0.2 }, cnss: { kind: "smig_jour", factor: 2 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    source: `CNSS : ${BO}, titre IV él. 13 — 2 x SMIG horaire par jour, s'ils sont remis à tous les salariés. IR : ${DGI} — 20 DH par jour, dans la limite de 20 % du salaire brut imposable ; non cumulables avec les indemnités alimentaires des chantiers éloignés.`,
+  },
+  {
+    key: "transport", label: "Indemnité de transport",
+    condition: "Domicile à 2 km au moins du lieu de travail ; aucun transport assuré par l'employeur ni voiture de service.",
+    ir: { kind: "transport" }, cnss: { kind: "transport" },
+    irStatus: "confirme", cnssStatus: "confirme",
+    excludedBy: [{ when: "voiture_service", regimes: ["ir", "cnss"], reason: "Perdue avec une voiture de service ou de fonction (BO 7443, él. 3 ; note DGI 2017)." }],
+    source: `CNSS : ${BO}, titre I él. 3. IR : ${DGI}. 500 DH/mois en périmètre urbain, 750 DH au-delà.`,
+  },
+  {
+    key: "salissure", label: "Prime de salissure",
+    condition: "Travaux particulièrement salissants, exercés indistinctement. Plafond COMMUN avec l'usure de vêtements.",
+    ir: { kind: "indexe_smig", base: 210, smigRef: SMIG_NOTE_DGI_2017 }, cnss: { kind: "smig_26j", factor: 14 },
+    irStatus: "confirme", cnssStatus: "confirme", group: "salissure",
+    source: `CNSS : ${BO}, titre VII él. 30 — salissure et usure de vêtements : 14 x SMIG horaire par 26 jours. IR : ${DGI} — 210 DH/mois, indexé au SMIG horaire.`,
+  },
+  {
+    key: "usure_vetements", label: "Prime d'usure de vêtements",
+    condition: "Même élément que la prime de salissure (« prime de bleu ») : plafond commun.",
+    ir: { kind: "indexe_smig", base: 210, smigRef: SMIG_NOTE_DGI_2017 }, cnss: { kind: "smig_26j", factor: 14 },
+    irStatus: "confirme", cnssStatus: "confirme", group: "salissure",
+    source: `CNSS : ${BO}, titre VII él. 30. IR : ${DGI} — « prime de salissure (prime de bleu ou d'usure de vêtement) ».`,
+  },
+  {
+    key: "lait", label: "Indemnité de lait",
+    condition: "Salarié manipulant des produits toxiques.",
+    ir: { kind: "indexe_smig", base: 150, smigRef: SMIG_NOTE_DGI_2017 }, cnss: { kind: "smig_26j", factor: 11 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    source: `CNSS : ${BO}, titre VII él. 27 — 11 x SMIG horaire par 26 jours. IR : ${DGI} — 150 DH/mois, indexé au SMIG horaire.`,
+  },
+  {
+    key: "caisse", label: "Indemnité de caisse",
+    condition: "Salarié manipulant des fonds, avec responsabilité pécuniaire.",
+    ir: { kind: "fixe_mois", amount: 190 }, cnss: { kind: "smig_26j", factor: 14 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    source: `CNSS : ${BO}, titre VII él. 26 — 14 x SMIG horaire par 26 jours. IR : ${DGI} — 190 DH/mois (non indexé).`,
+  },
+  {
+    key: "outillage", label: "Prime d'outillage",
+    condition: "Ouvrier propriétaire de ses outils et matériel personnels.",
+    ir: { kind: "indexe_smig", base: 100, smigRef: SMIG_NOTE_DGI_2017 }, cnss: { kind: "smig_26j", factor: 7 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    source: `CNSS : ${BO}, titre VII él. 29 (« prime d'équipement ») — 7 x SMIG horaire par 26 jours. IR : ${DGI} — 100 DH/mois, indexé au SMIG horaire.`,
+  },
+  {
+    key: "representation", label: "Indemnité de représentation",
+    condition: "Cadres dirigeants (PDG, DG, directeurs de département, de succursale, d'agence) ; exceptionnellement les agents commerciaux.",
+    ir: { kind: "pct_base", rate: 0.1 }, cnss: { kind: "pct_base", rate: 0.1 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    source: `CNSS : ${BO}, titre II él. 9. IR : ${DGI}. 10 % du salaire de base.`,
+  },
+  {
+    key: "deplacement", label: "Indemnité de déplacement (forfait)",
+    condition: "Déplacements réguliers et continus du fait du poste (agents itinérants, VRP), au-delà de 50 km. Ordre écrit.",
+    ir: { kind: "pct_base", rate: 1, max: 5000 }, cnss: { kind: "pct_base", rate: 1, max: 5000 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    source: `CNSS : ${BO}, titre I él. 1. IR : ${DGI}. 100 % du salaire de base, sans dépasser 5 000 DH/mois (transport, repas et hébergement compris).`,
+  },
+  {
+    key: "kilometrique", label: "Indemnité kilométrique",
+    condition: "Véhicule personnel, destination à 50 km au moins ; ordre écrit précisant date, lieu, trajet et kilométrage.",
+    ir: { kind: "par_km", rate: 3, kmField: "km_professionnels" }, cnss: { kind: "par_km", rate: 3, kmField: "km_professionnels" },
+    irStatus: "confirme", cnssStatus: "confirme",
+    excludedBy: [{ when: "voiture_service", regimes: ["ir", "cnss"], reason: "Non cumulable avec une voiture de service (BO 7443, él. 2 ; note DGI 2017)." }],
+    source: `CNSS : ${BO}, titre I él. 2. IR : ${DGI}. 3 DH par kilomètre, quelle que soit la puissance fiscale.`,
+  },
+  {
+    key: "tournee", label: "Prime de tournée",
+    condition: "Représentants commerciaux et agents itinérants visitant la clientèle dans un rayon de 50 km.",
+    ir: { kind: "fixe_mois", amount: 1500 }, cnss: { kind: "fixe_mois", amount: 1500 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    excludedBy: [{ when: "voiture_service", regimes: ["cnss"], reason: "Non cumulable avec l'avantage voiture de service (BO 7443, él. 5)." }],
+    source: `CNSS : ${BO}, titre I él. 4 — 1 500 DH. IR : ${DGI} — 1 500 DH/mois.`,
+  },
+  {
+    key: "mutation", label: "Indemnité de mutation",
+    condition: "Mutation d'une ville à une autre, décidée par l'employeur pour les besoins du service.",
+    ir: { kind: "par_km", rate: 10, kmField: "km_mutation" }, cnss: { kind: "par_km", rate: 10, kmField: "km_mutation" },
+    irStatus: "confirme", cnssStatus: "confirme",
+    source: `CNSS : ${BO}, titre I él. 7. IR : ${DGI}. 10 DH par kilomètre entre l'ancien et le nouveau lieu d'habitation (mutation au Maroc).`,
+  },
+  {
+    key: "voiture_service", label: "Voiture de service — avantage en nature",
+    condition: "Exonérée si rapportée chaque soir, ou si laissée en permanence à un cadre dirigeant ou, sur lettre d'affectation, à un agent itinérant.",
+    ir: { kind: "si_justifie" }, cnss: { kind: "si_justifie" },
+    irStatus: "confirme", cnssStatus: "confirme",
+    source: `CNSS : ${BO}, titre I él. 5. IR : ${DGI} — les frais de voiture de fonction ou de service ne constituent pas un avantage imposable, sous condition de qualité du bénéficiaire.`,
+  },
+  {
+    key: "gratification_sociale", label: "Gratifications sociales",
+    condition: "Naissance, mariage, circoncision, décès d'un ascendant ou descendant, rentrée scolaire, Achoura, mouton de l'Aïd, dons et cadeaux — tous événements de l'année confondus.",
+    ir: { kind: "fixe_an", amount: 2500 }, cnss: { kind: "fixe_an", amount: 5000 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    source: `CNSS : ${BO}, titre V él. 17 — 5 000 DH par an et par salarié. IR : ${DGI} — 2 500 DH par an.`,
+  },
+];
+
+/**
+ * Indemnité de stage d'insertion (ANAPEC, dahir n° 1-93-16) — BO 7443, titre VI él. 24 :
+ * exonérée de cotisations entre 1 600 et 6 000 DH par mois ; au-delà, elle devient soumise EN
+ * TOTALITÉ, et pas seulement pour la part excédentaire.
+ */
+export const STAGE_INSERTION_CNSS = { min: 1600, max: 6000 } as const;
+// NB : le texte fait du minimum de 1 600 DH une condition du CONTRAT de stage, sans en tirer de
+// conséquence sur l'exonération ; seul le dépassement du maximum rend l'indemnité soumise. Le
+// moteur n'applique donc QUE le maximum — appliquer le minimum priverait à tort d'exonération les
+// stagiaires étudiants sous convention (él. 25), légitimement payés moins.
+
 const PARAMS_2026: PayrollParams = {
   year: 2026,
   smigHourly: 17.92,
@@ -267,6 +485,7 @@ const PARAMS_2026: PayrollParams = {
   panierPerDayCapFactor: 2,
   transportIntraUrbanCap: 500,
   transportOutsideUrbanCap: 750,
+  indemnitesBareme: INDEMNITES_BAREME_2025_10,
 
   advanceMonthlyCapRate: 0.1, // art. 386 CT — le dixième du salaire échu
 

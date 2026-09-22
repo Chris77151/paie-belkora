@@ -79,13 +79,13 @@ export default function Declarations() {
             matricule: e?.matricule ?? sl.employee_id,
             cnss: e?.cnss_number,
             r,
-            plafonne: Math.min(r.sbi, ceiling),
+            plafonne: Math.min(r.assietteCnss ?? r.sbi, ceiling),
           };
         });
       }
       return employees.map((e) => {
         const r = computeFor(e, firm, year, month, defaultInput(e));
-        return { key: e.id, name: `${e.first_name} ${e.last_name}`, matricule: e.matricule ?? e.id, cnss: e.cnss_number, r, plafonne: Math.min(r.sbi, ceiling) };
+        return { key: e.id, name: `${e.first_name} ${e.last_name}`, matricule: e.matricule ?? e.id, cnss: e.cnss_number, r, plafonne: Math.min(r.assietteCnss ?? r.sbi, ceiling) };
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -161,7 +161,8 @@ export default function Declarations() {
       rows: rows.map(({ name, cnss, r, plafonne }) => ({
         name,
         cnss,
-        sbi: r.sbi,
+        // La BDS DAMANCOM déclare l'assiette SOCIALE, jamais l'assiette fiscale.
+        sbi: r.assietteCnss ?? r.sbi,
         plafonne,
         cnssSal: r.cnssSalarie,
         cnssPat: r.cnssPatronal,
@@ -264,7 +265,7 @@ export default function Declarations() {
                   <Td>
                     {cnss ? cnss : <Badge tone="destructive">{t("decl.notReg")}</Badge>}
                   </Td>
-                  <Td className="text-right num">{mad(r.sbi)}</Td>
+                  <Td className="text-right num">{mad(r.assietteCnss ?? r.sbi)}</Td>
                   <Td className="text-right num">{mad(plafonne)}</Td>
                   <Td className="text-right num">{mad(r.cnssSalarie)}</Td>
                   <Td className="text-right num">{mad(r.cnssPatronal)}</Td>

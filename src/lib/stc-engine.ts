@@ -23,6 +23,7 @@ export type DepartureReason =
   | "fin_cdd" // fin de CDD à l'échéance
   | "fin_travail_determine" // fin de chantier (art. 33)
   | "depart_retraite"
+  | "rupture" // alias legacy — rupture d'un commun accord / sortie conventionnelle
   | "rupture_amiable"; // rupture d'un commun accord (art. 33 al. 1)
 
 export type EmployeeCategory = "cadre" | "non_cadre";
@@ -34,6 +35,7 @@ export const DEPARTURE_REASONS: { value: DepartureReason; label: string; hint: s
   { value: "fin_cdd", label: "Fin de CDD (échéance)", hint: "Indemnité de fin de CDD 7 %, sauf exceptions" },
   { value: "fin_travail_determine", label: "Fin de travail déterminé (chantier)", hint: "Art. 33 — terme de plein droit, sans préavis" },
   { value: "depart_retraite", label: "Départ à la retraite", hint: "Salaire + congés (allocation retraite hors périmètre)" },
+  { value: "rupture", label: "Rupture (alias historique)", hint: "Alias de la rupture d'un commun accord — indemnité négociée" },
   { value: "rupture_amiable", label: "Rupture d'un commun accord", hint: "Art. 33 al. 1 — indemnité négociée" },
 ];
 
@@ -216,7 +218,7 @@ export function computeStc(input: StcInput): StcResult {
   // 4. Indemnité compensatrice de préavis (art. 43) — si dispensé.
   const preavisDue =
     input.preavisDispensed &&
-    (input.reason === "licenciement" || input.reason === "rupture_amiable");
+    (input.reason === "licenciement" || input.reason === "rupture" || input.reason === "rupture_amiable");
   if (input.preavisDispensed && input.reason === "faute_grave") {
     notes.push("Faute grave (art. 39) : aucun préavis n'est dû.");
   }

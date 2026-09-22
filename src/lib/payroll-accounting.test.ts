@@ -89,7 +89,9 @@ const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 describe("Alignement BDS — salarié exonéré CNSS", () => {
   const droitCommun = computePayslip({ ...aboubi, hourlyRate: 30 });
-  const stagiaire = computePayslip({ ...aboubi, hourlyRate: 30, cnssExemption: "totale" });
+  // Stagiaire sous le plafond de 6 000 DH du stage d'insertion (BO 7443, titre VI él. 24) :
+  // à 30 DH/h, l'ancienneté le porterait au-delà et l'indemnité deviendrait soumise.
+  const stagiaire = computePayslip({ ...aboubi, hourlyRate: 25, cnssExemption: "totale" });
 
   it("un stagiaire (exonération totale) ne contribue pas au 4441", () => {
     const totals = sumResults([stagiaire]);

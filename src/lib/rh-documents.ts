@@ -185,6 +185,9 @@ export function bodyParagraphs(v: RhDocView): string[] {
   const cnss = val(v.cnss ?? e.cnss_number);
   const poste = val(e.position);
   const embauche = v.hireDate?.trim() ? dateFr(v.hireDate) : e.hire_date ? dateFr(e.hire_date) : PH;
+  const exitDate = (e.exit_date ?? "").trim();
+  const stillEmployed = e.is_active !== false && !exitDate;
+  const leftCompany = e.is_active === false || !!exitDate;
 
   const intro =
     v.type === "certificat-travail"
@@ -200,9 +203,15 @@ export function bodyParagraphs(v: RhDocView): string[] {
     paras.push(`a été ${a.employe} au sein de notre entreprise en qualité de **${poste}**, du **${embauche}** au **${fin}**.`);
     paras.push("Le présent certificat lui est délivré pour servir et faire valoir ce que de droit, libre de tout engagement.");
   } else {
-    let emploi = `est ${a.employe} au sein de notre entreprise en qualité de **${poste}**, et ce depuis le **${embauche}**`;
+    let emploi = stillEmployed
+      ? `est ${a.employe} au sein de notre entreprise et est toujours en fonction en qualité de **${poste}**, depuis le **${embauche}**`
+      : `n'est plus en fonction au sein de notre entreprise depuis le **${exitDate ? dateFr(exitDate) : PH}** ; il/elle occupait précédemment le poste de **${poste}**`;
+
     if (v.type === "attestation-salaire") {
       emploi += `, et perçoit à ce titre une rémunération mensuelle de **${val(v.salary)}**`;
+    }
+    if (leftCompany && !stillEmployed && !exitDate) {
+      emploi = `n'est plus en fonction au sein de notre entreprise ; il/elle occupait précédemment le poste de **${poste}**`;
     }
     paras.push(emploi + ".");
     paras.push(`En foi de quoi, la présente attestation est délivrée à ${a.interesse} pour servir et faire valoir ce que de droit.`);

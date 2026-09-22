@@ -9,7 +9,9 @@ import {
 import { useCanWrite } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import type { DocFormat, Employee, Payslip, PayslipInput, SalaryAdvance } from "@/data/types";
-import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
+import { computeFor, defaultInput, employeesForPeriod, indemnityYtd } from "@/lib/payroll-helpers";
+import { describeCap } from "@/lib/indemnites";
+import type { IndemniteKey } from "@/lib/params";
 import type { PayrollResult } from "@/lib/payroll-engine";
 import {
   advanceBalanceAfter, advanceDueForPeriod, advanceOutstanding, advanceStartMonth, cappedAdvanceDeduction,
@@ -86,7 +88,8 @@ export default function Payroll() {
         const slip: Payslip =
           slips.find((sl) => sl.employee_id === emp.id) ??
           { id: `tmp_${emp.id}`, period_id: period?.id ?? "", employee_id: emp.id, input: defaultInput(emp), result: null };
-        const result: PayrollResult = slip.result ?? computeFor(emp, firm, year, month, slip.input);
+        const result: PayrollResult =
+          slip.result ?? computeFor(emp, firm, year, month, slip.input, indemnityYtd(s, emp.id, year, month));
         return { emp, slip, result };
       });
 
@@ -108,7 +111,9 @@ export default function Payroll() {
     const validated = rows.map((r) => ({
       ...r.slip,
       id: r.slip.id.startsWith("tmp_") ? uid("slip") : r.slip.id,
-      result: computeFor(r.emp, firm, year, month, r.slip.input),
+      // Cumul annuel injecté : sans lui, un plafond annuel (gratifications) repartirait plein
+      // chaque mois et le même montant serait exonéré plusieurs fois dans l'année.
+      result: computeFor(r.emp, firm, year, month, r.slip.input, indemnityYtd(s, r.emp.id, year, month)),
     }));
     // Neutralise TOUT bulletin de la période hors de l'effectif affiché (sorti, embauché après,
     // fantôme) — qu'il ait déjà un résultat ou non → l'instantané figé, l'affichage verrouillé,
@@ -405,7 +410,15 @@ function InputEditor({
   const period = s.periods.find((p) => p.id === slip.period_id)!;
   const [inp, setInp] = useState<PayslipInput>(slip.input);
   const set = (patch: Partial<PayslipInput>) => setInp((p) => ({ ...p, ...patch }));
-  const r = computeFor(emp, firm, period.year, period.month, inp);
+  const ytd = indemnityYtd(s, emp.id, period.year, period.month);
+  const r = computeFor(emp, firm, period.year, period.month, inp, ytd);
+  const bareme = getParams(period.year).indemnitesBareme;
+  const smigH = getParams(period.year).smigHourly;
+  // Indemnités saisies ailleurs dans le formulaire (champs historiques) : pas de doublon ici.
+  // Champs historiques (plus haut dans le formulaire) et voiture de service (bloc dédié ci-dessous).
+  const LEGACY: IndemniteKey[] = ["panier", "transport", "salissure", "lait", "representation", "voiture_service"];
+  const setIndemnite = (key: IndemniteKey, v: number) =>
+    setInp((prev) => ({ ...prev, indemnites: { ...(prev.indemnites ?? {}), [key]: v } }));
 
   function save() {
     actions.upsertPayslip({ ...slip, input: inp, result: null });
@@ -436,6 +449,8 @@ function InputEditor({
           {numField(t("pay.f.panier"), "panier", "0.01")}
           {numField(t("pay.f.transport"), "transport", "0.01")}
           {numField(t("pay.f.salissure"), "salissure", "0.01")}
+          {numField(t("pay.f.lait"), "lait", "0.01")}
+          {numField(t("pay.f.representation"), "representation", "0.01")}
           {numField(t("pay.f.other"), "other_gross", "0.01")}
           {numField(t("pay.f.advances"), "advances", "0.01", t("pay.f.advances.hint"))}
         </div>
@@ -443,6 +458,101 @@ function InputEditor({
           <input type="checkbox" checked={!!inp.transport_outside_urban} onChange={(e) => set({ transport_outside_urban: e.target.checked })} />
           {t("pay.f.transportOutside")}
         </label>
+
+        {/* Indemnités du barème légal : la part exonérée n'est JAMAIS saisie, le moteur l'applique
+            à partir du barème de params.ts. L'opérateur saisit ce qui est versé, rien d'autre. */}
+        <div className="mt-5 rounded-lg border border-border/60 p-3">
+          <p className="text-sm font-medium">Autres indemnités — barème légal</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Saisir le montant versé ; la part exonérée est calculée automatiquement. Plafonds CNSS :
+            arrêté n° 1314-25 (en vigueur au 01/10/2025).
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {bareme.filter((d) => !LEGACY.includes(d.key)).map((d) => {
+              const aConfirmer = d.irStatus === "a_confirmer" || d.cnssStatus === "a_confirmer";
+              const same = describeCap(d.ir, smigH) === describeCap(d.cnss, smigH);
+              const hint = same
+                ? `Exonérée jusqu'à ${describeCap(d.ir, smigH)}`
+                : `IR : ${describeCap(d.ir, smigH)} · CNSS : ${describeCap(d.cnss, smigH)}`;
+              return (
+                <Field key={d.key} label={`${d.label}${aConfirmer ? " *" : ""}`} hint={hint}>
+                  <Input
+                    type="number" step="0.01" min={0}
+                    value={inp.indemnites?.[d.key] ?? 0}
+                    title={`${d.condition}\n\nSource : ${d.source}`}
+                    onChange={(e) => setIndemnite(d.key, +e.target.value)}
+                  />
+                </Field>
+              );
+            })}
+            <Field label="Kilomètres professionnels" hint="Sans kilométrage déclaré, l'indemnité kilométrique n'est pas exonérée.">
+              <Input
+                type="number" step="1" min={0}
+                value={inp.km_professionnels ?? 0}
+                onChange={(e) => set({ km_professionnels: +e.target.value })}
+              />
+            </Field>
+            <Field label="Kilomètres de mutation" hint="Entre l'ancien et le nouveau lieu d'habitation — plafond de l'indemnité de mutation.">
+              <Input
+                type="number" step="1" min={0}
+                value={inp.km_mutation ?? 0}
+                onChange={(e) => set({ km_mutation: +e.target.value })}
+              />
+            </Field>
+          </div>
+
+          {/* Voiture de service : un avantage en nature, mais surtout une situation qui fait
+              tomber d'autres exonérations — le texte l'impose, l'opérateur ne peut pas l'oublier. */}
+          <div className="mt-4 rounded-md bg-muted/40 p-3">
+            <p className="text-sm font-medium">Voiture de service ou de fonction</p>
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Situation du mois">
+                <Select
+                  value={inp.voiture_service ?? "aucune"}
+                  onChange={(e) => set({ voiture_service: e.target.value as PayslipInput["voiture_service"] })}
+                >
+                  <option value="aucune">Aucune</option>
+                  <option value="retour_quotidien">Rapportée chaque soir</option>
+                  <option value="permanente">Laissée en permanence</option>
+                </Select>
+              </Field>
+              {inp.voiture_service === "permanente" && (
+                <Field label="Valeur mensuelle de l'avantage (DH)">
+                  <Input
+                    type="number" step="0.01" min={0}
+                    value={inp.avantage_voiture ?? 0}
+                    onChange={(e) => set({ avantage_voiture: +e.target.value })}
+                  />
+                </Field>
+              )}
+            </div>
+            {inp.voiture_service === "permanente" && (
+              <label className="mt-2 flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox" className="mt-1"
+                  checked={!!inp.voiture_service_justifiee}
+                  onChange={(e) => set({ voiture_service_justifiee: e.target.checked })}
+                />
+                <span>
+                  Bénéficiaire cadre dirigeant, ou agent itinérant disposant d'une lettre d'affectation
+                  <span className="block text-xs text-muted-foreground">
+                    Sans cette justification, l'avantage en nature est soumis à l'IR et aux cotisations.
+                  </span>
+                </span>
+              </label>
+            )}
+            {(inp.voiture_service ?? "aucune") !== "aucune" && (
+              <p className="mt-2 text-xs text-warning">
+                Avec une voiture de service, l'indemnité de transport et l'indemnité kilométrique ne sont
+                plus exonérées, ni — côté CNSS — la prime de tournée.
+              </p>
+            )}
+          </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+            Plafonds CNSS : arrêté n° 1314-25, BO n° 7443. Plafonds IR : note de service DGI du
+            13 mars 2017. Survoler un champ pour lire la condition d'exonération et la référence.
+          </p>
+        </div>
 
         <AdvancesPanel
           emp={emp}
@@ -455,6 +565,9 @@ function InputEditor({
         <div className="mt-5 rounded-lg bg-muted/60 p-4 text-sm space-y-1.5">
           <Line label={t("pay.l.gross")} value={mad(r.salaireBrut)} />
           <Line label={t("pay.l.sbi")} value={mad(r.sbi)} />
+          {r.assietteCnss !== r.sbi && (
+            <Line label="Assiette CNSS (soumise à cotisations)" value={mad(r.assietteCnss)} />
+          )}
           <Line label={`${t("pay.l.seniority")} (${(r.seniorityRate * 100).toFixed(0)} %)`} value={mad(r.primeAnciennete)} />
           <Line label={t("pay.l.cnssAmo")} value={mad(r.cnssSalarie + r.amoSalarie)} />
           <Line label={`${t("pay.l.fraisPro")} (${(r.fraisProRate * 100).toFixed(0)} %)`} value={`- ${mad(r.fraisPro)}`} />

@@ -1,4 +1,6 @@
 /** Ponts entre les entités du store et le moteur de paie pur. */
+import type { YtdExempt } from "./indemnites";
+import type { AppState } from "@/data/types";
 import type { Employee, Firm, PayslipInput } from "@/data/types";
 import { computePayslip, type PayrollInput, type PayrollResult } from "./payroll-engine";
 
@@ -43,6 +45,8 @@ export function defaultInput(emp: Employee): PayslipInput {
     panier: 0,
     transport: 0,
     salissure: 0,
+    lait: 0,
+    representation: 0,
     other_gross: 0,
     transport_outside_urban: false,
   };
@@ -54,6 +58,8 @@ export function toEngineInput(
   year: number,
   month: number,
   input: PayslipInput,
+  /** Montants déjà exonérés depuis le 1er janvier — cf. `indemnityYtd`. */
+  ytd?: YtdExempt,
 ): PayrollInput {
   return {
     year,
@@ -72,6 +78,15 @@ export function toEngineInput(
     panier: input.panier,
     transport: input.transport,
     salissure: input.salissure,
+    lait: input.lait,
+    representation: input.representation,
+    indemnites: input.indemnites,
+    kmProfessionnels: input.km_professionnels,
+    kmMutation: input.km_mutation,
+    voitureService: input.voiture_service ?? "aucune",
+    voitureJustifiee: input.voiture_service_justifiee,
+    avantageVoiture: input.avantage_voiture,
+    ytdExempt: ytd,
     otherGross: input.other_gross,
     transportOutsideUrban: input.transport_outside_urban,
     cnssExemption: emp.cnss_exemption ?? "none",
@@ -84,6 +99,29 @@ export function computeFor(
   year: number,
   month: number,
   input: PayslipInput,
+  ytd?: YtdExempt,
 ): PayrollResult {
-  return computePayslip(toEngineInput(emp, firm, year, month, input));
+  return computePayslip(toEngineInput(emp, firm, year, month, input, ytd));
+}
+
+/**
+ * Montants déjà exonérés depuis le 1er janvier pour un salarié, par régime et par indemnité —
+ * lus sur ses bulletins VALIDÉS des mois ANTÉRIEURS de la même année.
+ *
+ * Indispensable aux plafonds annuels (gratifications sociales) : sans ce cumul, chaque mois
+ * repartirait d'un plafond plein, et trois versements de 4 000 DH seraient exonérés trois fois.
+ */
+export function indemnityYtd(s: AppState, employeeId: string, year: number, month: number): YtdExempt {
+  const periodIds = new Set(
+    s.periods.filter((pd) => pd.year === year && pd.month < month).map((pd) => pd.id),
+  );
+  const ytd: YtdExempt = { ir: {}, cnss: {} };
+  for (const sl of s.payslips ?? []) {
+    if (sl.employee_id !== employeeId || !periodIds.has(sl.period_id) || !sl.result) continue;
+    for (const l of sl.result.indemnitesDetail ?? []) {
+      ytd.ir![l.key] = (ytd.ir![l.key] ?? 0) + l.exoIr;
+      ytd.cnss![l.key] = (ytd.cnss![l.key] ?? 0) + l.exoCnss;
+    }
+  }
+  return ytd;
 }

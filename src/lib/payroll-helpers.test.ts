@@ -20,7 +20,9 @@ describe("computeFor — la case Exonération CNSS de l'Employee est prise en co
   });
 
   it("cnss_exemption = 'totale' : toutes cotisations à 0 (via l'Employee)", () => {
-    const r = computeFor(emp({ cnss_exemption: "totale" }), firm, 2026, 6, defInput());
+    // 30 DH/h x 191 h + 5 % d'ancienneté = 6 016,50 DH : au-delà du plafond de 6 000 DH (BO 7443,
+    // titre VI él. 24), l'indemnité deviendrait soumise. Le stagiaire est donc payé 25 DH/h (~5 014 DH).
+    const r = computeFor(emp({ cnss_exemption: "totale", base_hourly_rate: 25 }), firm, 2026, 6, defInput());
     expect(r.cnssSalarie).toBe(0);
     expect(r.cnssPatronal).toBe(0);
     expect(r.amoSalarie).toBe(0);

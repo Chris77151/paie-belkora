@@ -12,7 +12,8 @@
  *   6. IR net = IR brut − charges de famille (41,67 DH/pers, max 6)
  *   7. Net à payer = brut − CNSS − AMO − IR net
  */
-import { getParams, type PayrollParams } from "./params";
+import { getParams, STAGE_INSERTION_CNSS, type IndemniteKey, type PayrollParams } from "./params";
+import { splitIndemnites, totals, type IndemniteLine, type VoitureService, type YtdExempt } from "./indemnites";
 
 export type Regime = "SMIG" | "SMAG";
 
@@ -50,6 +51,26 @@ export interface PayrollInput {
   panier: number;
   transport: number;
   salissure: number;
+  lait?: number; // indemnité de lait (produits toxiques)
+  representation?: number; // indemnité de représentation (cadres dirigeants)
+  /**
+   * Autres indemnités du barème (caisse, outillage, déplacement, kilométrique, tournée,
+   * titres-restaurant, gratifications…). Les champs historiques ci-dessus restent acceptés et
+   * PRIMENT pour leur propre clé.
+   */
+  indemnites?: Partial<Record<IndemniteKey, number>>;
+  /** Kilomètres professionnels du mois — plafond de l'indemnité kilométrique. */
+  kmProfessionnels?: number;
+  /** Kilomètres entre ancien et nouveau lieu d'habitation — plafond de l'indemnité de mutation. */
+  kmMutation?: number;
+  /** Voiture de service du mois : conditionne l'avantage en nature et fait tomber certaines indemnités. */
+  voitureService?: VoitureService;
+  /** Voiture permanente justifiée (cadre dirigeant, ou lettre d'affectation d'un agent itinérant). */
+  voitureJustifiee?: boolean;
+  /** Valeur mensuelle de l'avantage en nature voiture, ajoutée au brut. */
+  avantageVoiture?: number;
+  /** Montants déjà exonérés depuis le 1er janvier, par régime (plafonds annuels). */
+  ytdExempt?: YtdExempt;
   otherGross: number; // primes diverses imposables
 
   /** Transport hors périmètre urbain -> plafond d'exonération 750 au lieu de 500. */
@@ -70,11 +91,23 @@ export interface PayrollResult {
   panierExonere: number;
   transportExonere: number;
   salissureExoneree: number;
+  laitExonere: number;
+  representationExonere: number;
+  /** Part exonérée d'IR de l'ensemble des indemnités (assiette FISCALE). */
   indemnitesExonerees: number;
-  indemnitesImposables: number; // fractions réintégrées
+  /** Part exonérée de cotisations sociales (assiette CNSS) — peut différer de l'IR. */
+  indemnitesExonereesCnss: number;
+  indemnitesImposables: number; // fractions réintégrées à l'assiette fiscale
+  /** Détail indemnité par indemnité, avec son sort dans chaque régime. */
+  indemnitesDetail: IndemniteLine[];
 
   salaireBrut: number;
-  sbi: number; // salaire brut imposable
+  sbi: number; // salaire brut IMPOSABLE (assiette de l'IR)
+  /**
+   * Salaire brut SOUMIS À COTISATIONS (assiette CNSS, AMO, AF, TFP). Distinct du SBI dès qu'une
+   * indemnité n'a pas le même plafond dans les deux régimes.
+   */
+  assietteCnss: number;
 
   cnssSalarie: number;
   amoSalarie: number;
@@ -229,15 +262,47 @@ export function computePayslip(input: PayrollInput): PayrollResult {
       ? round2(input.primeAncienneteOverride)
       : round2((salaireBase + overtime) * sRate);
 
-  // Indemnités : part exonérée sous plafonds, l'excédent réintègre le SBI
-  const panierCap = round2(p.panierPerDayCapFactor * p.smigHourly * input.daysWorked);
-  const panierExonere = round2(Math.min(input.panier, panierCap));
-  const transportCap = input.transportOutsideUrban ? p.transportOutsideUrbanCap : p.transportIntraUrbanCap;
-  const transportExonere = round2(Math.min(input.transport, transportCap));
-  const salissureExoneree = round2(input.salissure); // justifiée -> exonérée (V1)
-  const indemnitesExonerees = round2(panierExonere + transportExonere + salissureExoneree);
-
-  const indemnitesBrutes = round2(input.panier + input.transport + input.salissure);
+  // Indemnités : chaque indemnité est confrontée à son plafond, SÉPARÉMENT pour l'IR et pour la
+  // CNSS (barème `indemnitesBareme` de params.ts). L'excédent réintègre l'assiette concernée.
+  // Les champs historiques (panier, transport, salissure, lait, représentation) priment pour leur
+  // propre clé ; les autres indemnités arrivent par `indemnites`.
+  const amounts: Partial<Record<IndemniteKey, number>> = {
+    ...(input.indemnites ?? {}),
+    voiture_service: input.avantageVoiture ?? input.indemnites?.voiture_service ?? 0,
+    panier: input.panier ?? 0,
+    transport: input.transport ?? 0,
+    salissure: input.salissure ?? 0,
+    lait: input.lait ?? input.indemnites?.lait ?? 0,
+    representation: input.representation ?? input.indemnites?.representation ?? 0,
+  };
+  const indemnitesDetail = splitIndemnites(
+    amounts,
+    p.indemnitesBareme,
+    {
+      smigHourly: p.smigHourly,
+      daysWorked: input.daysWorked,
+      salaireBase,
+      // Brut HORS indemnités : référence des plafonds « 20 % du brut imposable » (IR).
+      brutRef: round2(salaireBase + overtime + primeAnciennete + (input.otherGross ?? 0)),
+      km: input.kmProfessionnels ?? 0,
+      kmMutation: input.kmMutation ?? 0,
+      transportOutsideUrban: !!input.transportOutsideUrban,
+      voitureService: input.voitureService ?? "aucune",
+      voitureJustifiee: !!input.voitureJustifiee,
+    },
+    p,
+    input.ytdExempt,
+  );
+  const tot = totals(indemnitesDetail);
+  const exoIrOf = (k: IndemniteKey) => indemnitesDetail.find((l) => l.key === k)?.exoIr ?? 0;
+  const panierExonere = exoIrOf("panier");
+  const transportExonere = exoIrOf("transport");
+  const salissureExoneree = exoIrOf("salissure");
+  const laitExonere = exoIrOf("lait");
+  const representationExonere = exoIrOf("representation");
+  const indemnitesExonerees = tot.exoIr;
+  const indemnitesExonereesCnss = tot.exoCnss;
+  const indemnitesBrutes = tot.brut;
   const indemnitesImposables = round2(indemnitesBrutes - indemnitesExonerees);
 
   // 1 (fin). Salaire brut
@@ -245,11 +310,21 @@ export function computePayslip(input: PayrollInput): PayrollResult {
     salaireBase + overtime + primeAnciennete + indemnitesBrutes + input.otherGross,
   );
 
-  // 2. SBI = brut − indemnités exonérées
+  // 2. Deux assiettes, deux barèmes d'exonération :
+  //    SBI (IR)       = brut − exonérations fiscales
+  //    assiette CNSS  = brut − exonérations sociales (arrêté 1314-25)
   const sbi = round2(salaireBrut - indemnitesExonerees);
+  const assietteCnss = round2(salaireBrut - indemnitesExonereesCnss);
 
   // Exonération CNSS/AMO/AF/TFP (dispositif ANAPEC/stage), appliquée AVANT le calcul du SNI/IR.
-  const exemption = input.cnssExemption ?? "none";
+  // Stage d'insertion (BO 7443, titre VI él. 24) : au-delà de 6 000 DH par mois, l'indemnité de
+  // stage devient soumise EN TOTALITÉ — pas seulement pour la part excédentaire. Le seuil se
+  // compare à l'indemnité de stage elle-même, donc HORS indemnités déjà exonérées à part (panier,
+  // transport…) : les y inclure ferait perdre l'exonération à un stagiaire payé 5 730 DH.
+  const indemniteStage = round2(salaireBrut - indemnitesExonereesCnss);
+  const stageHorsBornes =
+    input.cnssExemption === "totale" && indemniteStage > STAGE_INSERTION_CNSS.max;
+  const exemption = stageHorsBornes ? "none" : (input.cnssExemption ?? "none");
   const exoSalarial = exemption === "totale"; // stage : aucune retenue salariale
   const exoPatronal = exemption === "totale" || exemption === "patronale"; // stage OU TAHFIZ/IDMAJ
 
@@ -258,9 +333,9 @@ export function computePayslip(input: PayrollInput): PayrollResult {
   const amoInactive = !amoActiveAt(p, input.year, input.month);
 
   // 3bis. Cotisations salariales (assiette = SBI, CNSS plafonnée)
-  const cnssBase = Math.min(sbi, p.cnssCeiling);
+  const cnssBase = Math.min(assietteCnss, p.cnssCeiling);
   const cnssSalarie = exoSalarial ? 0 : round2(cnssBase * p.cnssEmployeeRate);
-  const amoSalarie = (exoSalarial || amoInactive) ? 0 : round2(sbi * p.amoEmployeeRate);
+  const amoSalarie = (exoSalarial || amoInactive) ? 0 : round2(assietteCnss * p.amoEmployeeRate);
 
   // 3. Frais professionnels (CGI art. 59-I-A)
   const sbiAnnual = sbi * 12;
@@ -290,10 +365,11 @@ export function computePayslip(input: PayrollInput): PayrollResult {
   const cnssCourtTerme = exoPatronal ? 0 : round2(cnssBase * p.cnssEmployerCourtTermeRate);
   const cnssIpe = exoPatronal ? 0 : round2(cnssBase * p.cnssEmployerIpeRate);
   const cnssLongTerme = exoPatronal ? 0 : round2(cnssBase * p.cnssEmployerLongTermeRate);
-  const af = exoPatronal ? 0 : round2(sbi * p.familyAllocRate);
-  const amoBase = (exoPatronal || amoInactive) ? 0 : round2(sbi * p.amoEmployerBaseRate);
-  const amoSolidarite = (exoPatronal || amoInactive) ? 0 : round2(sbi * p.amoEmployerSolidariteRate);
-  const tfp = exoPatronal ? 0 : round2(sbi * p.tfpRate);
+  // Charges patronales déplafonnées : assiette SOCIALE, jamais l'assiette fiscale.
+  const af = exoPatronal ? 0 : round2(assietteCnss * p.familyAllocRate);
+  const amoBase = (exoPatronal || amoInactive) ? 0 : round2(assietteCnss * p.amoEmployerBaseRate);
+  const amoSolidarite = (exoPatronal || amoInactive) ? 0 : round2(assietteCnss * p.amoEmployerSolidariteRate);
+  const tfp = exoPatronal ? 0 : round2(assietteCnss * p.tfpRate);
 
   const cnssPatronal = round2(cnssCourtTerme + cnssIpe + cnssLongTerme);
   const amoPatronal = round2(amoBase + amoSolidarite);
@@ -313,10 +389,15 @@ export function computePayslip(input: PayrollInput): PayrollResult {
     panierExonere,
     transportExonere,
     salissureExoneree,
+    laitExonere,
+    representationExonere,
     indemnitesExonerees,
+    indemnitesExonereesCnss,
     indemnitesImposables,
+    indemnitesDetail,
     salaireBrut,
     sbi,
+    assietteCnss,
     cnssSalarie,
     amoSalarie,
     fraisPro,
@@ -342,7 +423,7 @@ export function computePayslip(input: PayrollInput): PayrollResult {
       amoSolidarite,
       tfp,
       cnssBase,
-      sbiBase: sbi,
+      sbiBase: assietteCnss, // assiette déplafonnée des cotisations (AF, AMO, TFP)
       totalRate: totalEmployerRate,
     },
   };

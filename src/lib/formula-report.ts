@@ -160,12 +160,12 @@ export function buildFormulaReport(year: number): FormulaReport {
       lines: [
         {
           label: `CNSS salariale (${pct(p.cnssEmployeeRate)}, plafonnée)`,
-          formula: `min(SBI ; plafond ${dh(p.cnssCeiling)}) × ${pct(p.cnssEmployeeRate)} = min(${dh(r.sbi)} ; ${dh(p.cnssCeiling)}) × ${pct(p.cnssEmployeeRate)}`,
+          formula: `min(SBI ; plafond ${dh(p.cnssCeiling)}) × ${pct(p.cnssEmployeeRate)} = min(${dh(r.assietteCnss ?? r.sbi)} ; ${dh(p.cnssCeiling)}) × ${pct(p.cnssEmployeeRate)}`,
           result: dh(r.cnssSalarie),
         },
         {
           label: `AMO salariale (${pct(p.amoEmployeeRate)}, déplafonnée)`,
-          formula: `SBI × ${pct(p.amoEmployeeRate)} = ${dh(r.sbi)} × ${pct(p.amoEmployeeRate)}`,
+          formula: `SBI × ${pct(p.amoEmployeeRate)} = ${dh(r.assietteCnss ?? r.sbi)} × ${pct(p.amoEmployeeRate)}`,
           result: dh(r.amoSalarie),
         },
       ],

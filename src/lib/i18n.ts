@@ -373,6 +373,8 @@ export const DICT = {
   "pay.f.panier": { fr: "Panier (DH)", ar: "بدل التغذية (د.م)" },
   "pay.f.transport": { fr: "Transport (DH)", ar: "بدل النقل (د.م)" },
   "pay.f.salissure": { fr: "Salissure (DH)", ar: "بدل الاتساخ (د.م)" },
+  "pay.f.lait": { fr: "Lait / bien-être (DH)", ar: "بدل الحليب / الراحة (د.م)" },
+  "pay.f.representation": { fr: "Représentation (DH)", ar: "بدل التمثيل (د.م)" },
   "pay.f.other": { fr: "Autres gains (DH)", ar: "مكاسب أخرى (د.م)" },
   "pay.f.advances": { fr: "Avances / acomptes (DH)", ar: "تسبيقات (د.م)" },
   "pay.f.advances.hint": { fr: "Retenue du mois — remplie depuis le registre ci-dessous", ar: "اقتطاع الشهر — يُملأ من السجل أدناه" },

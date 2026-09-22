@@ -66,6 +66,18 @@ describe("bodyParagraphs — corps-type par document", () => {
     expect(p.join(" ")).toContain("rémunération mensuelle de 4 500,00 DH net");
   });
 
+  it("attestation de travail : précise si le salarié est toujours en fonction", () => {
+    const active = bodyParagraphs(base()).join(" ");
+    expect(active).toContain("est toujours en fonction");
+    expect(active).not.toContain("n'est plus en fonction");
+
+    const inactive = bodyParagraphs(base({
+      employee: emp({ is_active: false, exit_date: "2026-06-30", exit_reason: "rupture" }),
+    })).join(" ");
+    expect(inactive).toContain("n'est plus en fonction");
+    expect(inactive).toContain("depuis le 30/06/2026");
+  });
+
   it("certificat de travail : certifie, passé, avec date de fin", () => {
     const p = bodyParagraphs(base({ type: "certificat-travail", endDate: "2026-06-30" }));
     expect(p[0]).toContain("certifie par la présente que");

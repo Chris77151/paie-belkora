@@ -165,6 +165,27 @@ export interface PayslipInput {
   panier: number;
   transport: number;
   salissure: number;
+  lait?: number;
+  representation?: number;
+  /**
+   * Autres indemnités du barème légal (caisse, outillage, déplacement, kilométrique, tournée,
+   * titres-restaurant, gratifications…), par clé. Leur part exonérée est calculée par le moteur,
+   * jamais saisie : c'est le barème de params.ts qui décide, pas l'opérateur.
+   */
+  indemnites?: Partial<Record<import("@/lib/params").IndemniteKey, number>>;
+  /** Kilomètres professionnels du mois — sans eux, l'indemnité kilométrique n'est pas exonérée. */
+  km_professionnels?: number;
+  /** Kilomètres entre l'ancien et le nouveau lieu d'habitation (indemnité de mutation). */
+  km_mutation?: number;
+  /**
+   * Voiture de service du mois. Au-delà de l'avantage en nature, elle fait TOMBER l'exonération
+   * du transport, de l'indemnité kilométrique et (côté CNSS) de la prime de tournée.
+   */
+  voiture_service?: "aucune" | "retour_quotidien" | "permanente";
+  /** Voiture permanente justifiée : cadre dirigeant, ou agent itinérant avec lettre d'affectation. */
+  voiture_service_justifiee?: boolean;
+  /** Valeur mensuelle de l'avantage en nature voiture (voiture laissée en permanence). */
+  avantage_voiture?: number;
   other_gross: number;
   transport_outside_urban?: boolean;
   /** Avances / acomptes déjà versés ce mois, déduits du net à payer (livre de paie). Défaut : 0. */
