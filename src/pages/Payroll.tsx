@@ -499,6 +499,13 @@ function InputEditor({
                 onChange={(e) => set({ km_mutation: +e.target.value })}
               />
             </Field>
+            <Field label="Nuitées de mission" hint="Sans nuitée déclarée, les frais d'hébergement d'un déplacement ponctuel ne sont pas exonérés.">
+              <Input
+                type="number" step="1" min={0}
+                value={inp.nuitees ?? 0}
+                onChange={(e) => set({ nuitees: +e.target.value })}
+              />
+            </Field>
           </div>
 
           {/* Voiture de service : un avantage en nature, mais surtout une situation qui fait
@@ -516,7 +523,7 @@ function InputEditor({
                   <option value="permanente">Laissée en permanence</option>
                 </Select>
               </Field>
-              {inp.voiture_service === "permanente" && (
+              {(inp.voiture_service ?? "aucune") !== "aucune" && (
                 <Field label="Valeur mensuelle de l'avantage (DH)">
                   <Input
                     type="number" step="0.01" min={0}
@@ -526,7 +533,7 @@ function InputEditor({
                 </Field>
               )}
             </div>
-            {inp.voiture_service === "permanente" && (
+            {(inp.voiture_service ?? "aucune") !== "aucune" && (
               <label className="mt-2 flex items-start gap-2 text-sm">
                 <input
                   type="checkbox" className="mt-1"
@@ -534,17 +541,21 @@ function InputEditor({
                   onChange={(e) => set({ voiture_service_justifiee: e.target.checked })}
                 />
                 <span>
-                  Bénéficiaire cadre dirigeant, ou agent itinérant disposant d'une lettre d'affectation
+                  Bénéficiaire cadre dirigeant ou aux fonctions itinérantes (agent commercial, VRP)
+                  {inp.voiture_service === "permanente" && " — lettre d'affectation exigée pour les non-dirigeants"}
                   <span className="block text-xs text-muted-foreground">
-                    Sans cette justification, l'avantage en nature est soumis à l'IR et aux cotisations.
+                    La note DGI subordonne l'exonération à cette qualité, voiture de service comme de
+                    fonction : sans elle, l'avantage est soumis à l'IR. La CNSS, elle, l'admet sans
+                    condition de qualité tant que la voiture est rapportée chaque soir.
                   </span>
                 </span>
               </label>
             )}
             {(inp.voiture_service ?? "aucune") !== "aucune" && (
               <p className="mt-2 text-xs text-warning">
-                Avec une voiture de service, l'indemnité de transport et l'indemnité kilométrique ne sont
-                plus exonérées, ni — côté CNSS — la prime de tournée.
+                Avec une voiture de service, l'indemnité kilométrique et les frais de mission ponctuelle ne
+                sont plus exonérés, ni la prime de tournée côté CNSS. L'indemnité de transport tombe côté
+                CNSS dès la première voiture, et côté IR seulement si elle est laissée en permanence.
               </p>
             )}
           </div>

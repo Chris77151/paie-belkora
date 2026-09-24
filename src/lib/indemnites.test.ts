@@ -153,12 +153,30 @@ describe("non-cumuls prévus par les textes", () => {
     expect(line(l, "titres_restaurant").exoCnss).toBe(300);
   });
 
-  it("une voiture de service fait tomber transport et kilométrique, dans les DEUX régimes", () => {
-    const l = split({ transport: 400, kilometrique: 300 }, { km: 100, voitureService: "retour_quotidien" });
-    for (const k of ["transport", "kilometrique"] as const) {
+  it("une voiture de service fait tomber l'indemnité kilométrique dans les DEUX régimes", () => {
+    const l = split({ kilometrique: 300 }, { km: 100, voitureService: "retour_quotidien" });
+    expect(line(l, "kilometrique").exoIr).toBe(0);
+    expect(line(l, "kilometrique").exoCnss).toBe(0);
+  });
+
+  it("les frais de mission ponctuelle tombent aussi avec une voiture de service", () => {
+    const l = split({ deplacement_repas: 500, deplacement_hebergement: 900 }, { nuitees: 2, voitureService: "retour_quotidien" });
+    for (const k of ["deplacement_repas", "deplacement_hebergement"] as const) {
       expect(line(l, k).exoIr, k).toBe(0);
       expect(line(l, k).exoCnss, k).toBe(0);
     }
+  });
+
+  it("le transport ne tombe pas aux mêmes conditions dans les deux régimes", () => {
+    // Voiture rapportée chaque soir : le salarié fait son trajet domicile-travail par ses propres
+    // moyens. L'arrêté l'exclut quand même (él. 3, « ni voiture de service ») ; la note DGI ne vise
+    // que celui « qui dispose d'une voiture de FONCTION », c'est-à-dire laissée en permanence.
+    const soir = line(split({ transport: 400 }, { voitureService: "retour_quotidien" }), "transport");
+    expect(soir.exoIr).toBe(400);
+    expect(soir.exoCnss).toBe(0);
+
+    const permanente = line(split({ transport: 400 }, { voitureService: "permanente", voitureJustifiee: true }), "transport");
+    expect([permanente.exoIr, permanente.exoCnss]).toEqual([0, 0]);
   });
 
   it("la prime de tournée ne tombe avec la voiture que côté CNSS — c'est là que le texte l'écrit", () => {
@@ -171,8 +189,16 @@ describe("non-cumuls prévus par les textes", () => {
 /* ------------------------------------------------------------------ voiture de service ------------------------------------------------------------------ */
 
 describe("voiture de service — avantage en nature (BO 7443 él. 5 ; note DGI 2017)", () => {
-  it("rapportée chaque soir : l'avantage est exonéré", () => {
+  it("rapportée chaque soir : la CNSS exonère sans condition de qualité, l'IR non", () => {
+    // La note DGI subordonne l'exonération à « la qualification et au statut professionnels » du
+    // bénéficiaire — voiture de service comme de fonction. L'arrêté, lui, se contente du retour
+    // quotidien au siège (él. 5). Exonérer un magasinier à l'IR serait une sur-exonération.
     const v = line(split({ voiture_service: 800 }, { voitureService: "retour_quotidien" }), "voiture_service");
+    expect([v.exoIr, v.exoCnss]).toEqual([0, 800]);
+  });
+
+  it("rapportée chaque soir à un cadre dirigeant ou un itinérant : exonérée dans les deux régimes", () => {
+    const v = line(split({ voiture_service: 800 }, { voitureService: "retour_quotidien", voitureJustifiee: true }), "voiture_service");
     expect([v.exoIr, v.exoCnss]).toEqual([800, 800]);
   });
 
@@ -184,6 +210,45 @@ describe("voiture de service — avantage en nature (BO 7443 él. 5 ; note DGI 2
   it("laissée en permanence SANS justification : l'avantage est intégralement soumis", () => {
     const v = line(split({ voiture_service: 800 }, { voitureService: "permanente", voitureJustifiee: false }), "voiture_service");
     expect([v.exoIr, v.exoCnss]).toEqual([0, 0]);
+  });
+});
+
+/* ------------------------------------------------------------------ mission ponctuelle ------------------------------------------------------------------ */
+
+describe("déplacement ponctuel — repas et hébergement (BO 7443 él. 2 ; note DGI 2017)", () => {
+  it("repas : 10 x SMIG horaire par jour de mission", () => {
+    const l = line(split({ deplacement_repas: 5000 }, { daysWorked: 3 }), "deplacement_repas");
+    expect([l.exoIr, l.exoCnss]).toEqual([r2(10 * S * 3), r2(10 * S * 3)]);
+  });
+
+  it("hébergement : 30 x SMIG horaire par NUITÉE — sans nuitée déclarée, rien n'est exonéré", () => {
+    expect(line(split({ deplacement_hebergement: 5000 }, { nuitees: 2 }), "deplacement_hebergement").exoIr).toBe(r2(30 * S * 2));
+    expect(line(split({ deplacement_hebergement: 5000 }, { nuitees: 0 }), "deplacement_hebergement").exoIr).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------------------ barème historique ------------------------------------------------------------------ */
+
+describe("barème par date d'effet — l'arrêté 1314-25 ne vaut qu'à partir du 01/10/2025", () => {
+  it("une période antérieure n'applique PAS les plafonds CNSS de l'arrêté", () => {
+    const avant = getParams(2023);
+    const caisse = avant.indemnitesBareme.find((d) => d.key === "caisse")!;
+    // Plafond IR de la note DGI (190 DH), appliqué aussi à l'assiette sociale faute de texte
+    // vérifié pour la période — et non les 14 x SMIG de l'arrêté.
+    expect(caisse.cnss).toEqual(caisse.ir);
+    expect(caisse.cnssStatus).toBe("a_confirmer");
+    expect(caisse.source).toMatch(/ANTÉRIEURE au 01\/10\/2025/);
+  });
+
+  it("2026 applique bien l'arrêté", () => {
+    const caisse = getParams(2026).indemnitesBareme.find((d) => d.key === "caisse")!;
+    expect(caisse.cnss).toEqual({ kind: "smig_26j", factor: 14 });
+    expect(caisse.cnssStatus).toBe("confirme");
+  });
+
+  it("la déduction pour charges de famille suit aussi sa date d'effet (LF 2025)", () => {
+    expect(getParams(2023).familyDeductionMonthly).toBe(30);
+    expect(getParams(2026).familyDeductionMonthly).toBe(41.67);
   });
 });
 

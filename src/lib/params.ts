@@ -246,7 +246,9 @@ export interface StcParams {
 export type IndemniteKey =
   | "panier" | "titres_restaurant" | "transport" | "salissure" | "usure_vetements" | "lait"
   | "caisse" | "outillage" | "representation" | "deplacement" | "kilometrique" | "tournee"
-  | "mutation" | "voiture_service" | "gratification_sociale";
+  | "mutation" | "voiture_service" | "gratification_sociale"
+  // Frais d'une mission PONCTUELLE, distincts du forfait des déplacements réguliers.
+  | "deplacement_repas" | "deplacement_hebergement";
 
 /** Mode de calcul d'un plafond d'exonération. */
 export type CapRule =
@@ -266,9 +268,19 @@ export type CapRule =
   /** Montant fixe par an : le plafond se CONSOMME d'un mois sur l'autre. */
   | { kind: "fixe_an"; amount: number }
   /** 500 DH en périmètre urbain, 750 DH au-delà. */
+  | { kind: "smig_nuit"; factor: number }
   | { kind: "transport" }
   /** Exonéré en totalité SI la condition du texte est remplie et justifiée, sinon soumis. */
-  | { kind: "si_justifie" };
+  /**
+   * Avantage exonéré seulement si la condition du texte est remplie.
+   * `eligible` : le bénéficiaire doit être cadre dirigeant ou exercer une fonction itinérante —
+   * c'est la condition de l'IR, que la note DGI attache à la « qualification et au statut
+   * professionnels » du bénéficiaire, voiture de fonction comme voiture de service.
+   * `retour_ou_eligible` : condition de la CNSS (BO 7443, él. 5) — la voiture rapportée chaque
+   * soir suffit ; laissée en permanence, elle exige la qualité de cadre dirigeant ou une lettre
+   * d'affectation.
+   */
+  | { kind: "si_justifie"; requires: "eligible" | "retour_ou_eligible" };
 
 export type CapStatus = "confirme" | "a_confirmer";
 export type Regime = "ir" | "cnss";
@@ -280,7 +292,9 @@ export type Regime = "ir" | "cnss";
  * de service.
  */
 export interface Exclusion {
-  when: "titres_restaurant" | "voiture_service";
+  // « voiture_service » : toute voiture mise à disposition. « voiture_permanente » : seulement
+  // celle qui n'est pas rapportée le soir — la voiture de FONCTION au sens de la note DGI.
+  when: "titres_restaurant" | "voiture_service" | "voiture_permanente";
   regimes: Regime[];
   reason: string;
 }
@@ -329,10 +343,18 @@ export const INDEMNITES_BAREME_2025_10: IndemniteDef[] = [
   },
   {
     key: "transport", label: "Indemnité de transport",
-    condition: "Domicile à 2 km au moins du lieu de travail ; aucun transport assuré par l'employeur ni voiture de service.",
+    condition: "Domicile à 2 km au moins du lieu de travail ; aucun transport assuré par l'employeur. Côté CNSS, toute voiture de service la fait tomber ; côté IR, seule une voiture laissée en permanence.",
     ir: { kind: "transport" }, cnss: { kind: "transport" },
     irStatus: "confirme", cnssStatus: "confirme",
-    excludedBy: [{ when: "voiture_service", regimes: ["ir", "cnss"], reason: "Perdue avec une voiture de service ou de fonction (BO 7443, él. 3 ; note DGI 2017)." }],
+    excludedBy: [
+      // Les deux textes ne visent PAS la même situation : l'arrêté écarte le salarié qui « ne
+      // bénéficie ni du transport de l'employeur ni d'une voiture de service » (él. 3, toute
+      // voiture) ; la note DGI n'écarte que celui « qui dispose d'une voiture de fonction »,
+      // c'est-à-dire mise à disposition permanente. Une voiture rapportée chaque soir laisse donc
+      // le trajet domicile-travail à la charge du salarié : son indemnité reste exonérée d'IR.
+      { when: "voiture_service", regimes: ["cnss"], reason: "Perdue avec une voiture de service (BO 7443, él. 3)." },
+      { when: "voiture_permanente", regimes: ["ir"], reason: "Perdue avec une voiture de fonction, laissée en permanence (note DGI 2017)." },
+    ],
     source: `CNSS : ${BO}, titre I él. 3. IR : ${DGI}. 500 DH/mois en périmètre urbain, 750 DH au-delà.`,
   },
   {
@@ -379,14 +401,30 @@ export const INDEMNITES_BAREME_2025_10: IndemniteDef[] = [
   },
   {
     key: "deplacement", label: "Indemnité de déplacement (forfait)",
-    condition: "Déplacements réguliers et continus du fait du poste (agents itinérants, VRP), au-delà de 50 km. Ordre écrit.",
+    condition: "Déplacements réguliers et CONTINUS imposés par la nature du poste (agent ou représentant commercial, VRP, agent itinérant). Ne couvre pas les missions ponctuelles.",
     ir: { kind: "pct_base", rate: 1, max: 5000 }, cnss: { kind: "pct_base", rate: 1, max: 5000 },
     irStatus: "confirme", cnssStatus: "confirme",
     source: `CNSS : ${BO}, titre I él. 1. IR : ${DGI}. 100 % du salaire de base, sans dépasser 5 000 DH/mois (transport, repas et hébergement compris).`,
   },
   {
+    key: "deplacement_repas", label: "Déplacement ponctuel — frais de repas",
+    condition: "Mission ponctuelle justifiée par un ordre écrit (nature, objet, lieu). À distinguer du forfait des déplacements réguliers, qui ne se cumule pas avec ces frais.",
+    ir: { kind: "smig_jour", factor: 10 }, cnss: { kind: "smig_jour", factor: 10 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    excludedBy: [{ when: "voiture_service", regimes: ["ir", "cnss"], reason: "Frais de mission non remboursables en franchise quand le salarié utilise une voiture de service (BO 7443, él. 2 ; note DGI 2017)." }],
+    source: `CNSS : ${BO}, titre I él. 2. IR : ${DGI}. 10 fois le SMIG horaire par jour de mission ; plafond doublé pour une mission à l'étranger (à saisir alors dans la limite correspondante).`,
+  },
+  {
+    key: "deplacement_hebergement", label: "Déplacement ponctuel — frais d'hébergement",
+    condition: "Une nuitée par découché, sur ordre de mission. Non admis lorsque le lieu de mission est à moins de 50 km de la résidence habituelle du salarié, qui peut la regagner.",
+    ir: { kind: "smig_nuit", factor: 30 }, cnss: { kind: "smig_nuit", factor: 30 },
+    irStatus: "confirme", cnssStatus: "confirme",
+    excludedBy: [{ when: "voiture_service", regimes: ["ir", "cnss"], reason: "Frais de mission non remboursables en franchise quand le salarié utilise une voiture de service (BO 7443, él. 2 ; note DGI 2017)." }],
+    source: `CNSS : ${BO}, titre I él. 2. IR : ${DGI}. 30 fois le SMIG horaire par nuitée ; plafond doublé pour une mission à l'étranger.`,
+  },
+  {
     key: "kilometrique", label: "Indemnité kilométrique",
-    condition: "Véhicule personnel, destination à 50 km au moins ; ordre écrit précisant date, lieu, trajet et kilométrage.",
+    condition: "Véhicule personnel du salarié, déplacement professionnel au départ de l'entreprise ; justificatifs indiquant date, lieu, trajet, kilométrage et objet.",
     ir: { kind: "par_km", rate: 3, kmField: "km_professionnels" }, cnss: { kind: "par_km", rate: 3, kmField: "km_professionnels" },
     irStatus: "confirme", cnssStatus: "confirme",
     excludedBy: [{ when: "voiture_service", regimes: ["ir", "cnss"], reason: "Non cumulable avec une voiture de service (BO 7443, él. 2 ; note DGI 2017)." }],
@@ -409,8 +447,8 @@ export const INDEMNITES_BAREME_2025_10: IndemniteDef[] = [
   },
   {
     key: "voiture_service", label: "Voiture de service — avantage en nature",
-    condition: "Exonérée si rapportée chaque soir, ou si laissée en permanence à un cadre dirigeant ou, sur lettre d'affectation, à un agent itinérant.",
-    ir: { kind: "si_justifie" }, cnss: { kind: "si_justifie" },
+    condition: "IR : exonérée uniquement pour un cadre dirigeant ou un salarié aux fonctions itinérantes, voiture de service comme de fonction. CNSS : rapportée chaque soir, l'exonération est acquise ; laissée en permanence, elle exige la même qualité (lettre d'affectation pour les non-dirigeants).",
+    ir: { kind: "si_justifie", requires: "eligible" }, cnss: { kind: "si_justifie", requires: "retour_ou_eligible" },
     irStatus: "confirme", cnssStatus: "confirme",
     source: `CNSS : ${BO}, titre I él. 5. IR : ${DGI} — les frais de voiture de fonction ou de service ne constituent pas un avantage imposable, sous condition de qualité du bénéficiaire.`,
   },
@@ -433,6 +471,30 @@ export const STAGE_INSERTION_CNSS = { min: 1600, max: 6000 } as const;
 // conséquence sur l'exonération ; seul le dépassement du maximum rend l'indemnité soumise. Le
 // moteur n'applique donc QUE le maximum — appliquer le minimum priverait à tort d'exonération les
 // stagiaires étudiants sous convention (él. 25), légitimement payés moins.
+
+/**
+ * Barème applicable AVANT le 1er octobre 2025, date d'entrée en vigueur de l'arrêté 1314-25.
+ *
+ * Reconstituer un bulletin de 2023 avec les plafonds d'un arrêté publié en 2025 serait un
+ * anachronisme — et c'est précisément sur des périodes passées que portent les déclarations
+ * complémentaires. Pour ces périodes : les plafonds IR restent ceux de la note DGI de 2017, qui
+ * était bien en vigueur ; côté CNSS, à défaut de texte social vérifié pour l'époque, on applique
+ * ce même plafond IR. Il est inférieur ou égal à celui de l'arrêté dans toutes les rubriques :
+ * le barème antérieur SOUS-exonère donc, il ne peut pas sur-exonérer. Le statut `a_confirmer`
+ * le signale, rubrique par rubrique.
+ *
+ * Avant mars 2017, la note DGI elle-même n'existait pas : le même barème est retenu, faute de
+ * mieux, et le statut `a_confirmer` vaut alors pour les deux régimes.
+ */
+export const INDEMNITES_BAREME_PRE_2025_10: IndemniteDef[] = INDEMNITES_BAREME_2025_10.map((d) => ({
+  ...d,
+  cnss: d.ir,
+  cnssStatus: "a_confirmer",
+  source:
+    `${d.source} | Période ANTÉRIEURE au 01/10/2025 : l'arrêté 1314-25 n'était pas en vigueur. ` +
+    "Le plafond IR est appliqué à l'assiette CNSS faute de texte social vérifié pour la période — " +
+    "valeur inférieure ou égale à celle de l'arrêté, donc prudente. À confirmer avant tout dépôt.",
+}));
 
 const PARAMS_2026: PayrollParams = {
   year: 2026,
@@ -618,6 +680,11 @@ function derive(base: PayrollParams, year: number, over: Partial<PayrollParams>)
 // Chaîne de barèmes par date d'effet (chacun hérite du précédent).
 const P2000 = derive(PARAMS_2026, 2000, {
   smigHourly: 8.78,        // approximatif — à confirmer BO
+  // Deux valeurs que `derive` hériterait à tort de 2026 :
+  //  - le barème des indemnités, qui date de l'arrêté du 01/10/2025 ;
+  //  - la déduction pour charges de famille, portée de 360 à 500 DH/an par la LF 2025.
+  indemnitesBareme: INDEMNITES_BAREME_PRE_2025_10,
+  familyDeductionMonthly: 30, // 360 DH/an et par personne à charge, avant la LF 2025
   legalMonthlyHours: 208,  // 48 h/sem avant le Code du travail 2004
   cnssCeiling: 5000,
   cnssEmployeeRate: 0.0326,
@@ -660,6 +727,11 @@ const P2023 = derive(P2022, 2023, { // réforme frais professionnels LF 2023
 const P2025 = derive(P2023, 2025, { // barème IR LF 2025 (CNSS/AMO identiques à 2026)
   smigHourly: 17.1, // sources : 17,07-17,10
   irBrackets: PARAMS_2026.irBrackets,
+  familyDeductionMonthly: 41.67, // LF 2025 : 500 DH/an et par personne à charge
+  // L'arrêté 1314-25 n'entre en vigueur qu'au 01/10/2025 : les trois quarts de l'année relèvent
+  // encore du barème antérieur, que l'on retient donc pour 2025 entière (choix prudent — les
+  // bulletins d'octobre à décembre 2025 sous-exonèrent alors légèrement côté CNSS).
+  indemnitesBareme: INDEMNITES_BAREME_PRE_2025_10,
 });
 
 const REGISTRY: Record<number, PayrollParams> = {

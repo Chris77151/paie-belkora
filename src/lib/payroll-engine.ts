@@ -63,6 +63,8 @@ export interface PayrollInput {
   kmProfessionnels?: number;
   /** Kilomètres entre ancien et nouveau lieu d'habitation — plafond de l'indemnité de mutation. */
   kmMutation?: number;
+  /** Nuitées de mission du mois (frais d'hébergement d'un déplacement ponctuel). */
+  nuitees?: number;
   /** Voiture de service du mois : conditionne l'avantage en nature et fait tomber certaines indemnités. */
   voitureService?: VoitureService;
   /** Voiture permanente justifiée (cadre dirigeant, ou lettre d'affectation d'un agent itinérant). */
@@ -286,6 +288,7 @@ export function computePayslip(input: PayrollInput): PayrollResult {
       brutRef: round2(salaireBase + overtime + primeAnciennete + (input.otherGross ?? 0)),
       km: input.kmProfessionnels ?? 0,
       kmMutation: input.kmMutation ?? 0,
+      nuitees: input.nuitees ?? 0,
       transportOutsideUrban: !!input.transportOutsideUrban,
       voitureService: input.voitureService ?? "aucune",
       voitureJustifiee: !!input.voitureJustifiee,

@@ -177,6 +177,8 @@ export interface PayslipInput {
   km_professionnels?: number;
   /** Kilomètres entre l'ancien et le nouveau lieu d'habitation (indemnité de mutation). */
   km_mutation?: number;
+  /** Nuitées de mission du mois — sans elles, les frais d'hébergement ne sont pas exonérés. */
+  nuitees?: number;
   /**
    * Voiture de service du mois. Au-delà de l'avantage en nature, elle fait TOMBER l'exonération
    * du transport, de l'indemnité kilométrique et (côté CNSS) de la prime de tournée.

@@ -83,6 +83,7 @@ export function toEngineInput(
     indemnites: input.indemnites,
     kmProfessionnels: input.km_professionnels,
     kmMutation: input.km_mutation,
+    nuitees: input.nuitees,
     voitureService: input.voiture_service ?? "aucune",
     voitureJustifiee: input.voiture_service_justifiee,
     avantageVoiture: input.avantage_voiture,

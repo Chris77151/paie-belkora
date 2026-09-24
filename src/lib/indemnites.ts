@@ -38,13 +38,18 @@ export interface CapContext {
   km: number;
   /** Kilomètres entre l'ancien et le nouveau lieu d'habitation (indemnité de mutation). */
   kmMutation?: number;
+  /** Nuitées de mission du mois (frais d'hébergement d'un déplacement ponctuel). */
+  nuitees?: number;
   /** Trajet hors périmètre urbain : plafond de transport à 750 au lieu de 500. */
   transportOutsideUrban: boolean;
   /** Voiture de service : conditionne l'avantage en nature et fait tomber certaines indemnités. */
   voitureService?: VoitureService;
   /**
-   * Voiture laissée en permanence : bénéficiaire cadre dirigeant, ou agent itinérant disposant
-   * d'une lettre d'affectation. Sans cette justification, l'avantage en nature est soumis.
+   * Le bénéficiaire a-t-il la QUALITÉ exigée par les textes : cadre dirigeant (PDG, DG, directeur
+   * de département, de succursale, gérant salarié exerçant des pouvoirs de direction) ou fonction
+   * itinérante (agent commercial, VRP, agent itinérant) ? La note DGI y subordonne l'exonération
+   * de TOUTE voiture, de service comme de fonction ; l'arrêté ne l'exige que pour la voiture
+   * laissée en permanence, qui suppose en outre une lettre d'affectation pour les non-dirigeants.
    */
   voitureJustifiee?: boolean;
 }
@@ -67,11 +72,15 @@ type TransportCaps = Pick<PayrollParams, "transportIntraUrbanCap" | "transportOu
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-/** La condition du texte est-elle remplie pour l'avantage voiture de service ? */
-function voitureOk(ctx: CapContext): boolean {
-  if (ctx.voitureService === "retour_quotidien") return true;
-  if (ctx.voitureService === "permanente") return !!ctx.voitureJustifiee;
-  return false;
+/**
+ * La condition du texte est-elle remplie pour l'avantage voiture ? Elle DIFFÈRE selon le régime,
+ * d'où le paramètre : l'IR exige la qualité du bénéficiaire dans tous les cas, la CNSS se contente
+ * du retour quotidien de la voiture au siège.
+ */
+function voitureOk(ctx: CapContext, requires: "eligible" | "retour_ou_eligible"): boolean {
+  if (ctx.voitureService !== "retour_quotidien" && ctx.voitureService !== "permanente") return false;
+  if (requires === "eligible") return !!ctx.voitureJustifiee;
+  return ctx.voitureService === "retour_quotidien" || !!ctx.voitureJustifiee;
 }
 
 /**
@@ -97,8 +106,9 @@ export function capOf(rule: CapRule, ctx: CapContext, p: TransportCaps, ytd = 0,
       return round2(rule.rate * Math.max(0, km));
     }
     case "fixe_an": return Math.max(0, round2(rule.amount - Math.max(0, ytd)));
+    case "smig_nuit": return round2(rule.factor * ctx.smigHourly * Math.max(0, ctx.nuitees ?? 0));
     case "transport": return ctx.transportOutsideUrban ? p.transportOutsideUrbanCap : p.transportIntraUrbanCap;
-    case "si_justifie": return voitureOk(ctx) ? Math.max(0, montant) : 0;
+    case "si_justifie": return voitureOk(ctx, rule.requires) ? Math.max(0, montant) : 0;
   }
 }
 
@@ -124,6 +134,7 @@ export function splitIndemnites(
   const situation = {
     titres_restaurant: (amounts.titres_restaurant ?? 0) > 0,
     voiture_service: !!ctx.voitureService && ctx.voitureService !== "aucune",
+    voiture_permanente: ctx.voitureService === "permanente",
   };
 
   const exempt = (def: IndemniteDef, regime: Regime, montant: number): { exo: number; reason?: string } => {
@@ -181,10 +192,14 @@ export function describeCap(rule: CapRule, smigHourly: number): string {
     case "fixe_jour": return `${dh(rule.amount)} / jour travaillé${pct(rule.maxPctBrut)}`;
     case "smig_jour": return `${rule.factor} x SMIG horaire / jour (${dh(rule.factor * smigHourly)})${pct(rule.maxPctBrut)}`;
     case "smig_26j": return `${rule.factor} x SMIG horaire / 26 jours (${dh(rule.factor * smigHourly)} / mois complet)`;
+    case "smig_nuit": return `${rule.factor} x SMIG horaire / nuitée (${dh(rule.factor * smigHourly)})`;
     case "pct_base": return `${Math.round(rule.rate * 100)} % du salaire de base${rule.max != null ? `, max ${dh(rule.max)}` : ""}`;
     case "par_km": return `${dh(rule.rate)} / km`;
     case "fixe_an": return `${dh(rule.amount)} / an`;
     case "transport": return "500 DH urbain / 750 DH hors périmètre";
-    case "si_justifie": return "totalement, si la condition est justifiée";
+    case "si_justifie":
+      return rule.requires === "eligible"
+        ? "totalement, si le bénéficiaire est cadre dirigeant ou itinérant"
+        : "totalement, si la voiture est rapportée chaque soir ou le bénéficiaire éligible";
   }
 }
