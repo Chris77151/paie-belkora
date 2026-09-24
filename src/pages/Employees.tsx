@@ -49,7 +49,7 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 function regimeMonthlyMin(regime: "SMIG" | "SMAG"): number {
   const p = getParams(new Date().getFullYear());
   return regime === "SMAG"
-    ? round2(p.smagDaily * p.smagMonthlyDays) // 93,68 × 26 = 2 435,68
+    ? round2(p.smagDaily * p.smagMonthlyDays) // 97,44 × 26 = 2 533,44
     : round2(p.smigHourly * p.legalMonthlyHours); // 17,92 × 191 = 3 422,72
 }
 

@@ -56,7 +56,8 @@ export function buildPeriodEntries(
 ): { paie: JournalEntry; reglements: JournalEntry[]; totals: PayrollTotals; split: SettlementSplit } {
   const totals = sumResults(slips.map((s) => s.result));
   const split = periodSplit(slips, employees, firm);
-  const opts = { tfpInCnss: false, paymentMode: firm.payroll_payment_mode, split } as const;
+  // TFP recouvrée par la CNSS pour l'OFPPT : créditée en 4441 avec les cotisations, pas en 4457.
+  const opts = { tfpInCnss: true, paymentMode: firm.payroll_payment_mode, split } as const;
   return {
     totals,
     split,

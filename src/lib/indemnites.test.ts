@@ -70,11 +70,22 @@ describe("IR — plafonds de la note DGI du 13 mars 2017", () => {
     expect(line(split({ caisse: 900 }), "caisse").exoIr).toBe(190);
   });
 
-  it("lait, outillage, salissure : montants de 2017 indexés au SMIG horaire (base 13,46 DH)", () => {
+  it("lait 150, outillage 100, salissure 210 — montants NOMINAUX de la note, non revalorisés", () => {
     const l = split({ lait: 900, outillage: 900, salissure: 900 });
-    expect(line(l, "lait").exoIr).toBe(r2((150 * S) / 13.46));
-    expect(line(l, "outillage").exoIr).toBe(r2((100 * S) / 13.46));
-    expect(line(l, "salissure").exoIr).toBe(r2((210 * S) / 13.46));
+    expect(line(l, "lait").exoIr).toBe(150);
+    expect(line(l, "outillage").exoIr).toBe(100);
+    expect(line(l, "salissure").exoIr).toBe(210);
+  });
+
+  it("les plafonds IR ne bougent PAS avec le SMIG — seule la DGI peut les revaloriser", () => {
+    // La note porte « (*) montant indexé au SMIG horaire », mais aucun montant revalorisé n'a été
+    // publié : les indexer nous-mêmes exonérerait au-delà de ce que l'administration a fixé.
+    const smig2030 = split({ lait: 900, caisse: 900, outillage: 900 }, { smigHourly: 25 });
+    expect(line(smig2030, "lait").exoIr).toBe(150);
+    expect(line(smig2030, "caisse").exoIr).toBe(190);
+    expect(line(smig2030, "outillage").exoIr).toBe(100);
+    // Les plafonds CNSS, eux, suivent le SMIG : ils sont écrits en multiples dans l'arrêté.
+    expect(line(smig2030, "lait").exoCnss).toBe(r2(11 * 25));
   });
 
   it("l'IR et la CNSS n'exonèrent donc pas la même part d'une même indemnité de caisse", () => {

@@ -88,7 +88,6 @@ export function capOf(rule: CapRule, ctx: CapContext, p: TransportCaps, ytd = 0,
     case "smig_jour": return pctCap(round2(rule.factor * ctx.smigHourly * days), rule.maxPctBrut);
     // BO 7443 : « n fois le SMIG horaire, pour chaque 26 jours de travail » — proratisé.
     case "smig_26j": return round2((rule.factor * ctx.smigHourly * days) / 26);
-    case "indexe_smig": return round2((rule.base * ctx.smigHourly) / rule.smigRef);
     case "pct_base": {
       const v = round2(rule.rate * Math.max(0, ctx.salaireBase));
       return rule.max != null ? Math.min(v, rule.max) : v;
@@ -182,7 +181,6 @@ export function describeCap(rule: CapRule, smigHourly: number): string {
     case "fixe_jour": return `${dh(rule.amount)} / jour travaillé${pct(rule.maxPctBrut)}`;
     case "smig_jour": return `${rule.factor} x SMIG horaire / jour (${dh(rule.factor * smigHourly)})${pct(rule.maxPctBrut)}`;
     case "smig_26j": return `${rule.factor} x SMIG horaire / 26 jours (${dh(rule.factor * smigHourly)} / mois complet)`;
-    case "indexe_smig": return `${dh(rule.base)} indexé SMIG (${dh((rule.base * smigHourly) / rule.smigRef)} / mois)`;
     case "pct_base": return `${Math.round(rule.rate * 100)} % du salaire de base${rule.max != null ? `, max ${dh(rule.max)}` : ""}`;
     case "par_km": return `${dh(rule.rate)} / km`;
     case "fixe_an": return `${dh(rule.amount)} / an`;

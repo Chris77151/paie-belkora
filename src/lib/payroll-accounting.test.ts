@@ -29,41 +29,43 @@ describe("Écriture de paie (journal OD)", () => {
     const l = entry.lines.find((x) => x.account === "4432");
     expect(l?.credit).toBe(4135.52);
   });
-  it("crédit 4441 DÉCOMPOSÉ (lignes CNSS / AMO / AF), total 898,96 (TFP EXCLUE — isolée en 4457)", () => {
+  it("crédit 4441 DÉCOMPOSÉ (lignes CNSS / AMO / AF / TFP), total 953,80", () => {
     const lines4441 = entry.lines.filter((x) => x.account === "4441");
     expect(lines4441.length).toBeGreaterThanOrEqual(2); // au moins CNSS + AMO en lignes séparées
     expect(lines4441.some((l) => /CNSS/.test(l.label))).toBe(true);
     expect(lines4441.some((l) => /AMO/.test(l.label))).toBe(true);
     const total = round2Local(lines4441.reduce((s, l) => s + l.credit, 0));
-    expect(total).toBe(898.96); // somme des lignes 4441
+    expect(total).toBe(953.8); // 898,96 de cotisations + 54,84 de TFP
   });
-  it("crédit 4457 = TFP 54,84 par défaut (compte d'État distinct, conforme au référentiel)", () => {
-    expect(entry.lines.find((x) => x.account === "4457")?.credit).toBe(54.84);
+  it("AUCUNE ligne 4457 par défaut — la TFP est recouvrée par la CNSS pour l'OFPPT", () => {
+    expect(entry.lines.find((x) => x.account === "4457")).toBeUndefined();
+    // La CHARGE de TFP reste débitée, elle : c'est la dette qui change de compte, pas le coût.
+    expect(entry.lines.find((x) => x.account === "61678")?.debit).toBe(54.84);
   });
   it("ligne IR à 0 est éliminée", () => {
     expect(entry.lines.find((x) => x.account === "44525")).toBeUndefined();
   });
 });
 
-describe("Écriture de paie — TFP sur bordereau CNSS (option tfpInCnss=true)", () => {
+describe("Écriture de paie — TFP isolée en 4457 (option tfpInCnss=false)", () => {
   const totals = sumResults([computePayslip(aboubi)]);
-  const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { tfpInCnss: true });
+  const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { tfpInCnss: false });
 
-  it("reste équilibrée", () => {
+  it("reste équilibrée — le coût employeur ne change pas selon la présentation", () => {
     expect(entry.balanced).toBe(true);
     expect(entry.totalDebit).toBe(5089.32);
   });
-  it("crédit 4441 (lignes CNSS/AMO/AF/TFP) total 953,80 (TFP incluse) et aucune ligne 4457", () => {
+  it("crédit 4457 = TFP 54,84, et le 4441 retombe à 898,96", () => {
+    expect(entry.lines.find((x) => x.account === "4457")?.credit).toBe(54.84);
     const total = round2Local(entry.lines.filter((x) => x.account === "4441").reduce((s, l) => s + l.credit, 0));
-    expect(total).toBe(953.8); // 898,96 + 54,84 (TFP)
-    expect(entry.lines.find((x) => x.account === "4457")).toBeUndefined();
+    expect(total).toBe(898.96);
   });
 });
 
 describe("Invariants d'écriture (contrôle bloquant)", () => {
   const totals = sumResults([computePayslip(aboubi)]);
 
-  it("les 3 invariants passent en mode par défaut (TFP isolée en 4457)", () => {
+  it("les 3 invariants passent en mode par défaut (TFP en 4441)", () => {
     const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7);
     const inv = checkPayrollEntryInvariants(entry, totals, DEFAULT_ACCOUNTS);
     expect(inv.ok).toBe(true);
@@ -71,8 +73,8 @@ describe("Invariants d'écriture (contrôle bloquant)", () => {
     for (const r of inv.results) expect(Math.abs(r.delta)).toBeLessThan(0.01);
   });
 
-  it("les 3 invariants passent aussi avec TFP en 4441 (option tfpInCnss=true)", () => {
-    const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { tfpInCnss: true });
+  it("les 3 invariants passent aussi avec TFP isolée en 4457 (option tfpInCnss=false)", () => {
+    const entry = buildPayrollEntry(totals, DEFAULT_ACCOUNTS, 2026, 7, { tfpInCnss: false });
     expect(checkPayrollEntryInvariants(entry, totals, DEFAULT_ACCOUNTS).ok).toBe(true);
   });
 

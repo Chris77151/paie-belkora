@@ -259,7 +259,6 @@ export type CapRule =
   /** Multiple du SMIG horaire par tranche de 26 jours travaillés (formulation du BO 7443). */
   | { kind: "smig_26j"; factor: number }
   /** Montant fixé à une date, indexé proportionnellement au SMIG horaire (note DGI 2017). */
-  | { kind: "indexe_smig"; base: number; smigRef: number }
   /** Pourcentage du salaire de base du mois, avec un plafond absolu éventuel. */
   | { kind: "pct_base"; rate: number; max?: number }
   /** Montant par kilomètre déclaré (`kmField` : quel kilométrage). */
@@ -304,7 +303,11 @@ export interface IndemniteDef {
 }
 
 /** SMIG horaire à la date de la note DGI du 13 mars 2017 — base de son indexation. */
-const SMIG_NOTE_DGI_2017 = 13.46;
+// Les montants IR de la note DGI de 2017 portent la mention « (*) montant indexé au SMIG horaire ».
+// La DGI n'a JAMAIS publié de montant revalorisé depuis — ni après l'arrêté CNSS 1314-25, qui ne
+// touche qu'à l'assiette sociale. La pratique 2026 applique donc les montants nominaux de 2017, et
+// c'est ce que retient le barème : indexer nous-mêmes reviendrait à exonérer au-delà du seul
+// montant que l'administration a publié. À revoir si la DGI met sa note à jour.
 const BO = "BO 7443 (arrêté 1314-25)";
 const DGI = "note DGI 2017";
 
@@ -335,23 +338,23 @@ export const INDEMNITES_BAREME_2025_10: IndemniteDef[] = [
   {
     key: "salissure", label: "Prime de salissure",
     condition: "Travaux particulièrement salissants, exercés indistinctement. Plafond COMMUN avec l'usure de vêtements.",
-    ir: { kind: "indexe_smig", base: 210, smigRef: SMIG_NOTE_DGI_2017 }, cnss: { kind: "smig_26j", factor: 14 },
+    ir: { kind: "fixe_mois", amount: 210 }, cnss: { kind: "smig_26j", factor: 14 },
     irStatus: "confirme", cnssStatus: "confirme", group: "salissure",
-    source: `CNSS : ${BO}, titre VII él. 30 — salissure et usure de vêtements : 14 x SMIG horaire par 26 jours. IR : ${DGI} — 210 DH/mois, indexé au SMIG horaire.`,
+    source: `CNSS : ${BO}, titre VII él. 30 — salissure et usure de vêtements : 14 x SMIG horaire par 26 jours. IR : ${DGI} — 210 DH/mois. La note porte la mention « (*) montant indexé au SMIG horaire », mais la DGI n'a publié aucun montant revalorisé depuis 2017 : le montant nominal est retenu — il sous-exonère au pire, jamais l'inverse.`,
   },
   {
     key: "usure_vetements", label: "Prime d'usure de vêtements",
     condition: "Même élément que la prime de salissure (« prime de bleu ») : plafond commun.",
-    ir: { kind: "indexe_smig", base: 210, smigRef: SMIG_NOTE_DGI_2017 }, cnss: { kind: "smig_26j", factor: 14 },
+    ir: { kind: "fixe_mois", amount: 210 }, cnss: { kind: "smig_26j", factor: 14 },
     irStatus: "confirme", cnssStatus: "confirme", group: "salissure",
     source: `CNSS : ${BO}, titre VII él. 30. IR : ${DGI} — « prime de salissure (prime de bleu ou d'usure de vêtement) ».`,
   },
   {
     key: "lait", label: "Indemnité de lait",
     condition: "Salarié manipulant des produits toxiques.",
-    ir: { kind: "indexe_smig", base: 150, smigRef: SMIG_NOTE_DGI_2017 }, cnss: { kind: "smig_26j", factor: 11 },
+    ir: { kind: "fixe_mois", amount: 150 }, cnss: { kind: "smig_26j", factor: 11 },
     irStatus: "confirme", cnssStatus: "confirme",
-    source: `CNSS : ${BO}, titre VII él. 27 — 11 x SMIG horaire par 26 jours. IR : ${DGI} — 150 DH/mois, indexé au SMIG horaire.`,
+    source: `CNSS : ${BO}, titre VII él. 27 — 11 x SMIG horaire par 26 jours. IR : ${DGI} — 150 DH/mois. La note porte la mention « (*) montant indexé au SMIG horaire », mais la DGI n'a publié aucun montant revalorisé depuis 2017 : le montant nominal est retenu — il sous-exonère au pire, jamais l'inverse.`,
   },
   {
     key: "caisse", label: "Indemnité de caisse",
@@ -363,9 +366,9 @@ export const INDEMNITES_BAREME_2025_10: IndemniteDef[] = [
   {
     key: "outillage", label: "Prime d'outillage",
     condition: "Ouvrier propriétaire de ses outils et matériel personnels.",
-    ir: { kind: "indexe_smig", base: 100, smigRef: SMIG_NOTE_DGI_2017 }, cnss: { kind: "smig_26j", factor: 7 },
+    ir: { kind: "fixe_mois", amount: 100 }, cnss: { kind: "smig_26j", factor: 7 },
     irStatus: "confirme", cnssStatus: "confirme",
-    source: `CNSS : ${BO}, titre VII él. 29 (« prime d'équipement ») — 7 x SMIG horaire par 26 jours. IR : ${DGI} — 100 DH/mois, indexé au SMIG horaire.`,
+    source: `CNSS : ${BO}, titre VII él. 29 (« prime d'équipement ») — 7 x SMIG horaire par 26 jours. IR : ${DGI} — 100 DH/mois. La note porte la mention « (*) montant indexé au SMIG horaire », mais la DGI n'a publié aucun montant revalorisé depuis 2017 : le montant nominal est retenu — il sous-exonère au pire, jamais l'inverse.`,
   },
   {
     key: "representation", label: "Indemnité de représentation",
@@ -435,7 +438,10 @@ const PARAMS_2026: PayrollParams = {
   year: 2026,
   smigHourly: 17.92,
   legalMonthlyHours: 191,
-  smagDaily: 93.68,
+  // SMAG porté à 97,44 DH/jour au 1er avril 2026 (décret n° 2.25.983 du 29 décembre 2025, seconde
+  // tranche de l'accord social du 29 avril 2024) — 93,00 DH du 1er avril 2025 au 31 mars 2026.
+  // Les paramètres sont annuels : une paie agricole de janvier à mars 2026 doit retenir 93,00 DH.
+  smagDaily: 97.44,
   smagMonthlyDays: 26,
   standardMonthlyDays: 26,
 

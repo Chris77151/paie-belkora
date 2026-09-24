@@ -83,11 +83,12 @@ const C = (account: string, label: string, credit: number): JournalLine => ({ ac
 /** Options de génération des écritures de paie. */
 export interface PayrollEntryOptions {
   /**
-   * Où créditer la TFP. DÉFAUT `false` : la TFP (TAXE, pas une cotisation) est isolée dans le
-   * compte d'État **4457**, conforme au référentiel (`accounting-accounts.ts` : « au crédit 4457,
-   * pas 4441 »). `true` la crédite sur le bordereau CNSS (compte 4441), fidèle au recouvrement réel
-   * par la CNSS pour l'OFPPT — à activer explicitement si l'on préfère cette présentation. Le compte
-   * de CHARGE 61671 est présent dans les deux cas.
+   * Où créditer la TFP. DÉFAUT `true` : elle est créditée sur le bordereau CNSS (compte **4441**),
+   * fidèle au recouvrement réel — la TFP est encaissée par la CNSS pour le compte de l'OFPPT, sur le
+   * même bordereau et la même échéance que les cotisations. Aucune ligne 4457 n'est alors produite,
+   * et le règlement solde un seul compte de dette. `false` isole la TFP dans le compte d'État
+   * **4457** : présentation plus fine (une TAXE n'est pas une cotisation), à choisir si l'entité tient
+   * ce compte. Le compte de CHARGE 61678 est débité dans les deux cas.
    */
   tfpInCnss?: boolean;
   /**
@@ -123,13 +124,13 @@ export function buildPayrollEntry(
   month: number,
   opts: PayrollEntryOptions = {},
 ): JournalEntry {
-  const tfpInCnss = opts.tfpInCnss ?? false;
+  const tfpInCnss = opts.tfpInCnss ?? true;
   const date = endOfMonthIso(year, month); // fin de mois (sans décalage de fuseau)
   const ref = `PAIE-${year}-${String(month).padStart(2, "0")}`;
   const L = ACCOUNT_LABELS;
   // Crédit des organismes sociaux DÉCOMPOSÉ, comme le Guide des écritures : une ligne 4441 par nature
   // (CNSS, AMO, AF), chacune part patronale + salariale — jamais un montant 4441 « en vrac ». La TFP
-  // reste isolée en 4457 (État) par défaut ; `tfpInCnss` = true l'ajoute sur le bordereau CNSS (4441).
+  // est créditée sur le bordereau CNSS (4441) par défaut ; `tfpInCnss` = false l'isole en 4457 (État).
   const cnss = round2(totals.cnssSalarie + totals.cnssPatronal);
   const amo = round2(totals.amoSalarie + totals.amoPatronal);
   return finalize({
@@ -148,7 +149,7 @@ export function buildPayrollEntry(
       C(accounts.cnssOrganisme, "AMO - part patronale et salariale", amo),
       C(accounts.cnssOrganisme, L.allocationsFamiliales, totals.af), // prestations familiales (patronal)
       ...(tfpInCnss ? [C(accounts.cnssOrganisme, `${L.tfp} (bordereau OFPPT)`, totals.tfp)] : []),
-      C(accounts.etatTfp, L.etatTfp, tfpInCnss ? 0 : totals.tfp), // 4457 seulement si TFP isolée (ligne à 0 éliminée)
+    C(accounts.etatTfp, L.etatTfp, tfpInCnss ? 0 : totals.tfp), // 4457 seulement si TFP isolée (ligne à 0 éliminée)
       C(accounts.etatIr, L.etatIr, totals.ir),
     ],
   });
@@ -183,7 +184,7 @@ export function buildSettlementEntries(
   month: number,
   opts: PayrollEntryOptions = {},
 ): JournalEntry[] {
-  const tfpInCnss = opts.tfpInCnss ?? false;
+  const tfpInCnss = opts.tfpInCnss ?? true;
   const date = endOfMonthIso(year, month);
   const ym = `${year}-${String(month).padStart(2, "0")}`;
   const ref = `REGL-${ym}`;

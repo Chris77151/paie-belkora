@@ -145,11 +145,11 @@ describe("Proratisation aux jours travaillés (mois complet = 26 j)", () => {
 describe("Indemnités exonérées", () => {
   it("intègre lait et représentation sous leurs plafonds OFFICIELS — l'IR et la CNSS divergent", () => {
     // Version du chantier initial : plafonds infinis. Barème désormais tiré des textes :
-    // IR  (note DGI 2017)  : lait 150 DH indexé au SMIG horaire (base 13,46) -> ~199,70 DH/mois ;
+    // IR  (note DGI 2017)  : lait 150 DH/mois, montant nominal non revalorisé ;
     // CNSS (BO 7443, él. 27) : lait 11 x SMIG horaire par 26 jours, proratisé aux 20 jours.
     const r = computePayslip(base({ lait: 180, representation: 240, daysWorked: 20 }));
     const lait = r.indemnitesDetail.find((l) => l.key === "lait")!;
-    expect(lait.exoIr).toBe(180); // sous le plafond IR indexé
+    expect(lait.exoIr).toBe(150); // plafond IR de la note
     expect(lait.exoCnss).toBe(Math.round(((11 * 17.92 * 20) / 26) * 100) / 100);
     // Représentation : 10 % du salaire de base du mois, dans les deux régimes.
     expect(r.representationExonere).toBe(Math.min(240, Math.round(r.salaireBase * 0.1 * 100) / 100));

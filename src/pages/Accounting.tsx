@@ -385,8 +385,10 @@ export default function Accounting() {
           )}
 
           <p className="mt-6 text-xs text-muted-foreground">
-            Comptes PCGE par défaut (6171, 617411/617412, 61744, 61678 TFP, 4432, 4441, 4457, 44525, 5141/5161,
-            3431 avances), validés par l'expert-comptable. Écritures à contrôler avant intégration en comptabilité.
+            Comptes PCGE par défaut (6171, 617411/617412, 61744, 61678 TFP, 4432, 4441, 44525, 5141/5161,
+            3431 avances), validés par l'expert-comptable. La TFP est créditée en 4441 avec les cotisations
+            (recouvrement CNSS pour l'OFPPT) : aucune ligne 4457 n'est générée. Écritures à contrôler avant
+            intégration en comptabilité.
           </p>
         </>
       )}

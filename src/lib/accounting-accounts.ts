@@ -8,8 +8,9 @@
  *    -> l'AMO patronale se loge sous 61741 (sous-comptes 617411/617412), jamais 61742/61743.
  *  - TFP = TAXE (pas une cotisation) -> charge 6167 = **61678** « Autres impôts, taxes et droits
  *    assimilés » (le 61671 est RÉSERVÉ aux « droits d'enregistrement et de timbre » — ne pas l'y loger).
- *    Au crédit 4457 (État - taxes à payer) par défaut ; option `tfpInCnss` pour la loger en 4441
- *    (recouvrement par la CNSS/OFPPT) — à trancher selon la politique de l'entité (réserve expert-comptable).
+ *    Au crédit 4441 par défaut, avec les cotisations : la TFP est recouvrée par la CNSS pour l'OFPPT,
+ *    sur le même bordereau et la même échéance. `tfpInCnss: false` l'isole en 4457 (État - taxes à
+ *    payer) pour les entités qui tiennent ce compte séparément.
  *  - AMO (sal.+patr.) se paie sur le bordereau CNSS -> crédit 4441 (pas 4445 Mutuelles).
  *  - IR retenu à la source sur salaires -> 44525.
  *  - Retenue d'AVANCE/ACOMPTE sur salaire -> crédit 3431 « Personnel — avances et acomptes »
@@ -30,7 +31,7 @@ export interface PayrollAccounts {
   remunerationsDues: string;
   /** 4441 — CNSS (CNSS + AMO + AF, parts salariale et patronale). */
   cnssOrganisme: string;
-  /** 4457 — État, TFP à payer. */
+  /** 4457 — État, TFP à payer. Utilisé seulement avec l'option `tfpInCnss: false`. */
   etatTfp: string;
   /** 44525 — État, IR retenu à la source. */
   etatIr: string;
