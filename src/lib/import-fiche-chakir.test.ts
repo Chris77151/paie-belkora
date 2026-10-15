@@ -9,7 +9,7 @@ const base = (firms: { id: string; name: string }[] = [{ id: "f_ch", name: "BELK
   ({ firms, employees: [], nonDeclarePayments: [] }) as unknown as AppState;
 
 describe("import fiche CHAKIR 20/09–03/10/2026", () => {
-  it("17 ouvriers + 17 versements de septembre, net 19 906 DH", () => {
+  it("17 ouvriers + 17 versements d'octobre, net 19 906 DH", () => {
     const s = base();
     expect(resolveChakirFirmId(s)).toBe("f_ch");
     const r = ensureFicheEmargementChakir(s);

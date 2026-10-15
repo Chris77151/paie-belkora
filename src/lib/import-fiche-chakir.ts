@@ -13,8 +13,8 @@
  *   - Colonne CIN VIERGE → aucun CIN renseigné. « H / F » = code de paie (Cat.).
  *   - Sections « OUVRIERS D » / « OUVRIERS N.D » reprises en note, NON interprétées.
  *
- * HYPOTHÈSES EXPLICITES : mois 09/2026 ; embauche 20/09/2026, CDD ; taux prérempli
- * SMIG (le réel payé vit dans le versement). Entité résolue par nom (contient « chakir »).
+ * HYPOTHÈSES EXPLICITES : mois 10/2026 (fiche « -10- », payée le 05/10/2026) ;
+ * embauche 20/09/2026, CDD ; taux prérempli SMIG (le réel payé vit dans le versement).
  *
  * Idempotent : rejoué sans doublon ; ignore les déjà immatriculés CNSS (paie normale).
  */
@@ -24,7 +24,8 @@ import { buildPayment, type NonDeclarePayment } from "./non-declares";
 
 export const CHAKIR_FICHE_REF = "12/EM-2026-10-CHAKIR";
 export const CHAKIR_YEAR = 2026;
-export const CHAKIR_MONTH = 9; // septembre (quinzaine 20/09–03/10, comme la fiche MIYA)
+// OCTOBRE : fiche numérotée « -10- », payée le 05/10/2026 (quinzaine 20/09–03/10).
+export const CHAKIR_MONTH = 10;
 export const CHAKIR_SITE = "Kénitra";
 export const CHAKIR_PAID_AT = "2026-10-05";
 
@@ -118,7 +119,11 @@ export function ensureFicheEmargementChakir(s: AppState): ChakirImportSummary {
     paymentsAdded: 0, paymentsSkippedDeclared: 0, totalNet: 0,
   };
   const employees: Employee[] = (s.employees = s.employees ?? []);
-  const payments: NonDeclarePayment[] = (s.nonDeclarePayments = s.nonDeclarePayments ?? []);
+  // Correction mois 09→10/2026 : purge des versements de septembre avant réimport.
+  s.nonDeclarePayments = (s.nonDeclarePayments ?? []).filter(
+    (x) => !(x.created_by === `import-fiche-${CHAKIR_FICHE_REF}` && x.month === 9 && x.year === CHAKIR_YEAR),
+  );
+  const payments: NonDeclarePayment[] = s.nonDeclarePayments;
 
   // Entité : réutilisée si elle existe (saisie utilisateur), sinon créée
   // depuis les mentions exactes de la fiche.
@@ -171,7 +176,7 @@ export function ensureFicheEmargementChakir(s: AppState): ChakirImportSummary {
       return;
     }
 
-    const payId = `ndp-ch-2026-09-${nn}`;
+    const payId = `ndp-ch-2026-10-${nn}`;
     if (paymentIds.has(payId)) return;
     const pay = buildPayment({
       id: payId,
@@ -183,7 +188,7 @@ export function ensureFicheEmargementChakir(s: AppState): ChakirImportSummary {
       brut_verse: row.montantDu,
       avance_deduite: row.avance,
       mode: "especes",
-      note: `Fiche ${CHAKIR_FICHE_REF} — ${row.section} — quinzaine 20/09/2026–03/10/2026 (payé le 05/10/2026, enregistré en 09/2026) — Cat. ${row.cat} — ${CHAKIR_SITE} (chantier non renseigné sur la fiche)`,
+      note: `Fiche ${CHAKIR_FICHE_REF} — ${row.section} — quinzaine 20/09/2026–03/10/2026 (payé le 05/10/2026, enregistré en 10/2026) — Cat. ${row.cat} — ${CHAKIR_SITE} (chantier non renseigné sur la fiche)`,
       created_at: `${CHAKIR_PAID_AT}T00:00:00.000Z`,
       created_by: `import-fiche-${CHAKIR_FICHE_REF}`,
     });

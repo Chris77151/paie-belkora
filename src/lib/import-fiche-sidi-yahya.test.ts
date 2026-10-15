@@ -13,7 +13,7 @@ const base = (): AppState =>
   }) as unknown as AppState;
 
 describe("import fiche Sidi Yahya 20/09–03/10/2026", () => {
-  it("33 salariés + 33 versements de septembre, total 21 842 DH", () => {
+  it("33 salariés + 33 versements d'octobre, total 21 842 DH", () => {
     const s = base();
     const r = ensureFicheEmargementSidiYahya(s);
     expect(r.employeesAdded).toBe(33);
@@ -22,7 +22,7 @@ describe("import fiche Sidi Yahya 20/09–03/10/2026", () => {
     expect(FICHE_PAID_ROWS.length).toBe(33);
     const sum = s.nonDeclarePayments!.reduce((a, p) => a + p.net_verse, 0);
     expect(Math.round(sum)).toBe(21842);
-    // Tous en septembre, espèces, sans CNSS, site + chantier tracés.
+    // Tous en octobre, espèces, sans CNSS, site + chantier tracés.
     for (const pay of s.nonDeclarePayments!) {
       expect(pay.year).toBe(FICHE_YEAR);
       expect(pay.month).toBe(FICHE_MONTH);

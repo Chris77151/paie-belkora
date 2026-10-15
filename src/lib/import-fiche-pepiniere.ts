@@ -31,7 +31,8 @@ import { FICHE_PAID_ROWS as MIYA_PAID_ROWS } from "./import-fiche-sidi-yahya";
 export const PEP_FICHE_REF = "12/EM-2026-10";
 export const PEP_FIRM_ID = "firm_pep";
 export const PEP_YEAR = 2026;
-export const PEP_MONTH = 9; // septembre (quinzaine 20/09–03/10, comme les autres fiches)
+// OCTOBRE : fiche numérotée « -10 », payée le 05/10/2026 (quinzaine 20/09–03/10).
+export const PEP_MONTH = 10;
 export const PEP_SITE = "Sidi Yahya";
 export const PEP_CHANTIER = "Travaux exterieur - Sidi Yahya";
 export const PEP_PAID_AT = "2026-10-05";
@@ -78,7 +79,11 @@ export function ensureFicheEmargementPepiniere(s: AppState): PepImportSummary {
     paymentsAdded: 0, paymentsSkippedDeclared: 0, totalNet: 0,
   };
   const employees: Employee[] = (s.employees = s.employees ?? []);
-  const payments: NonDeclarePayment[] = (s.nonDeclarePayments = s.nonDeclarePayments ?? []);
+  // Correction mois 09→10/2026 : purge des versements de septembre avant réimport.
+  s.nonDeclarePayments = (s.nonDeclarePayments ?? []).filter(
+    (x) => !(x.created_by === `import-fiche-${PEP_FICHE_REF}` && x.month === 9 && x.year === PEP_YEAR),
+  );
+  const payments: NonDeclarePayment[] = s.nonDeclarePayments;
 
   if (!(s.firms ?? []).some((f) => f.id === PEP_FIRM_ID)) {
     summary.firmMissing = true; // entité absente : on n'importe rien, sans rien inventer
@@ -130,7 +135,7 @@ export function ensureFicheEmargementPepiniere(s: AppState): PepImportSummary {
       return;
     }
 
-    const payId = `ndp-pep-2026-09-${nn}`;
+    const payId = `ndp-pep-2026-10-${nn}`;
     if (paymentIds.has(payId)) return;
     const pay = buildPayment({
       id: payId,
@@ -142,7 +147,7 @@ export function ensureFicheEmargementPepiniere(s: AppState): PepImportSummary {
       brut_verse: row.montantDu,
       avance_deduite: row.avance,
       mode: "especes",
-      note: `Fiche ${PEP_FICHE_REF} — ${row.section} — quinzaine 20/09/2026–03/10/2026 (payé le 05/10/2026, enregistré en 09/2026) — Cat. ${row.cat} — ${PEP_SITE} / ${PEP_CHANTIER}`,
+      note: `Fiche ${PEP_FICHE_REF} — ${row.section} — quinzaine 20/09/2026–03/10/2026 (payé le 05/10/2026, enregistré en 10/2026) — Cat. ${row.cat} — ${PEP_SITE} / ${PEP_CHANTIER}`,
       created_at: `${PEP_PAID_AT}T00:00:00.000Z`,
       created_by: `import-fiche-${PEP_FICHE_REF}`,
     });

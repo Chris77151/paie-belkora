@@ -10,7 +10,7 @@
  *   - « H / F » est le CODE de paie journalier (Cat.), pas un sexe déclaré → repris tel quel en note.
  *
  * HYPOTHÈSES EXPLICITES (pas de pièces) :
- *   - Mois d'enregistrement 09/2026 (quinzaine à cheval 20/09–03/10, 11 j sur 14 en septembre).
+ *   - Mois d'enregistrement 10/2026 (fiche numérotée « -10- », payée le 05/10/2026).
  *   - Date d'embauche = 20/09/2026 (1er jour de la quinzaine, journaliers) ; contrat CDD.
  *   - Taux horaire = préremplissage SMIG du régime (comme la création manuelle) — le MONTANT
  *     RÉEL payé vit dans le versement, jamais dans ce taux.
@@ -25,7 +25,8 @@ import { buildPayment, type NonDeclarePayment } from "./non-declares";
 export const FICHE_REF = "12/EM-2026-10-MIYA";
 export const FICHE_FIRM_ID = "firm_miya";
 export const FICHE_YEAR = 2026;
-export const FICHE_MONTH = 9; // septembre (quinzaine 20/09–03/10, instruction utilisateur)
+// OCTOBRE : fiche numérotée « -10- », payée le 05/10/2026 (quinzaine 20/09–03/10).
+export const FICHE_MONTH = 10;
 export const FICHE_SITE = "Sidi Yahya";
 export const FICHE_CHANTIER = "Travaux exterieur - Sidi Yahya";
 export const FICHE_PAID_AT = "2026-10-05";
@@ -105,7 +106,12 @@ export function ensureFicheEmargementSidiYahya(s: AppState): FicheImportSummary 
     employeesAdded: 0, employeesReused: 0, paymentsAdded: 0, paymentsSkippedDeclared: 0, totalNet: 0,
   };
   const employees: Employee[] = (s.employees = s.employees ?? []);
-  const payments: NonDeclarePayment[] = (s.nonDeclarePayments = s.nonDeclarePayments ?? []);
+  // Correction mois 09→10/2026 : les versements de septembre de cette fiche sont
+  // SUPPRIMÉS avant réimport en octobre (zéro doublon entre les deux mois).
+  s.nonDeclarePayments = (s.nonDeclarePayments ?? []).filter(
+    (x) => !(x.created_by === `import-fiche-${FICHE_REF}` && x.month === 9 && x.year === FICHE_YEAR),
+  );
+  const payments: NonDeclarePayment[] = s.nonDeclarePayments;
   // Garde-fou : sans l'entité MIYA, aucun rattachement possible — on n'importe rien.
   if (!(s.firms ?? []).some((f) => f.id === FICHE_FIRM_ID)) return summary;
 
@@ -155,7 +161,7 @@ export function ensureFicheEmargementSidiYahya(s: AppState): FicheImportSummary 
       return;
     }
 
-    const payId = `ndp-sy-2026-09-${nn}`;
+    const payId = `ndp-sy-2026-10-${nn}`;
     if (paymentIds.has(payId)) return;
     const pay: NonDeclarePayment = buildPayment({
       id: payId,
@@ -167,7 +173,7 @@ export function ensureFicheEmargementSidiYahya(s: AppState): FicheImportSummary 
       brut_verse: row.montantDu,
       avance_deduite: 0, // colonne « Avances » à « — » sur toute la fiche
       mode: "especes",
-      note: `Fiche ${FICHE_REF} — quinzaine 20/09/2026–03/10/2026 (payé le 05/10/2026, enregistré en 09/2026) — Cat. ${row.cat} — ${FICHE_SITE} / ${FICHE_CHANTIER}`,
+      note: `Fiche ${FICHE_REF} — quinzaine 20/09/2026–03/10/2026 (payé le 05/10/2026, enregistré en 10/2026) — Cat. ${row.cat} — ${FICHE_SITE} / ${FICHE_CHANTIER}`,
       created_at: `${FICHE_PAID_AT}T00:00:00.000Z`,
       created_by: `import-fiche-${FICHE_REF}`,
     });

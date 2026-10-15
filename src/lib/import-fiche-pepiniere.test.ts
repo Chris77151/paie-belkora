@@ -15,7 +15,7 @@ const base = (withPep = true): AppState =>
   }) as unknown as AppState;
 
 describe("import fiche Pépinière 20/09–03/10/2026", () => {
-  it("50 ouvriers + 50 versements de septembre, net 41 748 DH", () => {
+  it("50 ouvriers + 50 versements d'octobre, net 41 748 DH", () => {
     const s = base();
     const r = ensureFicheEmargementPepiniere(s);
     expect(r.firmMissing).toBe(false);
