@@ -56,7 +56,8 @@ const KEY = "gca-paie-rh-state-v1";
  */
 const DEMO_EMPLOYEE_IDS = new Set(["emp_1", "emp_2", "emp_3", "emp_4", "emp_5", "emp_6", "emp_7"]);
 
-function migrate(s: AppState): AppState {
+/** Exporté pour test : le chargement (frais comme existant) passe toujours par ici. */
+export function migrate(s: AppState): AppState {
   const byId = new Map(seed().firms.map((f) => [f.id, f]));
 
   // Purge des salariés de démonstration persistés (versions antérieures).
@@ -144,7 +145,9 @@ function load(): AppState {
   } catch {
     /* ignore */
   }
-  return seed();
+  // Installation fraîche : le seed passe AUSSI par migrate, sinon les imports
+  // idempotents (fiches d'émargement) et les backfills n'y seraient jamais appliqués.
+  return migrate(seed());
 }
 
 let state: AppState = load();
