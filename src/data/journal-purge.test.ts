@@ -135,6 +135,8 @@ describe("helpers de rôle", () => {
       hire_date: "2026-01-01", contract_type: "CDI",
       base_hourly_rate: 30, monthly_hours: 191, dependents: 0, is_active: true,
     });
-    expect(st.getState().employees).toHaveLength(1);
+    // Périmètre de l'entité testée : les backfills d'import (fiches d'émargement
+    // d'autres entités) peuvent ajouter leurs propres salariés — on ne les compte pas ici.
+    expect(st.getState().employees.filter((e) => e.firm_id === "f1")).toHaveLength(1);
   });
 });
