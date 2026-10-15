@@ -173,6 +173,7 @@ export function ensureFicheEmargementSidiYahya(s: AppState): FicheImportSummary 
       brut_verse: row.montantDu,
       avance_deduite: 0, // colonne « Avances » à « — » sur toute la fiche
       mode: "especes",
+      section: "OUVRIERS SIDI YAHYA",
       note: `Fiche ${FICHE_REF} — quinzaine 20/09/2026–03/10/2026 (payé le 05/10/2026, enregistré en 10/2026) — Cat. ${row.cat} — ${FICHE_SITE} / ${FICHE_CHANTIER}`,
       created_at: `${FICHE_PAID_AT}T00:00:00.000Z`,
       created_by: `import-fiche-${FICHE_REF}`,

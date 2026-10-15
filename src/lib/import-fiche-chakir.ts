@@ -188,6 +188,7 @@ export function ensureFicheEmargementChakir(s: AppState): ChakirImportSummary {
       brut_verse: row.montantDu,
       avance_deduite: row.avance,
       mode: "especes",
+      section: row.section,
       note: `Fiche ${CHAKIR_FICHE_REF} — ${row.section} — quinzaine 20/09/2026–03/10/2026 (payé le 05/10/2026, enregistré en 10/2026) — Cat. ${row.cat} — ${CHAKIR_SITE} (chantier non renseigné sur la fiche)`,
       created_at: `${CHAKIR_PAID_AT}T00:00:00.000Z`,
       created_by: `import-fiche-${CHAKIR_FICHE_REF}`,

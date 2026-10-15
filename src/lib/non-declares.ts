@@ -26,6 +26,8 @@ export interface NonDeclarePayment {
   avance_deduite?: number;
   net_verse: number; // brut_verse - avance_deduite
   mode: PaymentMode;
+  /** Section d'équipe de la fiche d'émargement (ex. « OUVRIERS D ») — absente = « OUVRIERS ». */
+  section?: string;
   note?: string;
   created_at: string; // ISO
   created_by?: string;

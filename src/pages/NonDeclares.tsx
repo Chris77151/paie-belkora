@@ -7,9 +7,9 @@
  *   avec reçus internes et totaux par entité — SANS alimenter BDS, livre
  *   art. 371, écritures ni IR 9421 (étanchéité vérifiée par test).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, FileDown, FileSpreadsheet, Plus, Receipt, Trash2, UserX } from "lucide-react";
+import { AlertTriangle, FileDown, FileSpreadsheet, FileSignature, Plus, Receipt, Trash2, UserX } from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, uid, useStore } from "@/data/store";
 import { useCanWrite, useSession } from "@/lib/auth";
 import type { ContractType } from "@/data/types";
@@ -28,6 +28,9 @@ import {
 import {
   NON_DECLARE_MENTION, downloadPeriodCsv, downloadPeriodXlsx, downloadReceiptPdf,
 } from "@/lib/non-declares-export";
+import {
+  buildEmargementLines, defaultEmargementNumero, downloadEmargementPdf,
+} from "@/lib/emargement-export";
 
 const MONTHS = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -48,7 +51,19 @@ export default function NonDeclares() {
   const [brut, setBrut] = useState(3000);
   const [avance, setAvance] = useState(0);
   const [mode, setMode] = useState<"especes" | "virement" | "cheque">("especes");
+  const [section, setSection] = useState("OUVRIERS");
   const [note, setNote] = useState("");
+
+  // Fiche d'émargement exportable — mêmes mentions que le modèle remis.
+  const [ficheNo, setFicheNo] = useState("");
+  const [quinzaine, setQuinzaine] = useState("");
+  const [chantier, setChantier] = useState("");
+  const [lieu, setLieu] = useState("");
+  const [datePaiement, setDatePaiement] = useState(() => new Date().toISOString().slice(0, 10));
+  useEffect(() => {
+    setFicheNo(defaultEmargementNumero(firm, year, month));
+    setLieu(firm.city ?? "");
+  }, [firm, year, month]);
 
   // Saisie directe d'un salarié non déclaré (sans N° CNSS — il reste donc ici).
   const [firstName, setFirstName] = useState("");
@@ -125,11 +140,22 @@ export default function NonDeclares() {
       buildPayment({
         id: uid("ndp"), firm_id: firm.id, employee_id: empId, year, month,
         jours: Math.max(0, jours), brut_verse: Math.max(0, brut),
-        avance_deduite: Math.max(0, avance), mode, note: note.trim() || undefined,
+        avance_deduite: Math.max(0, avance), mode,
+        section: section.trim() || "OUVRIERS", note: note.trim() || undefined,
         created_at: new Date().toISOString(), created_by: session?.username,
       }),
     );
     setEmpId(""); setNote("");
+  }
+
+  function onEmargement() {
+    const emps = employeesOfFirm(s, firm.id);
+    const lines = buildEmargementLines(emps, pays);
+    downloadEmargementPdf({
+      firm, numero: ficheNo.trim() || defaultEmargementNumero(firm, year, month),
+      quinzaine: quinzaine.trim(), chantier: chantier.trim(), lieu: lieu.trim(),
+      datePaiement, year, month, lines,
+    });
   }
 
   return (
@@ -270,6 +296,7 @@ export default function NonDeclares() {
               </Select>
             </Field>
             <Field label="Note"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optionnel" disabled={!canEdit} /></Field>
+            <Field label="Section / équipe" hint="Reprise telle quelle sur la fiche d'émargement."><Input value={section} onChange={(e) => setSection(e.target.value)} placeholder="OUVRIERS" disabled={!canEdit} /></Field>
           </div>
           <div className="mt-3 flex items-center gap-3">
             <Button onClick={onAdd} disabled={!canEdit || !empId}>Ajouter le versement (net auto : {mad(Math.max(0, brut - avance))})</Button>
@@ -298,6 +325,27 @@ export default function NonDeclares() {
             {rows.length === 0 && (<tr><Td colSpan={8} className="py-8 text-center text-muted-foreground">Aucun versement saisi ce mois.</Td></tr>)}
           </tbody>
         </Table>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader><CardTitle>Fiche d'émargement — {firm.name}</CardTitle></CardHeader>
+        <CardContent>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Export PDF identique au modèle remis (en-tête entité, POUR ACQUIT, tableau 10 colonnes,
+            sous-totaux, arrêté en chiffres et en lettres, signatures). Sans versement ce mois, un
+            salarié sans CNSS y figure en « Néant ».
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <Field label="N° fiche"><Input value={ficheNo} onChange={(e) => setFicheNo(e.target.value)} /></Field>
+            <Field label="Période (quinzaine)"><Input value={quinzaine} onChange={(e) => setQuinzaine(e.target.value)} placeholder="du 20/09/2026 au 03/10/2026" /></Field>
+            <Field label="Chantier"><Input value={chantier} onChange={(e) => setChantier(e.target.value)} placeholder="Travaux exterieur - Sidi Yahya" /></Field>
+            <Field label="Lieu de paiement"><Input value={lieu} onChange={(e) => setLieu(e.target.value)} /></Field>
+            <Field label="Date de paiement"><Input type="date" value={datePaiement} onChange={(e) => setDatePaiement(e.target.value)} /></Field>
+          </div>
+          <div className="mt-3">
+            <Button onClick={onEmargement}><FileSignature size={16} /> Fiche d'émargement (PDF)</Button>
+          </div>
+        </CardContent>
       </Card>
 
       <Card>

@@ -147,6 +147,7 @@ export function ensureFicheEmargementPepiniere(s: AppState): PepImportSummary {
       brut_verse: row.montantDu,
       avance_deduite: row.avance,
       mode: "especes",
+      section: row.section,
       note: `Fiche ${PEP_FICHE_REF} — ${row.section} — quinzaine 20/09/2026–03/10/2026 (payé le 05/10/2026, enregistré en 10/2026) — Cat. ${row.cat} — ${PEP_SITE} / ${PEP_CHANTIER}`,
       created_at: `${PEP_PAID_AT}T00:00:00.000Z`,
       created_by: `import-fiche-${PEP_FICHE_REF}`,
