@@ -28,9 +28,10 @@ function slip(id: string, employee_id: string, e: Employee, inp: PayslipInput): 
 }
 
 function state(): AppState {
-  const e1 = emp({ id: "e1", matricule: "001", first_name: "Ahmed", last_name: "Alaoui", payment_mode: "virement", bank_rib: "0123" });
-  const e2 = emp({ id: "e2", matricule: "002", first_name: "Sara", last_name: "Bennani", payment_mode: "especes" });
-  const e3 = emp({ id: "e3", matricule: "003", first_name: "Omar", last_name: "Cherkaoui" }); // pas de mode → société (virement)
+  // Salariés DÉCLARÉS (avec CNSS) : seuls admis en paie normale / règlement.
+  const e1 = emp({ id: "e1", matricule: "001", first_name: "Ahmed", last_name: "Alaoui", cnss_number: "111", payment_mode: "virement", bank_rib: "0123" });
+  const e2 = emp({ id: "e2", matricule: "002", first_name: "Sara", last_name: "Bennani", cnss_number: "222", payment_mode: "especes" });
+  const e3 = emp({ id: "e3", matricule: "003", first_name: "Omar", last_name: "Cherkaoui", cnss_number: "333" }); // pas de mode → société (virement)
   return {
     firms: [firm],
     employees: [e1, e2, e3],
@@ -73,6 +74,16 @@ describe("payroll-settlement — état de règlement par mode", () => {
     // cohérence : somme des modes = total général
     const sumNet = rep.byMode.reduce((a, m) => a + m.netToPay, 0);
     expect(rep.total.netToPay).toBeCloseTo(sumNet, 2);
+    expect(rep.total.count).toBe(3);
+  });
+
+  it("sans CNSS = exclu du règlement (bascule volet non-déclarés)", () => {
+    const st = state();
+    const nd = emp({ id: "e9", matricule: "009", first_name: "Nadia", last_name: "SansCnss" }); // pas de cnss_number
+    st.employees = [...st.employees, nd];
+    st.payslips = [...st.payslips, slip("s9", "e9", nd, input())];
+    const rep = buildSettlementReport(st, firm, 2026, 7);
+    expect(rep.rows.find((r) => r.matricule === "009")).toBeUndefined();
     expect(rep.total.count).toBe(3);
   });
 

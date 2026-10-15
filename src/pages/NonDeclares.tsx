@@ -9,9 +9,12 @@
  */
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, FileDown, FileSpreadsheet, Receipt, Trash2, UserX } from "lucide-react";
+import { AlertTriangle, FileDown, FileSpreadsheet, Plus, Receipt, Trash2, UserX } from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, uid, useStore } from "@/data/store";
 import { useCanWrite, useSession } from "@/lib/auth";
+import type { ContractType } from "@/data/types";
+import { getParams } from "@/lib/params";
+import { PinPrompt } from "@/components/PinPrompt";
 import {
   Badge, Button, Card, CardContent, CardHeader, CardTitle,
   Field, Input, Kpi, PageHeader, Select, Table, Td, Th,
@@ -47,6 +50,25 @@ export default function NonDeclares() {
   const [mode, setMode] = useState<"especes" | "virement" | "cheque">("especes");
   const [note, setNote] = useState("");
 
+  // Saisie directe d'un salarié non déclaré (sans N° CNSS — il reste donc ici).
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [matricule, setMatricule] = useState("");
+  const [cin, setCin] = useState("");
+  const [hireDate, setHireDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [contract, setContract] = useState<ContractType>("CDD");
+  const [monthlySalary, setMonthlySalary] = useState(0);
+  const [salaryTouched, setSalaryTouched] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const pinConfigured = !!firm.validation_pin_hash;
+
+  const legalHours = getParams(new Date().getFullYear()).legalMonthlyHours;
+  const smigMonthly = Math.round(
+    (getParams(new Date().getFullYear()).smigHourly * legalHours + Number.EPSILON) * 100,
+  ) / 100;
+  const effectiveMonthly = !salaryTouched || monthlySalary <= 0 ? smigMonthly : monthlySalary;
+  const hourlyRate = Math.round(((effectiveMonthly / legalHours) * 1e6)) / 1e6;
+
   const ndEmps = useMemo(() => nonDeclaresOfFirm(s, firm.id), [s, firm.id]);
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -70,6 +92,30 @@ export default function NonDeclares() {
     () => byFirm.reduce((a, t) => ({ brut: a.brut + t.brut, net: a.net + t.net, n: a.n + t.count }), { brut: 0, net: 0, n: 0 }),
     [byFirm],
   );
+
+  function commitCreateEmployee() {
+    if (!canEdit) return;
+    if (!firstName.trim() || !lastName.trim()) return;
+    actions.upsertEmployee({
+      id: uid("emp"), firm_id: firm.id,
+      first_name: firstName.trim(), last_name: lastName.trim(),
+      matricule: matricule.trim() || undefined, cin: cin.trim() || undefined,
+      hire_date: hireDate, contract_type: contract,
+      base_hourly_rate: hourlyRate, monthly_hours: legalHours,
+      dependents: 0, is_active: true,
+      // PAS de cnss_number : c'est ce qui le maintient dans ce volet.
+    });
+    setFirstName(""); setLastName(""); setMatricule(""); setCin("");
+    setSalaryTouched(false); setMonthlySalary(0);
+    setPinOpen(false);
+  }
+
+  function onCreateEmployee() {
+    if (!canEdit) return;
+    if (!firstName.trim() || !lastName.trim()) return;
+    if (pinConfigured) setPinOpen(true);
+    else commitCreateEmployee();
+  }
 
   function onAdd() {
     if (!canEdit || !empId) return;
@@ -149,6 +195,59 @@ export default function NonDeclares() {
           </tbody>
         </Table>
       </Card>
+
+      <Card className="mb-6">
+        <CardHeader><CardTitle>Saisir un salarié non déclaré — {firm.name}</CardTitle></CardHeader>
+        <CardContent>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Création directe sans N° CNSS : le salarié apparaît aussitôt ci-dessus et reste hors paie normale
+            jusqu'à sa régularisation (volet Salariés → N° CNSS). Salaire prérempli au SMIG ({mad(smigMonthly)}).
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Prénom *"><Input value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Nom *"><Input value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Matricule"><Input value={matricule} onChange={(e) => setMatricule(e.target.value)} placeholder="Auto si vide" disabled={!canEdit} /></Field>
+            <Field label="CIN"><Input value={cin} onChange={(e) => setCin(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Date d'embauche"><Input type="date" value={hireDate} onChange={(e) => setHireDate(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Contrat">
+              <Select value={contract} onChange={(e) => setContract(e.target.value as ContractType)} disabled={!canEdit}>
+                <option value="CDD">CDD</option>
+                <option value="CDI">CDI</option>
+                <option value="ANAPEC">ANAPEC</option>
+                <option value="Interim">Intérim</option>
+                <option value="Stagiaire">Stagiaire</option>
+              </Select>
+            </Field>
+            <Field label="Salaire mensuel (DH)" hint={`SMIG ${mad(smigMonthly)} · ${hourlyRate}/h`}>
+              <Input
+                type="number" min={0} value={salaryTouched ? monthlySalary : smigMonthly}
+                onChange={(e) => { setMonthlySalary(Number(e.target.value)); setSalaryTouched(true); }}
+                disabled={!canEdit}
+              />
+            </Field>
+            <Field label="Heures mensuelles"><Input value={legalHours} disabled /></Field>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button onClick={onCreateEmployee} disabled={!canEdit || !firstName.trim() || !lastName.trim()}>
+              <Plus size={16} /> Créer le salarié (sans CNSS)
+            </Button>
+            {!canEdit && <span className="text-xs text-muted-foreground">Lecture seule : saisie désactivée.</span>}
+            {pinConfigured && canEdit && (
+              <span className="text-xs text-muted-foreground">Le code de validation à 4 chiffres sera demandé.</span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {pinOpen && (
+        <PinPrompt
+          firm={firm}
+          title="Créer le salarié non déclaré"
+          action="Créer"
+          onSuccess={commitCreateEmployee}
+          onClose={() => setPinOpen(false)}
+        />
+      )}
 
       <Card className="mb-6">
         <CardHeader><CardTitle>Saisir un versement — {MONTHS[month - 1]} {year}</CardTitle></CardHeader>

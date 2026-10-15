@@ -34,6 +34,28 @@ export function employeesForPeriod(list: Employee[], year: number, month: number
   return list.filter((e) => isEmployedInPeriod(e, year, month));
 }
 
+/**
+ * Le salarié a-t-il un N° CNSS (donc paie normale) ? Un CNSS vide/blank = suivi
+ * dans le volet « Salariés non déclarés », JAMAIS dans le processus normal.
+ */
+export function hasCnss(e: Employee): boolean {
+  return !!(e.cnss_number ?? "").trim();
+}
+
+/**
+ * Effectif de la PAIE NORMALE : employés du mois ET immatriculés CNSS.
+ * Les sans-CNSS sont INTERDITS ici — ils basculent automatiquement dans le
+ * volet non-déclarés (`nonDeclaresOfFirm`, même règle inversée, aucune zone grise).
+ */
+export function employeesForNormalPayroll(list: Employee[], year: number, month: number): Employee[] {
+  return list.filter((e) => isEmployedInPeriod(e, year, month) && hasCnss(e));
+}
+
+/** Employés du mois SANS CNSS — ceux que la paie normale refuse et que le volet non-déclarés accueille. */
+export function employeesExcludedNoCnss(list: Employee[], year: number, month: number): Employee[] {
+  return list.filter((e) => isEmployedInPeriod(e, year, month) && !hasCnss(e));
+}
+
 export function defaultInput(emp: Employee): PayslipInput {
   return {
     days_worked: 26,

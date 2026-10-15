@@ -82,6 +82,10 @@ export function buildSettlementReport(s: AppState, firm: Firm, year: number, mon
     ? (s.payslips ?? [])
         .filter((sl) => sl.period_id === period.id && sl.result != null)
         .map((sl) => ({ sl, e: empById.get(sl.employee_id) }))
+        // Paie normale interdite sans CNSS : un salarié vivant sans N° CNSS n'entre
+        // jamais dans le règlement — il relève du volet non-déclarés. Les salariés
+        // supprimés (e introuvable) restent affichés (historique figé).
+        .filter(({ e }) => !e || !!(e.cnss_number ?? "").trim())
         .sort((a, b) =>
           sortKey(a.e?.matricule ?? "", a.e ? `${a.e.first_name} ${a.e.last_name}` : "").localeCompare(
             sortKey(b.e?.matricule ?? "", b.e ? `${b.e.first_name} ${b.e.last_name}` : ""),

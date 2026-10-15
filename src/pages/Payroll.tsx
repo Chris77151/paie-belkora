@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Calculator, FileDown, FileText, Printer, Lock, Unlock, CheckCircle2, X, SlidersHorizontal, Info,
   Trash2, AlertTriangle, Wallet, Sheet,
@@ -9,7 +10,7 @@ import {
 import { useCanWrite } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import type { DocFormat, Employee, Payslip, PayslipInput, SalaryAdvance } from "@/data/types";
-import { computeFor, defaultInput, employeesForPeriod, indemnityYtd } from "@/lib/payroll-helpers";
+import { computeFor, defaultInput, employeesExcludedNoCnss, employeesForNormalPayroll, indemnityYtd } from "@/lib/payroll-helpers";
 import { describeCap } from "@/lib/indemnites";
 import type { IndemniteKey } from "@/lib/params";
 import type { PayrollResult } from "@/lib/payroll-engine";
@@ -37,8 +38,11 @@ export default function Payroll() {
   const firmEmps = useMemo(() => employeesOfFirm(s, firm.id), [s, firm]);
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(6);
-  // ... et ceux RÉELLEMENT employés pendant la période (roster à auto-créer / à totaliser).
-  const emps = useMemo(() => employeesForPeriod(firmEmps, year, month), [firmEmps, year, month]);
+  // ... et ceux de la PAIE NORMALE : employés du mois ET immatriculés CNSS.
+  // Les sans-CNSS sont INTERDITS ici — ils basculent automatiquement dans le
+  // volet « Salariés non déclarés » (même règle inversée, aucun salarié perdu).
+  const emps = useMemo(() => employeesForNormalPayroll(firmEmps, year, month), [firmEmps, year, month]);
+  const excludedNoCnss = useMemo(() => employeesExcludedNoCnss(firmEmps, year, month), [firmEmps, year, month]);
   const [editing, setEditing] = useState<Employee | null>(null);
   // Affichage de la « Partie réservée à l'employeur » (charges patronales) sur les bulletins exportés.
   const [showEmployer, setShowEmployer] = useState(true);
@@ -74,11 +78,13 @@ export default function Payroll() {
     ? // Période VERROUILLÉE : instantané FIGÉ uniquement — les bulletins RÉELLEMENT calculés
       // (result != null). On ne recalcule jamais un bulletin neutralisé (result null) : sinon un
       // bulletin « hors effectif » neutralisé réapparaîtrait avec des montants recalculés.
+      // Garde-fou CNSS : un bulletin figé d'un salarié devenu sans-CNSS n'entre plus dans
+      // les totaux normaux — il relève du volet non-déclarés.
       (slips
         .filter((slip) => slip.result != null)
         .map((slip) => {
           const emp = firmEmps.find((e) => e.id === slip.employee_id);
-          if (!emp) return null;
+          if (!emp || !(emp.cnss_number ?? "").trim()) return null;
           return { emp, slip, result: slip.result as PayrollResult };
         })
         .filter(Boolean) as { emp: Employee; slip: Payslip; result: PayrollResult }[])
@@ -300,6 +306,21 @@ export default function Payroll() {
               pris en compte) et de leurs <b>salaires actuels</b>, avec le <b>barème {year}</b>. Ce n'est pas
               forcément la paie réellement déclarée à l'époque : pour une cohérence stricte avec la CNSS/DAMANCOM
               d'une période passée, saisissez les données réelles (effectif, salaires, primes) puis <b>validez</b>.
+            </span>
+          </CardContent>
+        </Card>
+      )}
+
+      {excludedNoCnss.length > 0 && (
+        <Card className="mb-4 border-destructive/40">
+          <CardContent className="pt-4 flex items-start gap-2 text-sm">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-destructive" />
+            <span className="text-muted-foreground">
+              <b className="text-foreground">{excludedNoCnss.length} salarié(s) sans N° CNSS exclu(s) de cette paie</b> —{" "}
+              {excludedNoCnss.slice(0, 4).map((e) => `${e.first_name} ${e.last_name}`).join(", ")}
+              {excludedNoCnss.length > 4 ? ` +${excludedNoCnss.length - 4} autre(s)` : ""}. Ils basculent
+              automatiquement dans le volet <Link to="/non-declares" className="underline">Salariés non déclarés</Link> :
+              renseignez leur N° CNSS dans Salariés pour les faire entrer en paie normale.
             </span>
           </CardContent>
         </Card>

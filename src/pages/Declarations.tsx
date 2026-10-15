@@ -18,7 +18,7 @@ import {
   PageHeader,
 } from "@/components/ui/kit";
 import { mad, num, pct, dateFr, periodLabel, MONTHS_FR } from "@/lib/format";
-import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
+import { computeFor, defaultInput, employeesForNormalPayroll } from "@/lib/payroll-helpers";
 import { round2, type PayrollResult } from "@/lib/payroll-engine";
 import { getParams } from "@/lib/params";
 import { exportDeclarationPdf } from "@/lib/declaration-export";
@@ -46,10 +46,10 @@ export default function Declarations() {
   const [year, setYear] = useState<number>(lastValidated?.year ?? 2026);
   const [month, setMonth] = useState<number>(lastValidated?.month ?? 6);
 
-  // Assiette du mois : uniquement les salariés RÉELLEMENT employés sur la période déclarée
-  // (embauche/fin de contrat) — sinon la masse diverge de la BDS/DAMANCOM réelle.
+  // Assiette du mois : paie NORMALE uniquement — employés du mois ET immatriculés
+  // CNSS. Les sans-CNSS sont interdits ici et basculent dans « Salariés non déclarés ».
   const employees = useMemo(
-    () => employeesForPeriod(employeesOfFirm(s, firm.id), year, month),
+    () => employeesForNormalPayroll(employeesOfFirm(s, firm.id), year, month),
     [s, firm.id, year, month],
   );
 

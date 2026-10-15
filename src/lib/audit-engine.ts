@@ -14,7 +14,7 @@
 import { currentFirm, employeesOfFirm, getState, payslipsOfPeriod } from "@/data/store";
 import type { Employee } from "@/data/types";
 import { round2, type PayrollResult } from "@/lib/payroll-engine";
-import { computeFor, defaultInput, employeesForPeriod } from "@/lib/payroll-helpers";
+import { computeFor, defaultInput, employeesForNormalPayroll } from "@/lib/payroll-helpers";
 import { leaveBalance } from "@/lib/leave-balance";
 import {
   buildPayrollEntry, buildSettlementEntries, sumResults, type JournalEntry,
@@ -162,8 +162,9 @@ function resultsFor(year: number, month: number): PayrollResult[] {
     const frozen = payslipsOfPeriod(s, period.id).filter((sl) => sl.result).map((sl) => sl.result as PayrollResult);
     if (frozen.length) return frozen;
   }
-  // Reconstitution : uniquement les salariés employés pendant la période (embauche/fin de contrat).
-  const active = employeesForPeriod(employeesOfFirm(s, firm.id), year, month);
+  // Reconstitution : paie NORMALE uniquement (employés + CNSS). Les sans-CNSS
+  // relèvent du volet non-déclarés, jamais de l'instantané déclaratif.
+  const active = employeesForNormalPayroll(employeesOfFirm(s, firm.id), year, month);
   return active.map((e) => computeFor(e, firm, year, month, defaultInput(e)));
 }
 

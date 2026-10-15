@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeFor, isEmployedInPeriod, employeesForPeriod } from "./payroll-helpers";
+import { computeFor, isEmployedInPeriod, employeesForPeriod, employeesForNormalPayroll, employeesExcludedNoCnss } from "./payroll-helpers";
 import type { Employee, Firm } from "@/data/types";
 
 /** Vérifie que l'exonération CNSS portée par l'ENTITÉ Employee (case du formulaire) est
@@ -95,5 +95,22 @@ describe("isEmployedInPeriod — cohérence des périodes (historique / DAMANCOM
     ];
     expect(employeesForPeriod(list, 2016, 6).map((e) => e.id)).toEqual(["old"]);
     expect(employeesForPeriod(list, 2024, 6).map((e) => e.id).sort()).toEqual(["new", "old"]);
+  });
+
+  it("paie normale INTERDITE sans CNSS : bascule auto vers non-déclarés, sans zone grise", () => {
+    const list = [
+      emp({ id: "decl", hire_date: "2024-01-01", cnss_number: "123" }),
+      emp({ id: "sans", hire_date: "2024-01-01", cnss_number: "" }),
+      emp({ id: "blank", hire_date: "2024-01-01", cnss_number: "   " }),
+    ];
+    // Le normal ne garde que l'immatriculé…
+    expect(employeesForNormalPayroll(list, 2024, 6).map((e) => e.id)).toEqual(["decl"]);
+    // …les exclus sont exactement les sans-CNSS employés du mois…
+    expect(employeesExcludedNoCnss(list, 2024, 6).map((e) => e.id).sort()).toEqual(["blank", "sans"]);
+    // …et l'union refait l'effectif employé (aucun salarié perdu entre les deux volets).
+    const normal = new Set(employeesForNormalPayroll(list, 2024, 6).map((e) => e.id));
+    const excluded = new Set(employeesExcludedNoCnss(list, 2024, 6).map((e) => e.id));
+    expect(new Set([...normal, ...excluded])).toEqual(new Set(employeesForPeriod(list, 2024, 6).map((e) => e.id)));
+    expect([...normal].some((id) => excluded.has(id))).toBe(false); // étanchéité : aucun doublon
   });
 });

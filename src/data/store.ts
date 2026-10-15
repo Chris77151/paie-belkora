@@ -33,6 +33,7 @@ import { findGhostPayslips } from "@/lib/stability-engine";
 import { buildPeriodEntries } from "@/lib/payroll-period-accounting";
 import { documentRequestDeadline } from "@/lib/document-requests";
 import { seed, SUPER_ADMIN, MIYA_RH_LATEX_TEMPLATE } from "./seed";
+import { ensureFicheEmargementSidiYahya } from "@/lib/import-fiche-sidi-yahya";
 import { isSupabaseConfigured, loadRemoteState, saveRemoteState } from "@/lib/supabase";
 
 const KEY = "gca-paie-rh-state-v1";
@@ -105,6 +106,9 @@ function migrate(s: AppState): AppState {
   if (!Array.isArray(s.salaryAdvances)) s.salaryAdvances = [];
   if (!Array.isArray(s.extraYears)) s.extraYears = [];
   if (!Array.isArray(s.nonDeclarePayments)) s.nonDeclarePayments = [];
+  // Fiche d'émargement Sidi Yahya 20/09–03/10/2026 : import idempotent des 33
+  // versements de septembre (rejoué sans doublon, ignore les déjà immatriculés).
+  ensureFicheEmargementSidiYahya(s);
   // Comptes utilisateurs : garantir la présence ET les credentials du super utilisateur.
   // Le compte racine est « indestructible » (cf. seed.ts) : par conception anti-lockout,
   // ses identifiants documentés font autorité. On réaffirme donc depuis le seed son
