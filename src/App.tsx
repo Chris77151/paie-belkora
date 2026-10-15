@@ -7,6 +7,7 @@ import { useHydrated } from "./data/store";
 import { isSupabaseConfigured } from "./lib/supabase";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
+import NonDeclares from "./pages/NonDeclares";
 import Documents from "./pages/Documents";
 import DocumentsLog from "./pages/DocumentsLog";
 import Register from "./pages/Register";
@@ -49,6 +50,7 @@ const router = createHashRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: "dashboard", element: g(<Dashboard />) },
       { path: "employees", element: g(<Employees />) },
+      { path: "non-declares", element: g(<NonDeclares />) },
       { path: "documents", element: g(<Documents />) },
       { path: "documents-log", element: g(<DocumentsLog />) },
       { path: "registre", element: g(<Register />) },

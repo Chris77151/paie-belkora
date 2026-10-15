@@ -104,6 +104,7 @@ function migrate(s: AppState): AppState {
   if (!Array.isArray(s.accountingClosures)) s.accountingClosures = [];
   if (!Array.isArray(s.salaryAdvances)) s.salaryAdvances = [];
   if (!Array.isArray(s.extraYears)) s.extraYears = [];
+  if (!Array.isArray(s.nonDeclarePayments)) s.nonDeclarePayments = [];
   // Comptes utilisateurs : garantir la présence ET les credentials du super utilisateur.
   // Le compte racine est « indestructible » (cf. seed.ts) : par conception anti-lockout,
   // ses identifiants documentés font autorité. On réaffirme donc depuis le seed son
@@ -400,6 +401,20 @@ export const actions = {
       s.employees = s.employees.filter((e) => e.id !== id);
       // Les pièces du dossier n'ont plus de titulaire : on ne laisse pas de métadonnée orpheline.
       s.attachments = (s.attachments ?? []).filter((a) => a.employee_id !== id);
+      s.nonDeclarePayments = (s.nonDeclarePayments ?? []).filter((p) => p.employee_id !== id);
+    });
+  },
+  upsertNonDeclarePayment(p: import("@/lib/non-declares").NonDeclarePayment) {
+    set((s) => {
+      s.nonDeclarePayments = s.nonDeclarePayments ?? [];
+      const i = s.nonDeclarePayments.findIndex((x) => x.id === p.id);
+      if (i >= 0) s.nonDeclarePayments[i] = p;
+      else s.nonDeclarePayments.push(p);
+    });
+  },
+  removeNonDeclarePayment(id: string) {
+    set((s) => {
+      s.nonDeclarePayments = (s.nonDeclarePayments ?? []).filter((p) => p.id !== id);
     });
   },
   ensurePeriod(firmId: string, year: number, month: number): PayrollPeriod {
@@ -506,6 +521,7 @@ export const actions = {
       if (s.firms.length <= 1) return; // garder au moins une société
       s.firms = s.firms.filter((f) => f.id !== id);
       s.employees = s.employees.filter((e) => e.firm_id !== id);
+      s.nonDeclarePayments = (s.nonDeclarePayments ?? []).filter((p) => p.firm_id !== id);
       if (s.currentFirmId === id) s.currentFirmId = s.firms[0].id;
     });
   },

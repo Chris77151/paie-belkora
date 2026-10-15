@@ -20,6 +20,7 @@ const NAV_GROUPS: { labelKey: TKey; items: NavItem[] }[] = [
   ] },
   { labelKey: "nav.group.paierh", items: [
     { to: "/employees", labelKey: "nav.employees", icon: Users },
+    { to: "/non-declares", labelKey: "nav.nonDeclares", icon: UserRound },
     { to: "/registre", labelKey: "nav.register", icon: ClipboardList },
     { to: "/documents", labelKey: "nav.documents", icon: FileSignature },
     { to: "/documents-log", labelKey: "nav.doclog", icon: FileClock },

@@ -98,6 +98,7 @@ export const DICT = {
   // Éléments de navigation
   "nav.dashboard": { fr: "Tableau de bord", ar: "لوحة القيادة" },
   "nav.employees": { fr: "Salariés", ar: "الأجراء" },
+  "nav.nonDeclares": { fr: "Salariés non déclarés", ar: "الأجراء غير المصرَّح بهم" },
   "nav.documents": { fr: "Documents RH", ar: "وثائق الموارد البشرية" },
   "nav.payroll": { fr: "Paie", ar: "الأجور" },
   "nav.livrePaie": { fr: "Livre de paie", ar: "سجل الأجور" },

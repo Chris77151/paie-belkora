@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  ShieldAlert, FileDown, FileSpreadsheet, ChevronDown, ChevronRight,
-  CheckCircle2, XCircle, TrendingDown, Target, Cpu, Hand, Camera,
+  Activity, ShieldAlert, FileDown, FileSpreadsheet, ChevronDown, ChevronRight,
+  CheckCircle2, XCircle, TrendingDown, Target, Cpu, Hand, Camera, Radio,
 } from "lucide-react";
 import { actions, currentFirm, useStore } from "@/data/store";
+import { nonDeclaresOfFirm } from "@/lib/non-declares";
 import {
   AUTOMATION_LABEL, CATEGORY_LABEL, CONTROL_TYPE_LABEL, RISK_DISCLAIMER, STEPS, STEP_LABEL,
   buildRiskMap, controlGaps, criticityMatrix, exposure,
@@ -73,6 +75,30 @@ export default function Risks() {
   const e = useMemo(() => exposure(risks), [risks]);
   const gaps = useMemo(() => controlGaps(risks), [risks]);
   const grid = useMemo(() => criticityMatrix(risks, view), [risks, view]);
+
+  // Volet VIVANT : chaque fait est relu depuis l'état réel à chaque rendu
+  // (le store notifie via useSyncExternalStore). `recomputedAt` prouve la
+  // fraîcheur ; le flux liste les dernières actions des autres volets qui
+  // ont fait bouger un fait, avec lien direct vers le volet source.
+  const [recomputedAt, setRecomputedAt] = useState(() => new Date().toISOString());
+  useEffect(() => { setRecomputedAt(new Date().toISOString()); }, [s, firm.id, asOf]);
+  const ndCount = useMemo(() => nonDeclaresOfFirm(s, firm.id).length, [s, firm.id]);
+  const ndPayCount = useMemo(
+    () => (s.nonDeclarePayments ?? []).filter((p) => p.firm_id === firm.id).length,
+    [s.nonDeclarePayments, firm.id],
+  );
+  const liveFeed = useMemo(() => {
+    const items: { at: string; label: string; to: string }[] = [];
+    for (const a of (s.attachments ?? []).filter((x) => x.firm_id === firm.id).slice(-3))
+      items.push({ at: a.uploaded_at, label: `Pièce ${a.kind} déposée (${a.filename})`, to: "/employees" });
+    for (const cl of (s.accountingClosures ?? []).filter((x) => x.firm_id === firm.id).slice(-2))
+      items.push({ at: cl.validated_at, label: `Écritures ${cl.year}-${String(cl.month).padStart(2, "0")} verrouillées`, to: "/accounting" });
+    for (const p of (s.nonDeclarePayments ?? []).filter((x) => x.firm_id === firm.id).slice(-3))
+      items.push({ at: p.created_at, label: `Versement interne ${p.year}-${String(p.month).padStart(2, "0")} (${p.net_verse} DH)`, to: "/non-declares" });
+    for (const d of (s.docGenerations ?? []).filter((x) => x.firm_id === firm.id).slice(-2))
+      items.push({ at: d.at, label: `Document ${d.doc_type} produit (${d.subject ?? ""})`, to: "/documents-log" });
+    return items.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 6);
+  }, [s, firm.id]);
 
   async function onPdf() {
     setBusy(true);
@@ -164,6 +190,60 @@ export default function Risks() {
         />
         <Kpi label="Contrôles prouvés" value={`${e.controlsProven}/${e.controlsTotal}`} icon={<CheckCircle2 size={18} />} sub="Un contrôle non prouvé n'abat rien" />
       </div>
+
+      {/* Volet vivant : recalculé depuis l'état réel + actions sources */}
+      <Card className="mb-6 border-sage/40">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Radio size={16} className="text-success" />
+            En direct des autres volets
+            <span className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" /> vivant
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-xs text-muted-foreground">
+            Recalculé à l'instant ({recomputedAt.slice(11, 19)}) depuis l'état réel de {firm.name} — arrêté au {asOf}.
+            Chaque action ci-dessous a fait bouger un fait, donc un résiduel. Changer la date d'arrêté rejoue l'historique.
+          </p>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge tone={facts.allDeclaredCnss ? "success" : "destructive"}>
+              CNSS : {facts.allDeclaredCnss ? "tous déclarés" : `${ndCount} sans N° CNSS`}
+            </Badge>
+            <Badge tone={facts.payrollValidated ? "success" : "muted"}>
+              Paie : {facts.payrollValidated ? "dernière close validée" : "dernière close en brouillon"}
+            </Badge>
+            <Badge tone={facts.accountingLocked ? "success" : "muted"}>
+              Compta : {facts.accountingLocked ? "écritures verrouillées" : "non verrouillées"}
+            </Badge>
+            <Badge tone={facts.declarationsOnTime ? "success" : "warning"}>
+              Déclarations : {facts.declarationsOnTime ? "à jour" : "échéance dépassée"}
+            </Badge>
+            <Badge tone="muted">Versements internes suivis : {ndPayCount}</Badge>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {!facts.allDeclaredCnss && (<Link to="/non-declares" className="text-xs underline">Voir les non-déclarés →</Link>)}
+            {!facts.payrollValidated && (<Link to="/payroll" className="text-xs underline">Valider la paie →</Link>)}
+            {!facts.accountingLocked && (<Link to="/accounting" className="text-xs underline">Verrouiller les écritures →</Link>)}
+            {!facts.declarationsOnTime && (<Link to="/declarations" className="text-xs underline">Régulariser les déclarations →</Link>)}
+            <Link to="/employees" className="text-xs underline">Salariés (CNSS, sorties, pièces) →</Link>
+            <Link to="/securite" className="text-xs underline">Sécurité RIB →</Link>
+          </div>
+          {liveFeed.length > 0 && (
+            <ul className="space-y-1.5 border-t border-border/60 pt-3">
+              {liveFeed.map((it, i) => (
+                <li key={i} className="flex flex-wrap items-center gap-2 text-xs">
+                  <Activity size={13} className="text-muted-foreground" />
+                  <span className="num text-muted-foreground">{it.at.slice(0, 10)}</span>
+                  <span className="flex-1">{it.label}</span>
+                  <Link to={it.to} className="underline">Ouvrir le volet</Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-[1fr_1.1fr]">
         {/* Déplacement par niveau */}

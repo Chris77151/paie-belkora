@@ -698,4 +698,10 @@ export interface AppState {
    * par toutes les sociétés (simples options de sélection ; les données restent par société).
    */
   extraYears?: number[];
+  /**
+   * Versements internes aux salariés NON DÉCLARÉS (sans N° CNSS). Suivi de pilotage
+   * et de régularisation — n'alimente JAMAIS la paie normale (BDS, livre art. 371,
+   * écritures, IR 9421). Type importé de `src/lib/non-declares.ts` (évite un cycle).
+   */
+  nonDeclarePayments?: import("@/lib/non-declares").NonDeclarePayment[];
 }
