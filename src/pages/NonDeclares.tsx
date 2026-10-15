@@ -318,7 +318,11 @@ export default function NonDeclares() {
                 <Td className="num">{mad(pay.avance_deduite ?? 0)}</Td>
                 <Td className="num font-semibold">{mad(pay.net_verse)}</Td>
                 <Td>{pay.mode}</Td>
-                <Td><Button size="sm" variant="outline" onClick={() => downloadReceiptPdf(firm, emp, pay)}><Receipt size={14} /> Reçu</Button></Td>
+                <Td><Button size="sm" variant="outline" onClick={() => downloadReceiptPdf(firm, emp, pay, {
+                  numero: ficheNo.trim() || defaultEmargementNumero(firm, year, month),
+                  quinzaine: quinzaine.trim(), chantier: chantier.trim(),
+                  lieu: lieu.trim(), datePaiement,
+                })}><Receipt size={14} /> Reçu</Button></Td>
                 <Td>{canEdit && (<Button size="sm" variant="ghost" onClick={() => actions.removeNonDeclarePayment(pay.id)} title="Supprimer"><Trash2 size={14} /></Button>)}</Td>
               </tr>
             ))}

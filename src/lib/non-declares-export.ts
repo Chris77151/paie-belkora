@@ -4,12 +4,12 @@
  * Mention légale portée PARTOUT : suivi interne, SANS valeur CNSS / DAMANCOM /
  * fiscale. Un reçu sans cette mention deviendrait un faux bulletin opposable.
  */
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import type { Employee, Firm } from "@/data/types";
 import type { NonDeclarePayment } from "./non-declares";
-import { dateFr, mad } from "./format";
+import {
+  buildEmargementPdf, emargementSuffix, paymentCat, paymentSection,
+} from "./emargement-export";
 
 export const NON_DECLARE_MENTION =
   "DOCUMENT INTERNE DE SUIVI — SANS VALEUR CNSS / DAMANCOM / FISCALE — À RÉGULARISER";
@@ -19,33 +19,46 @@ function fileBase(firm: Firm, year: number, month: number): string {
   return `NonDeclares_${safe}_${year}-${String(month).padStart(2, "0")}`;
 }
 
-export function downloadReceiptPdf(firm: Firm, emp: Employee, p: NonDeclarePayment): void {
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
-  doc.setFont("times", "bold");
-  doc.setFontSize(13);
-  doc.text("RECU DE VERSEMENT INTERNE — NON DECLARE", 14, 18);
-  doc.setFontSize(9);
-  doc.setFont("times", "normal");
-  doc.text(NON_DECLARE_MENTION, 14, 24);
-  doc.text(`${firm.name}`, 14, 31);
-  doc.text(`Salarie : ${emp.first_name} ${emp.last_name} — Mat. ${emp.matricule ?? "—"} — CIN ${emp.cin ?? "—"}`, 14, 37);
-  doc.text(`Periode de presence : ${String(p.month).padStart(2, "0")}/${p.year} — Jours : ${p.jours}`, 14, 43);
-  autoTable(doc, {
-    startY: 49,
-    head: [["Rubrique", "Montant (DH)"]],
-    body: [
-      ["Brut verse", mad(p.brut_verse)],
-      ["Avance / acompte deduit", mad(p.avance_deduite ?? 0)],
-      ["NET REMIS", mad(p.net_verse)],
-      ["Mode", p.mode === "especes" ? "Especes" : p.mode === "cheque" ? "Cheque" : "Virement"],
+/** Contexte de fiche partagé avec l'export collectif (mêmes N°, quinzaine, chantier…). */
+export interface ReceiptContext {
+  numero: string;
+  quinzaine: string;
+  chantier: string;
+  lieu: string;
+  datePaiement: string;
+}
+
+/**
+ * Reçu individuel — REMPLACE l'ancien reçu générique : présentation IDENTIQUE à
+ * la fiche d'émargement remise (même en-tête entité, POUR ACQUIT, tableau
+ * 10 colonnes, arrêté en chiffres et en lettres, signatures), limitée à ce salarié.
+ */
+export function downloadReceiptPdf(
+  firm: Firm,
+  emp: Employee,
+  p: NonDeclarePayment,
+  ctx: ReceiptContext,
+): void {
+  const doc = buildEmargementPdf({
+    firm,
+    numero: ctx.numero,
+    quinzaine: ctx.quinzaine,
+    chantier: ctx.chantier,
+    lieu: ctx.lieu,
+    datePaiement: ctx.datePaiement,
+    year: p.year,
+    month: p.month,
+    lines: [
+      {
+        n: 1, emp, pay: p, section: paymentSection(p), cat: paymentCat(p),
+        jours: p.jours, montantDu: p.brut_verse,
+        avance: p.avance_deduite ?? 0, net: p.net_verse,
+      },
     ],
   });
-  const y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
-  doc.text(`Fait le ${dateFr(p.created_at.slice(0, 10))}${p.note ? ` — ${p.note}` : ""}`, 14, y);
-  doc.text("Signature employeur :                      Signature salarie :", 14, y + 12);
-  doc.setFontSize(8);
-  doc.text("Ce recu ne tient pas lieu de bulletin de paie (art. 370) ni de preuve de declaration CNSS.", 14, 285);
-  doc.save(`${fileBase(firm, p.year, p.month)}_recu_${emp.matricule ?? emp.id}.pdf`);
+  const tag = emargementSuffix(firm) || firm.id;
+  const mat = (emp.matricule ?? emp.id).replace(/[^A-Za-z0-9]+/g, "_");
+  doc.save(`Fiche_Emargement_${tag}_${p.year}-${String(p.month).padStart(2, "0")}_recu_${mat}.pdf`);
 }
 
 export function downloadPeriodCsv(
