@@ -20,7 +20,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { Employee, Firm } from "@/data/types";
 import type { NonDeclarePayment } from "./non-declares";
-import { amountToWordsFr, asciiSpaces, dateFr, mad } from "./format";
+import { amountToWordsFr, asciiSpaces, dateFr } from "./format";
 import { capitalMad } from "./firm-legal";
 
 export interface EmargementLine {
@@ -84,7 +84,8 @@ export function paymentCat(pay: NonDeclarePayment): string {
 
 /**
  * Construit les lignes de la fiche : versements du mois (ordre des matricules),
- * puis — comme le modèle — les salariés sans CNSS sans versement ce mois (« Néant »).
+ * puis — comme le modèle — les salariés sans CNSS sans versement ce mois (« Néant »,
+ * rangés dans la section courante, jamais dans une section « OUVRIERS » parasite).
  */
 export function buildEmargementLines(
   employees: Employee[],
@@ -102,10 +103,12 @@ export function buildEmargementLines(
 
   const lines: EmargementLine[] = [];
   let n = 0;
+  let lastSection = "OUVRIERS";
   for (const { pay, emp } of paid) {
     n += 1;
+    lastSection = paymentSection(pay);
     lines.push({
-      n, emp, pay, section: paymentSection(pay), cat: paymentCat(pay),
+      n, emp, pay, section: lastSection, cat: paymentCat(pay),
       jours: pay.jours, montantDu: pay.brut_verse,
       avance: pay.avance_deduite ?? 0, net: pay.net_verse,
     });
@@ -113,7 +116,7 @@ export function buildEmargementLines(
   for (const emp of neant) {
     n += 1;
     lines.push({
-      n, emp, pay: null, section: "OUVRIERS", cat: "",
+      n, emp, pay: null, section: lastSection, cat: "",
       jours: 0, montantDu: 0, avance: 0, net: 0,
     });
   }
@@ -148,7 +151,34 @@ export function emargementTotals(lines: EmargementLine[]): {
 }
 
 const dash = "—";
-const money = (n: number): string => asciiSpaces(mad(n));
+
+/**
+ * Montant « 1 620,00 » comme le modèle (espace, virgule — SANS « DH », la colonne
+ * le porte déjà). `fr-FR` + espaces ASCII : `fr-MA` rend des points dans certains
+ * moteurs, et U+202F n'existe pas en WinAnsi (glyphe parasite).
+ */
+function fmtMoney(n: number): string {
+  const s = new Intl.NumberFormat("fr-FR", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(n);
+  // asciiSpaces() normalise déjà U+00A0/U+202F/U+2009 vers l'espace ASCII (WinAnsi).
+  return asciiSpaces(s);
+}
+const money = (n: number): string => fmtMoney(n);
+const moneyDh = (n: number): string => `${fmtMoney(n)} DH`;
+
+/** Forme juridique en toutes lettres, comme le modèle (« SARL AU » → « Société à … »). */
+function expandedForm(form: string): string {
+  const key = form.trim().toLowerCase().replace(/\s+/g, " ");
+  const map: Record<string, string> = {
+    "sarl au": "Société à Responsabilité Limitée à Associé Unique",
+    "sarl": "Société à Responsabilité Limitée",
+    "sa": "Société Anonyme",
+    "sas": "Société par Actions Simplifiée",
+    "snc": "Société en Nom Collectif",
+  };
+  return map[key] ?? form.trim();
+}
 
 /** Seconde ligne d'en-tête : SARL → forme + capital ; CPU → « Contribuable Personne Unique — signataire ». */
 function descriptorLine(firm: Firm): string {
@@ -157,10 +187,11 @@ function descriptorLine(firm: Firm): string {
     const who = (firm.signatory_name ?? "").trim();
     return who ? `Contribuable Personne Unique — ${who}` : "Contribuable Personne Unique";
   }
-  if (form && firm.share_capital && firm.share_capital > 0) {
-    return `${form} au capital de ${capitalMad(firm.share_capital)}`;
+  const full = expandedForm(form);
+  if (full && firm.share_capital && firm.share_capital > 0) {
+    return `${full} au capital de ${capitalMad(firm.share_capital)}`;
   }
-  return form;
+  return full;
 }
 
 /** Ligne d'identifiants aux libellés du modèle : ICE · IF · TP · RC · CNSS (renseignés uniquement). */
@@ -201,36 +232,52 @@ export function buildEmargementPdf(d: EmargementData): jsPDF {
   doc.text(asciiSpaces(`N° ${d.numero}`), W - M, y - 2, { align: "right" });
   y = center("Paiement en espèces — quinzaine", y + 2, 11) + 1;
 
-  y = center(firm.name, y + 1, 12, true);
-  const desc = descriptorLine(firm);
-  if (desc) y = center(desc, y, 10);
-  if (firm.address?.trim()) y = center(`Siège : ${firm.address.trim()}`, y, 10);
-  const ids = identityLine(firm);
-  if (ids) y = center(ids, y, 9);
-  y += 2;
+  // Bloc d'en-tête répété en haut de CHAQUE page, comme le modèle
+  // (titre → mentions → « Page N »). Hauteur constante pour une fiche donnée.
+  const drawHeaderBlock = (pageNo: number): number => {
+    let yy = 14;
+    yy = center("FICHE D'ÉMARGEMENT", yy, 15, true);
+    doc.setFont("times", "normal").setFontSize(10);
+    doc.text(asciiSpaces(`N° ${d.numero}`), W - M, yy - 2, { align: "right" });
+    yy = center("Paiement en espèces — quinzaine", yy + 2, 11) + 1;
 
-  doc.setFont("times", "normal").setFontSize(10);
-  doc.text(asciiSpaces(`Période (quinzaine) : ${d.quinzaine}`), M, y);
-  if (d.chantier) doc.text(asciiSpaces(`Chantier : ${d.chantier}`), M + 105, y);
-  y += 5;
-  doc.text(asciiSpaces(`Lieu de paiement : ${d.lieu || "…"}`), M, y);
-  doc.text(asciiSpaces(`Date de paiement : ${dateFr(d.datePaiement)}`), M + 105, y);
-  y += 6;
+    yy = center(asciiSpaces(firm.name.toUpperCase()), yy + 1, 12, true);
+    const desc = descriptorLine(firm);
+    if (desc) yy = center(desc, yy, 10);
+    if (firm.address?.trim()) yy = center(`Siège : ${firm.address.trim()}`, yy, 10);
+    const ids = identityLine(firm);
+    if (ids) yy = center(ids, yy, 9);
+    yy += 2;
 
+    doc.setFont("times", "normal").setFontSize(10);
+    doc.text(asciiSpaces(`Période (quinzaine) : ${d.quinzaine}`), M, yy);
+    if (d.chantier) doc.text(asciiSpaces(`Chantier : ${d.chantier}`), M + 105, yy);
+    yy += 5;
+    doc.text(asciiSpaces(`Lieu de paiement : ${d.lieu || "…"}`), M, yy);
+    doc.text(asciiSpaces(`Date de paiement : ${dateFr(d.datePaiement)}`), M + 105, yy);
+    yy += 6;
+
+    yy = para(
+      "Chaque salarié appose sa signature OU son EMPREINTE DIGITALE (pouce droit) en face de son nom, au moment même de la remise des espèces.",
+      yy, 8.5, true,
+    );
+    yy = para(
+      "Pièce justificative de paiement remise au moment du paiement (art. 370 loi 65-99). Ne constitue pas un bulletin de paie.",
+      yy, 8.5,
+    );
+    // « ≤ » n'existe pas en WinAnsi (glyphe parasite) : équivalent imprimable « <= ».
+    yy = para(
+      "Salaire <= 10 000 MAD : paiement en espèces admis (loi 43-05, art. 18). Document confidentiel (loi 09-08) — à conserver 10 ans. Montants en DIRHAMS.",
+      yy, 8.5,
+    );
+    yy = center(`Page ${pageNo}`, yy + 1, 9);
+    return yy;
+  };
+
+  y = drawHeaderBlock(1);
+  const headerH = y; // réserve haute identique sur les pages suivantes
   y = para(
-    "Chaque salarié appose sa signature OU son EMPREINTE DIGITALE (pouce droit) en face de son nom, au moment même de la remise des espèces.",
-    y, 8.5, true,
-  );
-  y = para(
-    "Pièce justificative de paiement remise au moment du paiement (art. 370 loi 65-99). Ne constitue pas un bulletin de paie.",
-    y, 8.5,
-  );
-  y = para(
-    "Salaire ≤ 10 000 MAD : paiement en espèces admis (loi 43-05, art. 18). Document confidentiel (loi 09-08) — à conserver 10 ans. Montants en DIRHAMS.",
-    y, 8.5,
-  );
-  y = para(
-    `POUR ACQUIT. Les salariés dont les noms figurent ci-dessous reconnaissent avoir reçu en espèces de la société ${firm.name} la somme portée en face de leur nom dans la colonne « NET REMIS », au titre de la quinzaine indiquée ci-dessus, et apposent à cet effet leur signature ou, à défaut, l'empreinte de leur pouce droit dans la case prévue.`,
+    `POUR ACQUIT. Les salariés dont les noms figurent ci-dessous reconnaissent avoir reçu en espèces de la société ${asciiSpaces(firm.name.toUpperCase())} la somme portée en face de leur nom dans la colonne « NET REMIS », au titre de la quinzaine indiquée ci-dessus, et apposent à cet effet leur signature ou, à défaut, l'empreinte de leur pouce droit dans la case prévue.`,
     y + 1, 9,
   );
 
@@ -265,8 +312,12 @@ export function buildEmargementPdf(d: EmargementData): jsPDF {
       "", "",
     ]);
   }
+  // « TOTAL GÉNÉRAL — 33 salariés émargés », comme le modèle.
+  const totalLabel = paidCount > 1
+    ? `TOTAL GÉNÉRAL — ${paidCount} salariés émargés`
+    : "TOTAL GÉNÉRAL — 1 salarié émargé";
   body.push([
-    { content: "TOTAL GÉNÉRAL", colSpan: 7, styles: { fontStyle: "bold", halign: "right" } },
+    { content: totalLabel, colSpan: 7, styles: { fontStyle: "bold", halign: "right" } },
     { content: money(total), styles: { fontStyle: "bold", halign: "right" } },
     "", "",
   ]);
@@ -286,11 +337,15 @@ export function buildEmargementPdf(d: EmargementData): jsPDF {
       4: { halign: "right", cellWidth: 13 },
       5: { halign: "right", cellWidth: 20 },
       6: { halign: "right", cellWidth: 18 },
-      7: { halign: "right", fontStyle: "bold", cellWidth: 22 },
+      7: { halign: "right", cellWidth: 22 },
       8: { cellWidth: 19 },
       9: { cellWidth: 18 },
     },
-    margin: { left: M, right: M },
+    margin: { left: M, right: M, top: headerH },
+    // En-tête répété en haut des pages suivantes, comme le modèle.
+    didDrawPage: (hook) => {
+      if (hook.pageNumber > 1) drawHeaderBlock(hook.pageNumber);
+    },
   });
 
   let yy = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
@@ -299,7 +354,8 @@ export function buildEmargementPdf(d: EmargementData): jsPDF {
   };
 
   const words = amountToWordsFr(total);
-  const arrete = `Arrêtée la présente fiche d'émargement à la somme de ${money(total)} (${words}), pour ${paidCount} salariés émargés, au titre de la quinzaine ${d.quinzaine}.`;
+  // Montant de l'arrêté AVEC « DH », comme le modèle (« 21 842,00 DH (…) »).
+  const arrete = `Arrêtée la présente fiche d'émargement à la somme de ${moneyDh(total)} (${words}), pour ${paidCount > 1 ? `${paidCount} salariés émargés` : "1 salarié émargé"}, au titre de la quinzaine ${d.quinzaine}.`;
   need(24);
   yy = para(arrete, yy, 10) + 1;
   yy = para(`Fait à ${d.lieu || "…"}, le ${dateFr(d.datePaiement)}.`, yy, 10) + 2;
@@ -324,12 +380,6 @@ export function buildEmargementPdf(d: EmargementData): jsPDF {
     yy, 7.5, true,
   );
 
-  const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
-    doc.setPage(i);
-    doc.setFont("times", "normal").setFontSize(8);
-    doc.text(`Page ${i}`, W - M, 292, { align: "right" });
-  }
   return doc;
 }
 

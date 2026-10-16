@@ -48,17 +48,18 @@ describe("fiche d'émargement — modèle et déclinaisons", () => {
     expect(fmtJours(6.8)).toBe("6,8");
   });
 
-  it("lignes : payés puis Néant, totaux et sous-totaux exacts", () => {
+  it("lignes : payés puis Néant rangé dans la section courante, totaux exacts", () => {
     const e1 = emp("e1", "hassan", "neaija");
     const e2 = emp("e2", "driss", "shaimat");
     const lines = buildEmargementLines([e1, e2], [pay("p1", "e1", { net_verse: 1620, brut_verse: 1620 })]);
     expect(lines).toHaveLength(2);
     expect(lines[0].pay).not.toBeNull();
     expect(lines[1].pay).toBeNull(); // Néant : sans versement ce mois
+    expect(lines[1].section).toBe("OUVRIERS D"); // même section, pas de section parasite
     const t = emargementTotals(lines);
     expect(t.total).toBe(1620);
     expect(t.paidCount).toBe(1);
-    expect(t.subBySection).toEqual([{ section: "OUVRIERS D", sub: 1620 }, { section: "OUVRIERS", sub: 0 }]);
+    expect(t.subBySection).toEqual([{ section: "OUVRIERS D", sub: 1620 }]);
   });
 
   it("PDF : portrait multipage sans erreur, mentions du modèle", () => {

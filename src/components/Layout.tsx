@@ -1,48 +1,54 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  LayoutDashboard, Users, Calculator, FileText, ShieldAlert,
-  CalendarDays, Settings, Moon, Sun, Sprout, BookText, FileSignature,
-  Search, UserRound, ShieldCheck, Bot, ScanSearch, LogOut, Menu, X, HardHat, Languages, Lock as LockIcon, Activity, FileClock,
-  ClipboardList, BookMarked, Radar, ServerCog,
+  Moon, Sun, UserRound,
+  LogOut, Menu, X, Languages, Lock as LockIcon,
 } from "lucide-react";
+import {
+  AccountingIcon, AccidentsIcon, AssistantIcon, AuditIcon, BrandIcon,
+  ComplianceIcon, DashboardIcon, DeclarationsIcon, DocLogIcon, DocumentsIcon,
+  EmployeesIcon, ItgcIcon, LeavesIcon, LivrePaieIcon, NonDeclaresIcon,
+  PayrollIcon, RegisterIcon, RisksIcon, SearchIcon, SecurityIcon,
+  SettingsIcon, StabilityIcon,
+  type TileIconProps,
+} from "@/components/icons";
 import { actions, currentFirm, deriveAlerts, useStore } from "@/data/store";
 import { Select } from "@/components/ui/kit";
 import { canAccess, logout, ROLE_LABELS, useSession } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { useLang, useT, toggleLang, type TKey } from "@/lib/i18n";
 
-type NavItem = { to: string; labelKey: TKey; icon: typeof LayoutDashboard };
+type NavItem = { to: string; labelKey: TKey; icon: React.ComponentType<TileIconProps> };
 const NAV_GROUPS: { labelKey: TKey; items: NavItem[] }[] = [
   { labelKey: "nav.group.pilotage", items: [
-    { to: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
-    { to: "/risques", labelKey: "nav.risks", icon: Radar },
+    { to: "/dashboard", labelKey: "nav.dashboard", icon: DashboardIcon },
+    { to: "/risques", labelKey: "nav.risks", icon: RisksIcon },
   ] },
   { labelKey: "nav.group.paierh", items: [
-    { to: "/employees", labelKey: "nav.employees", icon: Users },
-    { to: "/non-declares", labelKey: "nav.nonDeclares", icon: UserRound },
-    { to: "/registre", labelKey: "nav.register", icon: ClipboardList },
-    { to: "/documents", labelKey: "nav.documents", icon: FileSignature },
-    { to: "/documents-log", labelKey: "nav.doclog", icon: FileClock },
-    { to: "/payroll", labelKey: "nav.payroll", icon: Calculator },
-    { to: "/livre-paie", labelKey: "nav.livrePaie", icon: BookMarked },
-    { to: "/leaves", labelKey: "nav.leaves", icon: CalendarDays },
+    { to: "/employees", labelKey: "nav.employees", icon: EmployeesIcon },
+    { to: "/non-declares", labelKey: "nav.nonDeclares", icon: NonDeclaresIcon },
+    { to: "/registre", labelKey: "nav.register", icon: RegisterIcon },
+    { to: "/documents", labelKey: "nav.documents", icon: DocumentsIcon },
+    { to: "/documents-log", labelKey: "nav.doclog", icon: DocLogIcon },
+    { to: "/payroll", labelKey: "nav.payroll", icon: PayrollIcon },
+    { to: "/livre-paie", labelKey: "nav.livrePaie", icon: LivrePaieIcon },
+    { to: "/leaves", labelKey: "nav.leaves", icon: LeavesIcon },
   ] },
   { labelKey: "nav.group.compta", items: [
-    { to: "/accounting", labelKey: "nav.accounting", icon: BookText },
-    { to: "/audit", labelKey: "nav.audit", icon: ScanSearch },
+    { to: "/accounting", labelKey: "nav.accounting", icon: AccountingIcon },
+    { to: "/audit", labelKey: "nav.audit", icon: AuditIcon },
   ] },
   { labelKey: "nav.group.conformite", items: [
-    { to: "/declarations", labelKey: "nav.declarations", icon: FileText },
-    { to: "/compliance", labelKey: "nav.compliance", icon: ShieldAlert },
-    { to: "/accidents", labelKey: "nav.accidents", icon: HardHat },
-    { to: "/securite", labelKey: "nav.security", icon: ShieldCheck },
+    { to: "/declarations", labelKey: "nav.declarations", icon: DeclarationsIcon },
+    { to: "/compliance", labelKey: "nav.compliance", icon: ComplianceIcon },
+    { to: "/accidents", labelKey: "nav.accidents", icon: AccidentsIcon },
+    { to: "/securite", labelKey: "nav.security", icon: SecurityIcon },
   ] },
   { labelKey: "nav.group.systeme", items: [
-    { to: "/assistant", labelKey: "nav.assistant", icon: Bot },
-    { to: "/itgc", labelKey: "nav.itgc", icon: ServerCog },
-    { to: "/stability", labelKey: "nav.stability", icon: Activity },
-    { to: "/settings", labelKey: "nav.settings", icon: Settings },
+    { to: "/assistant", labelKey: "nav.assistant", icon: AssistantIcon },
+    { to: "/itgc", labelKey: "nav.itgc", icon: ItgcIcon },
+    { to: "/stability", labelKey: "nav.stability", icon: StabilityIcon },
+    { to: "/settings", labelKey: "nav.settings", icon: SettingsIcon },
   ] },
 ];
 
@@ -86,9 +92,7 @@ export default function Layout() {
 
   const brand = (
     <div className="flex items-center gap-2.5">
-      <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground">
-        <Sprout size={20} />
-      </div>
+      <BrandIcon size={36} />
       <div className="leading-tight">
         <div className="font-display text-[15px] font-bold">{t("brand.title")}</div>
         <div className="text-[11px] text-muted-foreground -mt-0.5">{t("brand.subtitle")}</div>
@@ -119,10 +123,12 @@ export default function Layout() {
               {({ isActive }) => (
                 <>
                   <Icon
-                    size={18}
+                    size={22}
                     className={cn(
-                      "shrink-0 transition-colors",
-                      isActive ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground",
+                      "shrink-0 transition",
+                      isActive
+                        ? "drop-shadow-[0_0_6px_hsl(var(--primary)/0.55)]"
+                        : "opacity-85 saturate-[.85] group-hover:opacity-100 group-hover:saturate-100",
                     )}
                   />
                   <span className="truncate">{t(labelKey)}</span>
@@ -322,7 +328,7 @@ function GlobalSearch() {
 
   return (
     <div ref={box} className="relative w-[clamp(180px,32vw,360px)]">
-      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+      <SearchIcon size={17} className="absolute left-3 top-1/2 -translate-y-1/2" />
       <input
         value={q}
         onChange={(e) => { setQ(e.target.value); setOpen(true); }}

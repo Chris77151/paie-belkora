@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Sprout, LogIn, Loader2, AlertCircle, Lock, ShieldCheck } from "lucide-react";
+import { LogIn, Loader2, AlertCircle, Lock, ShieldCheck } from "lucide-react";
+import { BrandIcon } from "@/components/icons";
 import { Button, Card, CardContent, Field, Input } from "@/components/ui/kit";
 import { login } from "@/lib/auth";
 
@@ -47,9 +48,7 @@ export default function Login() {
     <div className="min-h-screen grid place-items-center bg-background p-5">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-            <Sprout size={26} />
-          </div>
+          <BrandIcon size={56} className="drop-shadow-sm" />
           <h1 className="mt-4 font-display text-xl font-bold">Belkora Paie &amp; RH</h1>
           <p className="text-sm text-muted-foreground">Maroc · RH &amp; Paie — accès réservé</p>
         </div>
