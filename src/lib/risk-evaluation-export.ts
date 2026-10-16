@@ -72,6 +72,31 @@ function section(
   cur.y += 5;
 }
 
+/**
+ * Bandeau de fiche d'action : « ACTION 13 — R28 » puis le titre sur une
+ * seconde ligne — les titres longs (jusqu'à ~200 mm mesurés) débordaient
+ * de la page sur une seule ligne. Jamais de texte hors marges.
+ */
+function bandTitle(
+  doc: jsPDF, pal: ReturnType<typeof firmPalette>, cur: Cursor, head: string, title: string,
+): void {
+  const pw = doc.internal.pageSize.getWidth();
+  const CW = pw - 2 * M;
+  ensure(cur, 20);
+  cur.y += 2;
+  doc.setFont(FONT, "bold").setFontSize(FS.section).setTextColor(...pal.deep);
+  doc.text(asciiSpaces(head.toUpperCase()), M, cur.y, { charSpace: 0.4 });
+  cur.y += 5.2;
+  doc.setFont(FONT, "bold").setFontSize(FS.note + 1).setTextColor(...pal.deep);
+  const lines = doc.splitTextToSize(asciiSpaces(title.toUpperCase()), CW) as string[];
+  for (const line of lines) {
+    doc.text(line, M, cur.y);
+    cur.y += 4.6;
+  }
+  doc.setDrawColor(...pal.olive).setLineWidth(0.5).line(M, cur.y, pw - M, cur.y);
+  cur.y += 5;
+}
+
 /** Ligne à remplir sur le formulaire : libellé + pointillés jusqu'à la marge. */
 function fillLine(doc: jsPDF, pal: ReturnType<typeof firmPalette>, cur: Cursor, label: string): void {
   const pw = doc.internal.pageSize.getWidth();
@@ -169,8 +194,7 @@ export async function buildEvaluationPdf(ctx: EvaluationExportContext): Promise<
   for (const plan of [1, 2] as const) {
     section(doc, pal, cur, PLAN_LABEL[plan]);
     for (const a of EVAL_ACTIONS.filter((x) => x.plan === plan)) {
-      ensure(cur, 30);
-      section(doc, pal, cur, `Action ${a.action} — ${a.ref} — ${a.titre}`);
+      bandTitle(doc, pal, cur, `Action ${a.action} — ${a.ref}`, a.titre);
       const r = byRef.get(a.ref);
       const def = catalogByRef.get(a.ref) ?? extraByRef.get(a.ref);
       const live = computeLive(a.ref, { s, firm, asOf });

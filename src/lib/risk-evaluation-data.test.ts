@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { jsPDF } from "jspdf";
 import type { AppState, Employee, Firm, PayrollPeriod, Payslip } from "@/data/types";
 import {
   EVAL_ACTIONS, EXTRA_DEFS, addMonthsISO, computeLive, echeanceDate, window12,
@@ -64,6 +65,23 @@ describe("formulaire d'évaluation — plan d'action 2.4", () => {
     const r26 = computeLive("R26", ctx)!;
     expect(r26.alerte).toBe(true); // bulletin à 26 jours (proxy signalé)
     expect(r26.detail).toContain("PROXY");
+  });
+
+  it("aucun bandeau d'action ne déborde (166 mm utiles, titres longs en 2 lignes)", () => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    doc.setFont("times", "bold");
+    doc.setFontSize(11);
+    const single = EVAL_ACTIONS.map(
+      (a) => doc.getTextWidth(`ACTION ${a.action} — ${a.ref} — ${a.titre.toUpperCase()}`) + 0.4 * a.titre.length,
+    );
+    // Preuve qu'une seule ligne déborderait (jusqu'à ~200 mm mesurés) : le découpage est requis.
+    expect(Math.max(...single)).toBeGreaterThan(166);
+    for (const a of EVAL_ACTIONS) {
+      const head = `ACTION ${a.action} — ${a.ref}`;
+      expect(doc.getTextWidth(head) + 0.4 * head.length).toBeLessThanOrEqual(166);
+      const lines = doc.splitTextToSize(a.titre.toUpperCase(), 166) as string[];
+      for (const line of lines) expect(doc.getTextWidth(line)).toBeLessThanOrEqual(166);
+    }
   });
 
   it("indicateurs manuels renvoient null (champ à renseigner, jamais inventé)", () => {
