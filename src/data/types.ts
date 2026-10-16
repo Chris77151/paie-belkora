@@ -656,6 +656,43 @@ export interface RiskSnapshot {
   label?: string;
 }
 
+/**
+ * Nature d'une pièce jointe de paie (périmètre entité × période, pas salarié).
+ * - `emargement_signee` : fiche d'émargement SIGNÉE par les salariés (preuve de paiement).
+ * - `mise_a_disposition` : fonds mis à disposition pour payer (rapprochement avec le versé).
+ * - `livre_paie_manuel` : livre de paie MANUEL signé, tenu à la main (preuve côté déclarés).
+ */
+export type PayrollAttachmentKind = "emargement_signee" | "mise_a_disposition" | "livre_paie_manuel";
+
+/**
+ * Une pièce justificative de paie rattachée à une entité et une période.
+ * Comme `Attachment`, seul le BINAIRE vit en IndexedDB (clé = `id`) ; la fiche
+ * (nature, montant, empreinte, auteur, horodatage) vit ici et suit le cloud.
+ */
+export interface PayrollAttachment {
+  id: string;
+  firm_id: string;
+  year: number;
+  month: number; // 1-12 (0 = toute l'année, ex. livre annuel)
+  kind: PayrollAttachmentKind;
+  /** Précision libre — ex. N° de fiche, quinzaine couverte. */
+  label?: string;
+  filename: string;
+  mime: string;
+  size: number;
+  /** Empreinte SHA-256 (hex) du contenu — intégrité et non-répudiation. */
+  sha256: string;
+  /**
+   * Montant constaté (DH) — renseigné pour une mise à disposition (fonds alloués),
+   * sert le rapprochement réel « mis à disposition vs versé ».
+   */
+  montant?: number;
+  /** ISO — horodatage du dépôt. */
+  uploaded_at: string;
+  /** Identifiant (username) du compte déposant. */
+  uploaded_by?: string;
+}
+
 export interface AppState {
   firms: Firm[];
   employees: Employee[];
@@ -704,4 +741,6 @@ export interface AppState {
    * écritures, IR 9421). Type importé de `src/lib/non-declares.ts` (évite un cycle).
    */
   nonDeclarePayments?: import("@/lib/non-declares").NonDeclarePayment[];
+  /** Pièces justificatives de paie (fiches signées, mises à disposition, livre manuel). */
+  payrollAttachments?: PayrollAttachment[];
 }

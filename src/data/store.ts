@@ -21,6 +21,7 @@ import type {
   Leave,
   SalaryAdvance,
   LoginEvent,
+  PayrollAttachment,
   Payslip,
   PayrollPeriod,
   WorkAccident,
@@ -110,6 +111,7 @@ export function migrate(s: AppState): AppState {
   if (!Array.isArray(s.salaryAdvances)) s.salaryAdvances = [];
   if (!Array.isArray(s.extraYears)) s.extraYears = [];
   if (!Array.isArray(s.nonDeclarePayments)) s.nonDeclarePayments = [];
+  if (!Array.isArray(s.payrollAttachments)) s.payrollAttachments = [];
   // Fiche d'émargement Sidi Yahya 20/09–03/10/2026 : import idempotent des 33
   // versements de septembre (rejoué sans doublon, ignore les déjà immatriculés).
   ensureFicheEmargementSidiYahya(s);
@@ -436,6 +438,29 @@ export const actions = {
       s.nonDeclarePayments = (s.nonDeclarePayments ?? []).filter((p) => p.id !== id);
     });
   },
+  /* ---- Pièces justificatives de paie (fiches signées, mises à disposition, livre manuel) ---- */
+  /**
+   * Enregistre la fiche d'une pièce de paie déposée (id, horodatage et auteur
+   * estampillés ici, comme pour les pièces salarié). Renvoie l'id, clé du binaire.
+   */
+  addPayrollAttachment(input: Omit<PayrollAttachment, "id" | "uploaded_at" | "uploaded_by">): string {
+    const att: PayrollAttachment = {
+      ...input,
+      id: uid("patt"),
+      uploaded_at: new Date().toISOString(),
+      uploaded_by: sessionUsername(),
+    };
+    set((s) => {
+      s.payrollAttachments = [...(s.payrollAttachments ?? []), att];
+    });
+    return att.id;
+  },
+  /** Retire la fiche d'une pièce de paie. Le binaire est supprimé par l'appelant. */
+  removePayrollAttachment(id: string) {
+    set((s) => {
+      s.payrollAttachments = (s.payrollAttachments ?? []).filter((a) => a.id !== id);
+    });
+  },
   ensurePeriod(firmId: string, year: number, month: number): PayrollPeriod {
     let found = state.periods.find(
       (p) => p.firm_id === firmId && p.year === year && p.month === month,
@@ -541,6 +566,7 @@ export const actions = {
       s.firms = s.firms.filter((f) => f.id !== id);
       s.employees = s.employees.filter((e) => e.firm_id !== id);
       s.nonDeclarePayments = (s.nonDeclarePayments ?? []).filter((p) => p.firm_id !== id);
+      s.payrollAttachments = (s.payrollAttachments ?? []).filter((a) => a.firm_id !== id);
       if (s.currentFirmId === id) s.currentFirmId = s.firms[0].id;
     });
   },

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   backfillPeriodes, buildPayment, isNonDeclare, lastDayOfMonth,
-  paymentPeriodLabel, quinzaineLabel, totalsByFirm, totalsOf,
+  paymentPeriodLabel, paymentsOfFirmPeriod, paymentsOfNonDeclares,
+  quinzaineLabel, totalsByFirm, totalsOf,
 } from "./non-declares";
 import type { AppState } from "@/data/types";
 
@@ -70,5 +71,25 @@ describe("non-declares", () => {
     expect(s.nonDeclarePayments![0].periode).toBe("du 20/09/2026 au 03/10/2026");
     expect(s.nonDeclarePayments![1].periode).toBe("du 16/10/2026 au 31/10/2026"); // saisie intacte
     expect(backfillPeriodes(s)).toBe(0);
+  });
+
+  it("régularisé = sortie COMPLÈTE du processus (historique conservé, pilotage purgé)", () => {
+    const s = {
+      firms: [{ id: "f1", name: "Miya" }],
+      employees: [emp("e1", "f1"), emp("e2", "f1")],
+      nonDeclarePayments: [
+        { id: "p1", firm_id: "f1", employee_id: "e1", year: 2026, month: 10, jours: 12, brut_verse: 1620, avance_deduite: 0, net_verse: 1620, mode: "especes", created_at: "x" },
+        { id: "p2", firm_id: "f1", employee_id: "e2", year: 2026, month: 10, jours: 11, brut_verse: 1485, avance_deduite: 0, net_verse: 1485, mode: "especes", created_at: "x" },
+      ],
+    } as unknown as AppState;
+    // Avant régularisation : les 2 versements pilotent le volet.
+    expect(paymentsOfNonDeclares(s, "f1", 2026, 10)).toHaveLength(2);
+    // e1 reçoit son N° CNSS → paie normale.
+    (s.employees.find((e) => e.id === "e1") as { cnss_number?: string }).cnss_number = "123";
+    // Historique brut conservé, mais le processus ne le voit plus.
+    expect(paymentsOfFirmPeriod(s, "f1", 2026, 10)).toHaveLength(2);
+    expect(paymentsOfNonDeclares(s, "f1", 2026, 10).map((p) => p.id)).toEqual(["p2"]);
+    const t = totalsByFirm(s, s.firms as never, 2026, 10).find((x) => x.firm_id === "f1")!;
+    expect(t).toMatchObject({ effectifND: 1, count: 1, net: 1485 });
   });
 });

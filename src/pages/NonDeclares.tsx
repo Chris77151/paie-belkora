@@ -32,9 +32,10 @@ import {
 import { mad } from "@/lib/format";
 import { YearSelect } from "@/components/YearSelect";
 import {
-  buildPayment, isNonDeclare, nonDeclaresOfFirm, paymentsOfFirmPeriod,
+  buildPayment, isNonDeclare, nonDeclaresOfFirm, paymentsOfNonDeclares,
   paymentPeriodLabel, quinzaineLabel, totalsByFirm, totalsOf, yearlyTotal,
 } from "@/lib/non-declares";
+import { PayrollAttachmentsPanel } from "@/components/PayrollAttachmentsPanel";
 import {
   NON_DECLARE_MENTION, downloadPeriodCsv, downloadPeriodXlsx, downloadReceiptPdf,
 } from "@/lib/non-declares-export";
@@ -107,7 +108,9 @@ export default function NonDeclares() {
     );
   }, [ndEmps, q]);
 
-  const pays = useMemo(() => paymentsOfFirmPeriod(s, firm.id, year, month), [s, firm.id, year, month]);
+  // Périmètre du PROCESSUS : seuls les versements des salariés encore sans CNSS.
+  // Un régularisé quitte complètement ce volet (son historique reste conservé).
+  const pays = useMemo(() => paymentsOfNonDeclares(s, firm.id, year, month), [s, firm.id, year, month]);
   // Filtre quinzaine : mouvements et fiche suivent la période affichée, totaux restent mensuels.
   const paysFiltres = useMemo(
     () => (qFilter === "all" ? pays : pays.filter((p) => (p.quinzaine ?? "") === qFilter)),
@@ -204,8 +207,9 @@ export default function NonDeclares() {
           <p>
             <strong>{NON_DECLARE_MENTION}.</strong> Ce volet organise la régularisation : renseigner le N° CNSS
             dans <Link to="/employees" className="underline">Salariés</Link> fait sortir le salarié d'ici et le
-            fait entrer en paie normale. Ces versements n'alimentent jamais la BDS DAMANCOM, le livre de paie,
-            les écritures ni l'état IR.
+            fait entrer en paie normale — il quitte alors COMPLÈTEMENT ce processus (effectif,
+            mouvements, totaux, fiche), son historique restant conservé. Ces versements n'alimentent
+            jamais la BDS DAMANCOM, le livre de paie, les écritures ni l'état IR.
           </p>
         </CardContent>
       </Card>
@@ -371,6 +375,14 @@ export default function NonDeclares() {
           </tbody>
         </Table>
       </Card>
+
+      <div className="mb-6">
+        <PayrollAttachmentsPanel
+          firmId={firm.id} year={year} month={month}
+          kinds={["emargement_signee", "mise_a_disposition"]}
+          verseNet={tot.net}
+        />
+      </div>
 
       <Card className="mb-6">
         <CardHeader><CardTitle>Fiche d'émargement — {firm.name} · {periodTitle}</CardTitle></CardHeader>

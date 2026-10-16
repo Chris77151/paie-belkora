@@ -18,6 +18,7 @@ import { mad, num, pct, dateFr, MONTHS_FR } from "@/lib/format";
 import { buildPayrollBook, payrollBookYears } from "@/lib/payroll-book";
 import { exportPayrollBookPdf, exportPayrollBookXlsx } from "@/lib/payroll-book-export";
 import { YearSelect } from "@/components/YearSelect";
+import { PayrollAttachmentsPanel } from "@/components/PayrollAttachmentsPanel";
 
 export default function PayrollBook() {
   const s = useStore();
@@ -66,6 +67,13 @@ export default function PayrollBook() {
         <Kpi label={t("lp.kpi.masse")} value={mad(totals.salaireBrut)} sub={t("lp.kpi.masse.sub")} accent="sage" icon={<Wallet size={20} />} />
         <Kpi label={t("lp.kpi.retenues")} value={mad(totals.totalRetenues)} sub={t("lp.kpi.retenues.sub")} accent="gold" icon={<MinusCircle size={20} />} />
         <Kpi label={t("lp.kpi.net")} value={mad(totals.netAPayer)} sub={t("lp.kpi.net.sub")} accent="primary" icon={<BookText size={20} />} />
+      </div>
+
+      <div className="mb-6">
+        <PayrollAttachmentsPanel
+          firmId={firm.id} year={year} month={month}
+          kinds={["livre_paie_manuel"]}
+        />
       </div>
 
       <Card>

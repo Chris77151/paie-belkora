@@ -50,7 +50,7 @@ export function nonDeclaresOfFirm(s: AppState, firmId: string): Employee[] {
   return s.employees.filter((e) => e.firm_id === firmId && isNonDeclare(e));
 }
 
-/** Versements d'une société sur une période. */
+/** Versements d'une société sur une période (bruts, historique inclus). */
 export function paymentsOfFirmPeriod(
   s: AppState,
   firmId: string,
@@ -60,6 +60,22 @@ export function paymentsOfFirmPeriod(
   return (s.nonDeclarePayments ?? []).filter(
     (p) => p.firm_id === firmId && p.year === year && p.month === month,
   );
+}
+
+/**
+ * Versements du PROCESSUS non-déclarés : seuls ceux des salariés SANS CNSS
+ * à ce jour. Dès qu'un salarié est immatriculé (régularisé), il bascule en paie
+ * normale et QUITTE COMPLÈTEMENT ce processus — effectif, mouvements, totaux,
+ * fiche. Son historique reste conservé (traçabilité), mais n'y figure plus.
+ */
+export function paymentsOfNonDeclares(
+  s: AppState,
+  firmId: string,
+  year: number,
+  month: number,
+): NonDeclarePayment[] {
+  const nd = new Set(nonDeclaresOfFirm(s, firmId).map((e) => e.id));
+  return paymentsOfFirmPeriod(s, firmId, year, month).filter((p) => nd.has(p.employee_id));
 }
 
 /** Totaux d'une liste de versements. */
@@ -90,14 +106,17 @@ export function totalsByFirm(
 ): { firm_id: string; firm_name: string; effectifND: number; brut: number; net: number; count: number }[] {
   return firms.map((f) => {
     const eff = nonDeclaresOfFirm(s, f.id).length;
-    const t = totalsOf(paymentsOfFirmPeriod(s, f.id, year, month));
+    const t = totalsOf(paymentsOfNonDeclares(s, f.id, year, month));
     return { firm_id: f.id, firm_name: f.name, effectifND: eff, brut: t.brut, net: t.net, count: t.count };
   });
 }
 
-/** Cumul annuel d'une société (janvier → décembre). */
+/** Cumul annuel d'une société (janvier → décembre) — processus non-déclarés uniquement. */
 export function yearlyTotal(s: AppState, firmId: string, year: number): { brut: number; net: number; count: number } {
-  const all = (s.nonDeclarePayments ?? []).filter((p) => p.firm_id === firmId && p.year === year);
+  const nd = new Set(nonDeclaresOfFirm(s, firmId).map((e) => e.id));
+  const all = (s.nonDeclarePayments ?? []).filter(
+    (p) => p.firm_id === firmId && p.year === year && nd.has(p.employee_id),
+  );
   const t = totalsOf(all);
   return { brut: t.brut, net: t.net, count: t.count };
 }
