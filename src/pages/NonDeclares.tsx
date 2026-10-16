@@ -33,7 +33,7 @@ import { mad } from "@/lib/format";
 import { YearSelect } from "@/components/YearSelect";
 import {
   buildPayment, isNonDeclare, nonDeclaresOfFirm, paymentsOfFirmPeriod,
-  totalsByFirm, totalsOf, yearlyTotal,
+  paymentPeriodLabel, quinzaineLabel, totalsByFirm, totalsOf, yearlyTotal,
 } from "@/lib/non-declares";
 import {
   NON_DECLARE_MENTION, downloadPeriodCsv, downloadPeriodXlsx, downloadReceiptPdf,
@@ -63,6 +63,9 @@ export default function NonDeclares() {
   const [mode, setMode] = useState<"especes" | "virement" | "cheque">("especes");
   const [section, setSection] = useState("OUVRIERS");
   const [note, setNote] = useState("");
+  // Période suivie : mois entier ou quinzaine Q1 (1–15) / Q2 (16–fin) — TOUJOURS précisée.
+  const [qFilter, setQFilter] = useState<"all" | "Q1" | "Q2">("all");
+  const [qSaisie, setQSaisie] = useState<"mois" | "Q1" | "Q2">("mois");
 
   // Fiche d'émargement exportable — mêmes mentions que le modèle remis.
   const [ficheNo, setFicheNo] = useState("");
@@ -73,7 +76,8 @@ export default function NonDeclares() {
   useEffect(() => {
     setFicheNo(defaultEmargementNumero(firm, year, month));
     setLieu(firm.city ?? "");
-  }, [firm, year, month]);
+    if (qFilter !== "all") setQuinzaine(quinzaineLabel(year, month, qFilter));
+  }, [firm, year, month, qFilter]);
 
   // Saisie directe d'un salarié non déclaré (sans N° CNSS — il reste donc ici).
   const [firstName, setFirstName] = useState("");
@@ -104,12 +108,20 @@ export default function NonDeclares() {
   }, [ndEmps, q]);
 
   const pays = useMemo(() => paymentsOfFirmPeriod(s, firm.id, year, month), [s, firm.id, year, month]);
+  // Filtre quinzaine : mouvements et fiche suivent la période affichée, totaux restent mensuels.
+  const paysFiltres = useMemo(
+    () => (qFilter === "all" ? pays : pays.filter((p) => (p.quinzaine ?? "") === qFilter)),
+    [pays, qFilter],
+  );
+  const periodTitle = qFilter === "all"
+    ? `${String(month).padStart(2, "0")}/${year} (mois entier)`
+    : `${String(month).padStart(2, "0")}/${year} · ${qFilter} — ${quinzaineLabel(year, month, qFilter)}`;
   const rows = useMemo(() => {
     const byId = new Map(employeesOfFirm(s, firm.id).map((e) => [e.id, e]));
-    return pays
+    return paysFiltres
       .map((pay) => ({ pay, emp: byId.get(pay.employee_id) }))
-      .filter((r): r is { pay: (typeof pays)[number]; emp: NonNullable<ReturnType<typeof byId.get>> } => !!r.emp);
-  }, [pays, s, firm.id]);
+      .filter((r): r is { pay: (typeof paysFiltres)[number]; emp: NonNullable<ReturnType<typeof byId.get>> } => !!r.emp);
+  }, [paysFiltres, s, firm.id]);
   const tot = useMemo(() => totalsOf(pays), [pays]);
   const totYear = useMemo(() => yearlyTotal(s, firm.id, year), [s, firm.id, year]);
   const byFirm = useMemo(() => totalsByFirm(s, s.firms, year, month), [s, year, month]);
@@ -151,7 +163,10 @@ export default function NonDeclares() {
         id: uid("ndp"), firm_id: firm.id, employee_id: empId, year, month,
         jours: Math.max(0, jours), brut_verse: Math.max(0, brut),
         avance_deduite: Math.max(0, avance), mode,
-        section: section.trim() || "OUVRIERS", note: note.trim() || undefined,
+        section: section.trim() || "OUVRIERS",
+        quinzaine: qSaisie === "mois" ? undefined : qSaisie,
+        periode: qSaisie === "mois" ? undefined : quinzaineLabel(year, month, qSaisie),
+        note: note.trim() || undefined,
         created_at: new Date().toISOString(), created_by: session?.username,
       }),
     );
@@ -160,10 +175,11 @@ export default function NonDeclares() {
 
   function onEmargement() {
     const emps = employeesOfFirm(s, firm.id);
-    const lines = buildEmargementLines(emps, pays);
+    const lines = buildEmargementLines(emps, paysFiltres);
     void downloadEmargementPdf({
       firm, numero: ficheNo.trim() || defaultEmargementNumero(firm, year, month),
-      quinzaine: quinzaine.trim(), chantier: chantier.trim(), lieu: lieu.trim(),
+      quinzaine: quinzaine.trim() || (qFilter === "all" ? "" : quinzaineLabel(year, month, qFilter)),
+      chantier: chantier.trim(), lieu: lieu.trim(),
       datePaiement, year, month, lines,
     });
   }
@@ -172,7 +188,7 @@ export default function NonDeclares() {
     <div>
       <PageHeader
         title="Salariés non déclarés"
-        subtitle={`${firm.name} — suivi interne ${String(month).padStart(2, "0")}/${year} · sans CNSS = ici, avec CNSS = paie normale`}
+        subtitle={`${firm.name} — suivi interne · période affichée : ${periodTitle} · sans CNSS = ici, avec CNSS = paie normale`}
       >
         <Button variant="outline" onClick={() => downloadPeriodCsv(firm, rows, year, month)}>
           <FileDown size={16} /> CSV
@@ -203,6 +219,13 @@ export default function NonDeclares() {
         </Field>
         <Field label="Recherche">
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nom, matricule, CIN…" className="w-full sm:w-64" />
+        </Field>
+        <Field label="Période (quinzaines)">
+          <Select value={qFilter} onChange={(e) => setQFilter(e.target.value as typeof qFilter)} className="w-full sm:w-64">
+            <option value="all">Mois entier — Q1 + Q2</option>
+            <option value="Q1">Q1 — {quinzaineLabel(year, month, "Q1")}</option>
+            <option value="Q2">Q2 — {quinzaineLabel(year, month, "Q2")}</option>
+          </Select>
         </Field>
       </div>
 
@@ -286,9 +309,16 @@ export default function NonDeclares() {
       )}
 
       <Card className="mb-6">
-        <CardHeader><CardTitle>Saisir un versement — {MONTHS[month - 1]} {year}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Saisir un versement — {periodTitle}</CardTitle></CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <Field label="Quinzaine" hint={qSaisie === "mois" ? "Mois entier" : quinzaineLabel(year, month, qSaisie)}>
+              <Select value={qSaisie} onChange={(e) => setQSaisie(e.target.value as typeof qSaisie)} disabled={!canEdit}>
+                <option value="mois">Mois entier</option>
+                <option value="Q1">Q1 (1–15)</option>
+                <option value="Q2">Q2 (16–fin)</option>
+              </Select>
+            </Field>
             <Field label="Salarié (sans CNSS)">
               <Select value={empId} onChange={(e) => setEmpId(e.target.value)} disabled={!canEdit}>
                 <option value="">— Choisir —</option>
@@ -316,13 +346,14 @@ export default function NonDeclares() {
       </Card>
 
       <Card className="mb-6">
-        <CardHeader><CardTitle>Mouvements du mois — {firm.name}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Mouvements — {firm.name} · {periodTitle}</CardTitle></CardHeader>
         <Table wide>
-          <thead><tr><Th>Salarié</Th><Th>Jours</Th><Th>Brut</Th><Th>Avance</Th><Th>Net remis</Th><Th>Mode</Th><Th>Reçu</Th><Th /></tr></thead>
+          <thead><tr><Th>Salarié</Th><Th>Période</Th><Th>Jours</Th><Th>Brut</Th><Th>Avance</Th><Th>Net remis</Th><Th>Mode</Th><Th>Reçu</Th><Th /></tr></thead>
           <tbody>
             {rows.map(({ emp, pay }) => (
               <tr key={pay.id}>
                 <Td>{emp.first_name} {emp.last_name} <span className="text-xs text-muted-foreground">· {emp.matricule ?? ""}</span></Td>
+                <Td className="whitespace-nowrap text-xs text-muted-foreground">{paymentPeriodLabel(pay)}</Td>
                 <Td className="num">{pay.jours}</Td>
                 <Td className="num">{mad(pay.brut_verse)}</Td>
                 <Td className="num">{mad(pay.avance_deduite ?? 0)}</Td>
@@ -336,18 +367,17 @@ export default function NonDeclares() {
                 <Td>{canEdit && (<Button size="sm" variant="ghost" onClick={() => actions.removeNonDeclarePayment(pay.id)} title="Supprimer"><Trash2 size={14} /></Button>)}</Td>
               </tr>
             ))}
-            {rows.length === 0 && (<tr><Td colSpan={8} className="py-8 text-center text-muted-foreground">Aucun versement saisi ce mois.</Td></tr>)}
+            {rows.length === 0 && (<tr><Td colSpan={9} className="py-8 text-center text-muted-foreground">Aucun versement sur {periodTitle}.</Td></tr>)}
           </tbody>
         </Table>
       </Card>
 
       <Card className="mb-6">
-        <CardHeader><CardTitle>Fiche d'émargement — {firm.name}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Fiche d'émargement — {firm.name} · {periodTitle}</CardTitle></CardHeader>
         <CardContent>
           <p className="mb-3 text-xs text-muted-foreground">
-            Export PDF identique au modèle remis (en-tête entité, POUR ACQUIT, tableau 10 colonnes,
-            sous-totaux, arrêté en chiffres et en lettres, signatures). Sans versement ce mois, un
-            salarié sans CNSS y figure en « Néant ».
+            Export PDF identique au modèle remis, limité à la période affichée ({periodTitle}).
+            Sans versement sur la période, un salarié sans CNSS y figure en « Néant ».
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Field label="N° fiche"><Input value={ficheNo} onChange={(e) => setFicheNo(e.target.value)} /></Field>

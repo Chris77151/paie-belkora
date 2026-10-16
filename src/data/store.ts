@@ -36,6 +36,7 @@ import { seed, SUPER_ADMIN, MIYA_RH_LATEX_TEMPLATE } from "./seed";
 import { ensureFicheEmargementSidiYahya } from "@/lib/import-fiche-sidi-yahya";
 import { ensureFicheEmargementChakir } from "@/lib/import-fiche-chakir";
 import { ensureFicheEmargementPepiniere } from "@/lib/import-fiche-pepiniere";
+import { backfillPeriodes } from "@/lib/non-declares";
 import { isSupabaseConfigured, loadRemoteState, saveRemoteState } from "@/lib/supabase";
 
 const KEY = "gca-paie-rh-state-v1";
@@ -118,6 +119,9 @@ export function migrate(s: AppState): AppState {
   // Fiche d'émargement Pépinière 20/09–03/10/2026 : 50 versements de septembre
   // (17 CHAKIR + 33 MIYA, mêmes lignes ; ignorée si l'entité est absente).
   ensureFicheEmargementPepiniere(s);
+  // Quinzaines toujours précisées : rattache les versements importés à leur
+  // quinzaine (Q1 + libellé exact de la fiche), idempotent.
+  backfillPeriodes(s);
   // Comptes utilisateurs : garantir la présence ET les credentials du super utilisateur.
   // Le compte racine est « indestructible » (cf. seed.ts) : par conception anti-lockout,
   // ses identifiants documentés font autorité. On réaffirme donc depuis le seed son

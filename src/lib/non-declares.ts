@@ -28,6 +28,13 @@ export interface NonDeclarePayment {
   mode: PaymentMode;
   /** Section d'équipe de la fiche d'émargement (ex. « OUVRIERS D ») — absente = « OUVRIERS ». */
   section?: string;
+  /**
+   * Quinzaine de rattachement : « Q1 » (1–15), « Q2 » (16–fin de mois),
+   * absente = mois entier / non précisé. Toujours affichée (filtres, fiche).
+   */
+  quinzaine?: "Q1" | "Q2";
+  /** Libellé exact de période, ex. « du 20/09/2026 au 03/10/2026 » (reprend la fiche source). */
+  periode?: string;
   note?: string;
   created_at: string; // ISO
   created_by?: string;
@@ -93,6 +100,42 @@ export function yearlyTotal(s: AppState, firmId: string, year: number): { brut: 
   const all = (s.nonDeclarePayments ?? []).filter((p) => p.firm_id === firmId && p.year === year);
   const t = totalsOf(all);
   return { brut: t.brut, net: t.net, count: t.count };
+}
+
+/** Dernier jour d'un mois (1-12) — pour le libellé « Q2 : 16–fin de mois ». */
+export function lastDayOfMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+/** Libellé de période d'une quinzaine : « du 01/10/2026 au 15/10/2026 ». */
+export function quinzaineLabel(year: number, month: number, q: "Q1" | "Q2"): string {
+  const mm = String(month).padStart(2, "0");
+  if (q === "Q1") return `du 01/${mm}/${year} au 15/${mm}/${year}`;
+  return `du 16/${mm}/${year} au ${lastDayOfMonth(year, month)}/${mm}/${year}`;
+}
+
+/** Libellé court d'affichage d'un versement : quinzaine + période exacte. */
+export function paymentPeriodLabel(pay: NonDeclarePayment): string {
+  const q = pay.quinzaine ? ` · ${pay.quinzaine}` : "";
+  const per = pay.periode ? ` (${pay.periode})` : "";
+  return `${String(pay.month).padStart(2, "0")}/${pay.year}${q}${per}`;
+}
+
+/**
+ * Rattache les 100 versements importés des 3 fiches 20/09–03/10/2026 à leur
+ * quinzaine (Q1 d'octobre, payés le 05/10) avec le libellé exact de la fiche.
+ * Idempotent : ne touche que les versements d'import sans période.
+ */
+export function backfillPeriodes(s: { nonDeclarePayments?: NonDeclarePayment[] }): number {
+  let n = 0;
+  for (const p of s.nonDeclarePayments ?? []) {
+    if (!p.created_by?.startsWith("import-fiche-")) continue;
+    if (p.periode) continue;
+    p.quinzaine = "Q1";
+    p.periode = "du 20/09/2026 au 03/10/2026";
+    n += 1;
+  }
+  return n;
 }
 
 /** Construit un versement (net calculé, jamais saisi). */
