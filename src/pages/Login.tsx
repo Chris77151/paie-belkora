@@ -8,7 +8,6 @@ import { useState } from "react";
 import {
   Loader2,
 } from "lucide-react";
-import { BrandIcon } from "@/components/icons";
 import { Button, Card, CardContent, Field, Input } from "@/components/ui/kit";
 import { login } from "@/lib/auth";
 
@@ -56,7 +55,7 @@ export default function Login() {
     <div className="min-h-screen grid place-items-center bg-background p-5">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <BrandIcon size={64} />
+          <img src="/favicon-belkora.png" alt="Belkora" className="h-16 w-16 rounded-2xl object-contain" />
           <h1 className="mt-4 font-display text-xl font-bold">Belkora Paie &amp; RH</h1>
           <p className="text-sm text-muted-foreground">Maroc · RH &amp; Paie — accès réservé</p>
         </div>

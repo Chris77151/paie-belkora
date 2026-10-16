@@ -12,7 +12,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  AccountingIcon, AccidentsIcon, AssistantIcon, AuditIcon, BrandIcon,
+  AccountingIcon, AccidentsIcon, AssistantIcon, AuditIcon,
   ComplianceIcon, DashboardIcon, DeclarationsIcon, DocLogIcon, DocumentsIcon,
   EmployeesIcon, ItgcIcon, LeavesIcon, LivrePaieIcon, NonDeclaresIcon,
   PayrollIcon, RegisterIcon, RisksIcon, SearchIcon, SecurityIcon,
@@ -99,7 +99,7 @@ export default function Layout() {
 
   const brand = (
     <div className="flex items-center gap-2.5">
-      <BrandIcon size={40} />
+      <img src="/favicon-belkora.png" alt="Belkora" className="h-9 w-9 rounded-lg object-contain" />
       <div className="leading-tight">
         <div className="font-display text-[15px] font-bold">{t("brand.title")}</div>
         <div className="text-[11px] text-muted-foreground -mt-0.5">{t("brand.subtitle")}</div>
