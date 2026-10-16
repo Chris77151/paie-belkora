@@ -33,13 +33,13 @@ export interface ReceiptContext {
  * la fiche d'émargement remise (même en-tête entité, POUR ACQUIT, tableau
  * 10 colonnes, arrêté en chiffres et en lettres, signatures), limitée à ce salarié.
  */
-export function downloadReceiptPdf(
+export async function downloadReceiptPdf(
   firm: Firm,
   emp: Employee,
   p: NonDeclarePayment,
   ctx: ReceiptContext,
-): void {
-  const doc = buildEmargementPdf({
+): Promise<void> {
+  const doc = await buildEmargementPdf({
     firm,
     numero: ctx.numero,
     quinzaine: ctx.quinzaine,

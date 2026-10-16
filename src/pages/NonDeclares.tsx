@@ -161,7 +161,7 @@ export default function NonDeclares() {
   function onEmargement() {
     const emps = employeesOfFirm(s, firm.id);
     const lines = buildEmargementLines(emps, pays);
-    downloadEmargementPdf({
+    void downloadEmargementPdf({
       firm, numero: ficheNo.trim() || defaultEmargementNumero(firm, year, month),
       quinzaine: quinzaine.trim(), chantier: chantier.trim(), lieu: lieu.trim(),
       datePaiement, year, month, lines,
@@ -328,7 +328,7 @@ export default function NonDeclares() {
                 <Td className="num">{mad(pay.avance_deduite ?? 0)}</Td>
                 <Td className="num font-semibold">{mad(pay.net_verse)}</Td>
                 <Td>{pay.mode}</Td>
-                <Td><Button size="sm" variant="outline" onClick={() => downloadReceiptPdf(firm, emp, pay, {
+                <Td><Button size="sm" variant="outline" onClick={() => void downloadReceiptPdf(firm, emp, pay, {
                   numero: ficheNo.trim() || defaultEmargementNumero(firm, year, month),
                   quinzaine: quinzaine.trim(), chantier: chantier.trim(),
                   lieu: lieu.trim(), datePaiement,

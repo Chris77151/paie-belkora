@@ -62,10 +62,10 @@ describe("fiche d'émargement — modèle et déclinaisons", () => {
     expect(t.subBySection).toEqual([{ section: "OUVRIERS D", sub: 1620 }]);
   });
 
-  it("PDF : portrait multipage sans erreur, mentions du modèle", () => {
+  it("PDF : portrait multipage sans erreur, mentions du modèle", async () => {
     const e1 = emp("e1", "hassan", "neaija");
     const lines = buildEmargementLines([e1], [pay("p1", "e1")]);
-    const doc = buildEmargementPdf({
+    const doc = await buildEmargementPdf({
       firm: miya, numero: "12/EM-2026-10-MIYA", quinzaine: "du 20/09/2026 au 03/10/2026",
       chantier: "Travaux exterieur - Sidi Yahya", lieu: "Sidi Yahya", datePaiement: "2026-10-05",
       year: 2026, month: 10, lines,
@@ -82,10 +82,10 @@ describe("fiche d'émargement — modèle et déclinaisons", () => {
     expect(amountToWordsFr(41748)).toBe("Quarante et un mille sept cent quarante-huit dirhams");
   });
 
-  it("PDF entité CPU : construit sans erreur (en-tête Contribuable Personne Unique)", () => {
+  it("PDF entité CPU : construit sans erreur (en-tête Contribuable Personne Unique)", async () => {
     const e1 = emp("e1", "RACHID", "CHALH");
     const lines = buildEmargementLines([e1], [pay("p1", "e1", { net_verse: 1537.5, brut_verse: 1537.5, jours: 12.3 })]);
-    const doc = buildEmargementPdf({
+    const doc = await buildEmargementPdf({
       firm: cpu, numero: "12/EM-2026-10-CHAKIR", quinzaine: "du 20/09/2026 au 03/10/2026",
       chantier: "", lieu: "Kénitra", datePaiement: "2026-10-05",
       year: 2026, month: 10, lines,
