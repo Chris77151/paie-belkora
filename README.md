@@ -144,8 +144,9 @@ Le moteur ne contient aucune valeur réglementaire en dur.
   (une ligne JSONB `app_state`) vers Supabase — données **sauvegardées en permanence et
   partagées entre appareils/utilisateurs**, avec fallback localStorage hors-ligne (offline-first,
   écriture débouncée, hydratation au démarrage). **`flushRemoteSave` pousse immédiatement toute
-  modification en attente sur `beforeunload` / `pagehide` / passage en arrière-plan** — une
-  modif faite juste avant un rechargement n'est jamais bloquée dans le navigateur. Configuration
-  dans **Paramètres → Persistance cloud** (URL + clé anon, script SQL fourni) ou via env Vercel
-  (`VITE_SUPABASE_URL`,
-  `VITE_SUPABASE_ANON_KEY`). Sans configuration, l'app reste 100 % locale.
+   modification en attente sur `beforeunload` / `pagehide` / passage en arrière-plan** — une
+   modif faite juste avant un rechargement n'est jamais bloquée dans le navigateur. Configuration
+   dans **Paramètres → Persistance cloud** (URL + clé anon, script SQL fourni, bouton **Tester la
+   connexion** avec diagnostic étagé + bouton **Réessayer**) ou via env Vercel
+   (`VITE_SUPABASE_URL`,
+   `VITE_SUPABASE_ANON_KEY`). Sans configuration (aucun projet par défaut), l'app reste 100 % locale.

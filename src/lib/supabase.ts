@@ -29,24 +29,41 @@ const DEFAULT_WORKSPACE = "belkora";
 const TABLE = "app_state";
 
 /**
- * Configuration Supabase par défaut du Groupe Belkora — persistance cloud active d'office
- * pour tous les postes du site déployé. La clé « publishable » est publique par conception
- * (protégée côté serveur par les politiques RLS). Un utilisateur peut la surcharger dans
- * Paramètres (localStorage) ou via les variables d'environnement Vercel.
+ * AUCUN projet par défaut. L'ancien hôte intégré ne résout plus en DNS (NXDOMAIN
+ * constaté le 16/10/2026 : projet supprimé côté Supabase) et affichait une erreur
+ * de synchronisation sur tous les postes. Sans configuration explicite (saisie
+ * Paramètres ou variables d'environnement Vercel), l'app reste 100 % locale —
+ * sans erreur affichée. La clé « anon » reste publique par conception (RLS).
  */
-const DEFAULT_CONFIG: SupabaseConfig | null = {
-  url: "https://cbpubcbdryfhwwktrygo.supabase.co",
-  anonKey: "sb_publishable_EspqnLQwY41tXqY1G7-tkw_jxh2v3R3",
-  workspace: DEFAULT_WORKSPACE,
-};
+const DEFAULT_CONFIG: SupabaseConfig | null = null;
 
-/** Lit la config : localStorage > variables d'environnement Vite > défaut Belkora intégré. */
+/** Normalise une URL de projet : espaces et barres finales en moins (source d'échecs silencieux). */
+export function normalizeSupabaseUrl(url: string): string {
+  return (url ?? "").trim().replace(/\/+$/, "");
+}
+
+/**
+ * Valide le format d'une URL de projet. Retourne le message d'erreur, ou null si OK.
+ * Pure et testée — aucun réseau ici.
+ */
+export function validateSupabaseUrl(url: string): string | null {
+  const u = (url ?? "").trim();
+  if (!u) return "Renseignez l'URL du projet (https://xxxxx.supabase.co).";
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/.test(u)) {
+    return "URL invalide : elle doit ressembler à https://xxxxx.supabase.co, sans chemin ajouté (/rest, /auth…) ni espace.";
+  }
+  return null;
+}
+
+/** Lit la config : localStorage > variables d'environnement Vite. Aucun défaut intégré. */
 export function getSupabaseConfig(): SupabaseConfig | null {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
     if (raw) {
       const cfg = JSON.parse(raw) as SupabaseConfig;
-      if (cfg.url && cfg.anonKey) return { workspace: DEFAULT_WORKSPACE, ...cfg };
+      if (cfg.url && cfg.anonKey) {
+        return { workspace: DEFAULT_WORKSPACE, ...cfg, url: normalizeSupabaseUrl(cfg.url) };
+      }
     }
   } catch {
     /* ignore */
@@ -54,7 +71,7 @@ export function getSupabaseConfig(): SupabaseConfig | null {
   const envUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
   if (envUrl && envKey) {
-    return { url: envUrl, anonKey: envKey, workspace: DEFAULT_WORKSPACE };
+    return { url: normalizeSupabaseUrl(envUrl), anonKey: envKey, workspace: DEFAULT_WORKSPACE };
   }
   if (DEFAULT_CONFIG && DEFAULT_CONFIG.url && DEFAULT_CONFIG.anonKey) {
     return DEFAULT_CONFIG;
@@ -144,36 +161,101 @@ export async function saveRemoteState(state: AppState): Promise<{ ok: boolean; e
   }
 }
 
-/** Teste la connexion + l'existence de la table (diagnostic pour l'UI Paramètres). */
-export async function testConnection(
-  cfg?: SupabaseConfig,
-): Promise<{ ok: boolean; error?: string }> {
-  let client: SupabaseClient | null;
+/** Course contre la montre : un hôte injoignable ne doit pas figer l'interface. */
+async function withTimeout<T>(p: PromiseLike<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
   try {
-    client = cfg
-      ? createClient(cfg.url, cfg.anonKey, { auth: { persistSession: false } })
-      : getClient();
-  } catch {
-    return { ok: false, error: "URL invalide" };
+    return await Promise.race([
+      Promise.resolve(p),
+      new Promise<never>((_, rej) => {
+        timer = setTimeout(() => rej(new Error("__timeout__")), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  if (!client) return { ok: false, error: "Configuration absente" };
+}
+
+const DIAG_TIMEOUT_MS = 15000;
+
+/**
+ * Diagnostic étagé de la connexion (pour l'UI Paramètres). Chaque étape échoue
+ * avec un message ACTIONNABLE — jamais un brut « Failed to fetch ».
+ */
+export async function diagnoseConnection(
+  rawCfg?: SupabaseConfig,
+): Promise<{ ok: boolean; error?: string }> {
+  const url = normalizeSupabaseUrl(rawCfg?.url ?? "");
+  const anonKey = (rawCfg?.anonKey ?? "").trim();
+  if (!url || !anonKey) return { ok: false, error: "Renseignez l'URL du projet ET la clé anon." };
+
+  // Étape 1 — format de l'URL (aucun réseau).
+  const badUrl = validateSupabaseUrl(url);
+  if (badUrl) return { ok: false, error: badUrl };
+
+  // Étape 2 — l'hôte répond-il ? (DNS, projet en pause/supprimé, hors-ligne, pare-feu).
+  // Le point de santé Auth ne demande aucune table : il sépare le réseau de la base.
   try {
-    const { error } = await client
-      .from(TABLE)
-      .select("id")
-      .eq("id", cfg?.workspace || DEFAULT_WORKSPACE)
-      .maybeSingle();
+    const res = await withTimeout(
+      fetch(`${url}/auth/v1/health`, { headers: { apikey: anonKey } }),
+      DIAG_TIMEOUT_MS,
+    );
+    if (res.status === 404) {
+      return { ok: false, error: "URL inexacte (404 sur le projet) : reprenez l'URL exacte depuis Project Settings → API, sans y ajouter de chemin." };
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === "__timeout__") {
+      return { ok: false, error: "Délai dépassé (15 s) : connexion trop lente ou hôte injoignable. Réessayez, puis vérifiez le réseau." };
+    }
+    // TypeError: Failed to fetch = DNS/TCP/TLS : le cas du projet en pause ou supprimé.
+    return {
+      ok: false,
+      error: "Projet injoignable : pas de réponse réseau du projet. Vérifiez (1) que l'URL est exacte, "
+        + "(2) que le projet existe et n'est pas EN PAUSE (dashboard Supabase → Restore/Unpause — la pause auto suit l'inactivité des projets gratuits), "
+        + "(3) votre connexion internet.",
+    };
+  }
+
+  // Étape 3 — la table et les droits (clé, RLS, SQL).
+  let client: SupabaseClient;
+  try {
+    client = createClient(url, anonKey, { auth: { persistSession: false } });
+  } catch {
+    return { ok: false, error: "URL invalide : impossible de construire le client." };
+  }
+  try {
+    const { error } = await withTimeout(
+      client.from(TABLE).select("id").eq("id", rawCfg?.workspace || DEFAULT_WORKSPACE).maybeSingle(),
+      DIAG_TIMEOUT_MS,
+    );
     if (error) {
       // 42P01 = table inexistante -> guider l'utilisateur vers le script SQL.
       if (error.code === "42P01" || /relation .* does not exist/i.test(error.message)) {
-        return { ok: false, error: "Connecté, mais la table « app_state » est absente : exécutez le script SQL fourni." };
+        return { ok: false, error: "Projet joignable, mais la table « app_state » est absente : exécutez le script SQL fourni (SQL Editor), puis retestez." };
+      }
+      if (error.code === "42501" || /row-level security|policy/i.test(error.message)) {
+        return { ok: false, error: "Politiques RLS bloquantes : exécutez le bloc « policies » du script SQL fourni (lecture/écriture anon autorisées)." };
+      }
+      if (/invalid (api key|apikey)|unauthorized|401/i.test(error.message)) {
+        return { ok: false, error: "Clé rejetée par le projet (accès refusé) : reprenez la clé « anon public » depuis Project Settings → API." };
       }
       return { ok: false, error: error.message };
     }
     return { ok: true };
   } catch (e) {
+    if (e instanceof Error && e.message === "__timeout__") {
+      return { ok: false, error: "Délai dépassé (15 s) sur la base : réessayez, puis vérifiez que le projet n'est pas en pause." };
+    }
     return { ok: false, error: e instanceof Error ? e.message : "échec de connexion" };
   }
+}
+
+/** Teste la connexion + l'existence de la table (diagnostic pour l'UI Paramètres). */
+export function testConnection(cfg?: SupabaseConfig): Promise<{ ok: boolean; error?: string }> {
+  if (cfg) return diagnoseConnection(cfg);
+  const current = getSupabaseConfig();
+  if (!current) return Promise.resolve({ ok: false, error: "Configuration absente" });
+  return diagnoseConnection(current);
 }
 
 /** Script SQL à exécuter une fois dans Supabase (éditeur SQL) pour créer la table + RLS. */

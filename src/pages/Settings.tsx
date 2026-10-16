@@ -22,6 +22,7 @@ import {
   LogOut,
   CircleSlash,
   CalendarDays,
+  RefreshCw,
 } from "@/components/icons";
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -1335,6 +1336,17 @@ function CloudSyncCard() {
     setResult({ ok: true });
   }
 
+  // Relance manuelle : après un échec réseau au démarrage, le statut restait en
+  // erreur jusqu'au rechargement — ce bouton resynchronise sans recharger la page.
+  async function handleRetry() {
+    setTesting(true);
+    try {
+      await hydrateFromRemote();
+    } finally {
+      setTesting(false);
+    }
+  }
+
   function handleDisable() {
     if (!window.confirm("Désactiver la synchronisation cloud ? Les données restent en local sur cet appareil.")) return;
     setSupabaseConfig(null);
@@ -1379,7 +1391,19 @@ function CloudSyncCard() {
             )}
           </Badge>
           {status === "error" && error && <span className="text-xs text-destructive">{error}</span>}
+          {status === "error" && (
+            <Button variant="outline" size="sm" onClick={() => void handleRetry()} disabled={testing} title="Relancer la synchronisation sans recharger la page">
+              {testing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Réessayer
+            </Button>
+          )}
         </div>
+        {status === "error" && (
+          <p className="text-xs text-muted-foreground">
+            Pistes dans l'ordre : (1) URL exacte du projet (Project Settings → API, sans chemin ajouté) ;
+            (2) projet existant et non <b>en pause</b> (la pause auto suit l'inactivité des projets gratuits — dashboard Supabase → Restore) ;
+            (3) clé <b>anon public</b> en cours de validité ; (4) connexion internet. Le bouton « Tester la connexion » ci-dessous donne le détail étape par étape.
+          </p>
+        )}
 
         <p className="text-[13px] text-muted-foreground">
           Sans cloud, les données vivent uniquement dans ce navigateur (perdues si le cache est vidé ou sur un
