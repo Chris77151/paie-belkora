@@ -99,7 +99,7 @@ export default function Layout() {
 
   const brand = (
     <div className="flex items-center gap-2.5">
-      <BrandIcon size={36} />
+      <BrandIcon size={40} />
       <div className="leading-tight">
         <div className="font-display text-[15px] font-bold">{t("brand.title")}</div>
         <div className="text-[11px] text-muted-foreground -mt-0.5">{t("brand.subtitle")}</div>
@@ -130,12 +130,12 @@ export default function Layout() {
               {({ isActive }) => (
                 <>
                   <Icon
-                    size={22}
+                    size={24}
                     className={cn(
-                      "shrink-0 transition",
+                      "shrink-0 transition-transform duration-200",
                       isActive
-                        ? "drop-shadow-[0_0_6px_hsl(var(--primary)/0.55)]"
-                        : "opacity-85 saturate-[.85] group-hover:opacity-100 group-hover:saturate-100",
+                        ? "scale-110 drop-shadow-[0_0_9px_hsl(var(--primary)/0.7)]"
+                        : "group-hover:scale-110 group-hover:-rotate-3",
                     )}
                   />
                   <span className="truncate">{t(labelKey)}</span>

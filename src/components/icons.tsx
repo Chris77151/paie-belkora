@@ -134,16 +134,20 @@ export interface TileIconProps {
 
 type Pair = [string, string];
 const G: Record<string, Pair> = {
-  emerald: ["#0AA14E", "#3DDC74"], // émeraude vive → kelly clair
-  kelly: ["#2FBF5B", "#0E9AA7"],   // kelly → sarcelle
-  teal: ["#0E9AA7", "#1FAB89"],    // sarcelle → menthe forêt
-  forest: ["#1FA35C", "#0AA14E"],  // forêt vive → émeraude
-  gold: ["#E09A1F", "#F5C04C"],    // or → ambre
-  red: ["#D92638", "#F4535F"],     // destructif charte, avivé
-  slate: ["#5F7A6B", "#9DBEAC"],   // neutre teinté charte
+  emerald: ["#00C853", "#3DDC74"], // émeraude néon → menthe (même teinte charte, chroma max)
+  kelly: ["#38D957", "#00D0A0"],   // kelly → sarcelle électrique
+  teal: ["#00B8C9", "#1FDB8B"],    // sarcelle info → menthe forêt
+  forest: ["#1FA34E", "#00C853"],  // forêt vive → émeraude néon
+  gold: ["#F59E0B", "#FFD54D"],    // or → ambre lumineux
+  red: ["#E5303F", "#FF6B6B"],     // destructif charte, avivé
+  slate: ["#6B8A7A", "#A9CBB9"],   // neutre teinté charte, éclairci
 };
 
-/** Coquille commune : tuile dégradée + reflet glossy + contenu. */
+/**
+ * Coquille commune : tuile dégradée + relief 3D (reflet glossy haut, ombre
+ * portée basse, filet clair) + ombre douce + contenu. Effet « waouh » tout
+ * en restant dans les teintes de la charte.
+ */
 function TileShell({
   id, pair, size = 18, className, children,
 }: TileIconProps & { id: string; pair: Pair; children: React.ReactNode }) {
@@ -153,14 +157,15 @@ function TileShell({
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      className={className}
+      className={`drop-shadow-[0_2px_3px_rgb(0_0_0/0.30)] ${className ?? ""}`}
       role="img"
       aria-hidden="true"
     >
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor={a} />
-          <stop offset="100%" stopColor={b} />
+          <stop offset="55%" stopColor={b} />
+          <stop offset="100%" stopColor={a} />
         </linearGradient>
         <clipPath id={`${id}-c`}>
           <rect x="1" y="1" width="22" height="22" rx="6" />
@@ -168,8 +173,10 @@ function TileShell({
       </defs>
       <rect x="1" y="1" width="22" height="22" rx="6" fill={`url(#${id})`} />
       <g clipPath={`url(#${id}-c)`}>
-        <ellipse cx="12" cy="5.5" rx="10" ry="4.5" fill="#FFFFFF" opacity="0.22" />
+        <ellipse cx="12" cy="4.5" rx="10.5" ry="5" fill="#FFFFFF" opacity="0.32" />
+        <ellipse cx="12" cy="21" rx="10" ry="4.5" fill="#000000" opacity="0.14" />
       </g>
+      <rect x="1" y="1" width="22" height="22" rx="6" fill="none" stroke="#FFFFFF" strokeOpacity="0.4" strokeWidth="0.8" />
       {children}
     </svg>
   );
@@ -460,9 +467,9 @@ export function SearchIcon({ size = 16, className }: TileIconProps) {
     >
       <defs>
         <linearGradient id="blg-search" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#088838" />
-          <stop offset="55%" stopColor="#38A838" />
-          <stop offset="100%" stopColor="#0E7C86" />
+          <stop offset="0%" stopColor="#00C853" />
+          <stop offset="55%" stopColor="#3DDC74" />
+          <stop offset="100%" stopColor="#00B8C9" />
         </linearGradient>
       </defs>
       <g fill="none" stroke="url(#blg-search)" strokeWidth={2.4} strokeLinecap="round">

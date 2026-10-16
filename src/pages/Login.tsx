@@ -56,7 +56,7 @@ export default function Login() {
     <div className="min-h-screen grid place-items-center bg-background p-5">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <BrandIcon size={56} className="drop-shadow-sm" />
+          <BrandIcon size={64} />
           <h1 className="mt-4 font-display text-xl font-bold">Belkora Paie &amp; RH</h1>
           <p className="text-sm text-muted-foreground">Maroc · RH &amp; Paie — accès réservé</p>
         </div>
