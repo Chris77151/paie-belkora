@@ -1,5 +1,10 @@
+import {
+  Plus,
+  Check,
+  X,
+} from "@/components/icons";
 import { useMemo, useState } from "react";
-import { Plus, Check, X } from "lucide-react";
+
 import { useStore, actions } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import { buildSelectableYears } from "@/lib/params";

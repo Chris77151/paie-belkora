@@ -1,7 +1,17 @@
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  ChevronDown,
+  KeyRound,
+  Send,
+  Trash2,
+  Wifi,
+  Wrench,
+} from "@/components/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot, Send, Wrench, KeyRound, AlertTriangle, Trash2, ChevronDown, Loader2,
-  CheckCircle2, Wifi,
+  Loader2,
 } from "lucide-react";
 import {
   Button, Card, CardContent, Field, Input, PageHeader, Select, Textarea, Badge,

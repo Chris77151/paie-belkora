@@ -1,11 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
     <linearGradient id="belkora-fav" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#088838"/>
-      <stop offset="100%" stop-color="#38A838"/>
+      <stop offset="0%" stop-color="#0AA14E"/>
+      <stop offset="100%" stop-color="#3DDC74"/>
     </linearGradient>
+    <clipPath id="belkora-fav-c">
+      <rect x="2" y="2" width="60" height="60" rx="16"/>
+    </clipPath>
   </defs>
   <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#belkora-fav)"/>
+  <g clip-path="url(#belkora-fav-c)">
+    <ellipse cx="32" cy="15" rx="27" ry="12" fill="#FFFFFF" opacity="0.22"/>
+  </g>
   <g fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
     <path d="M32 50v-18"/>
     <path d="M32 32C32 23 26 19 15 19c0 10 6 13 17 13Z"/>

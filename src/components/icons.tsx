@@ -1,16 +1,131 @@
 /**
  * Système d'icônes Belkora — tuiles dégradées « vivantes » (style Teams / loupe).
  *
- * Chaque icône = une tuile arrondie en dégradé + un glyphe blanc (ligne 1.8).
- * Les 5 dégradés restent STRICTEMENT dans la charte (index.css : émeraude,
- * kelly, forêt, sarcelle info, or) — aucune couleur hors charte. Le glyphe blanc
- * garantit le contraste AA sur tous les dégradés, en clair comme en sombre.
+ * Deux couches :
+ *   1. Icônes d'identité dessinées main (20 nav + marque + loupe), glyphes blancs
+ *      minimalistes sur tuile arrondie en dégradé.
+ *   2. Icônes d'action : glyphes Lucide OFFICIELS en blanc, posés sur les mêmes
+ *      tuiles dégradées (`vivid()`). Même sens, même lisibilité — en couleurs.
  *
- * Correspondances charte :
- *   émeraude #088838 (primaire) · kelly #38A838 (sage) · forêt #186848 (payé)
- *   sarcelle #0E7C86 (statut « déclarée ») · or #C08A3E (gold)
+ * Les dégradés restent STRICTEMENT dans la charte (index.css) : émeraude, kelly,
+ * forêt, sarcelle info, or (+ rouge destructif et neutre déjà présents dans la
+ * charte pour les états). Reflet glossy commun façon icônes 3D. Glyphe blanc =
+ * contraste AA en clair comme en sombre. Chaque action garde SA couleur partout.
  */
 import * as React from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Activity as LActivity,
+  AlertCircle as LAlertCircle,
+  AlertTriangle as LAlertTriangle,
+  ArrowDownRight as LArrowDownRight,
+  ArrowRight as LArrowRight,
+  ArrowUpRight as LArrowUpRight,
+  Baby as LBaby,
+  BadgeCheck as LBadgeCheck,
+  BookMarked as LBookMarked,
+  BookText as LBookText,
+  Bot as LBot,
+  Building2 as LBuilding2,
+  CalendarClock as LCalendarClock,
+  CalendarDays as LCalendarDays,
+  Camera as LCamera,
+  Check as LCheck,
+  CheckCircle2 as LCheckCircle2,
+  ChevronDown as LChevronDown,
+  ChevronRight as LChevronRight,
+  ChevronUp as LChevronUp,
+  CircleSlash as LCircleSlash,
+  ClipboardList as LClipboardList,
+  Clock as LClock,
+  Cloud as LCloud,
+  CloudOff as LCloudOff,
+  Copy as LCopy,
+  Cpu as LCpu,
+  Database as LDatabase,
+  DatabaseBackup as LDatabaseBackup,
+  DatabaseZap as LDatabaseZap,
+  DoorOpen as LDoorOpen,
+  Download as LDownload,
+  DownloadCloud as LDownloadCloud,
+  ExternalLink as LExternalLink,
+  Eye as LEye,
+  FileClock as LFileClock,
+  FileCode2 as LFileCode2,
+  FileDown as LFileDown,
+  FileSignature as LFileSignature,
+  FileSpreadsheet as LFileSpreadsheet,
+  FileText as LFileText,
+  FileWarning as LFileWarning,
+  Filter as LFilter,
+  Gauge as LGauge,
+  Gavel as LGavel,
+  Hand as LHand,
+  HardHat as LHardHat,
+  HelpCircle as LHelpCircle,
+  History as LHistory,
+  Hourglass as LHourglass,
+  ImageUp as LImageUp,
+  Info as LInfo,
+  KeyRound as LKeyRound,
+  Landmark as LLandmark,
+  Languages as LLanguages,
+  LayoutList as LLayoutList,
+  Lightbulb as LLightbulb,
+  ListChecks as LListChecks,
+  Loader2 as _Loader2,
+  Lock as LLock,
+  LogIn as LLogIn,
+  LogOut as LLogOut,
+  Menu as LMenu,
+  MinusCircle as LMinusCircle,
+  Moon as LMoon,
+  Paperclip as LPaperclip,
+  Pencil as LPencil,
+  PencilLine as LPencilLine,
+  Plug as LPlug,
+  Plus as LPlus,
+  Printer as LPrinter,
+  Radio as LRadio,
+  Receipt as LReceipt,
+  RefreshCw as LRefreshCw,
+  RotateCcw as LRotateCcw,
+  Save as LSave,
+  Scale as LScale,
+  Calculator as LCalculator,
+  ScanSearch as LScanSearch,
+  Search as LSearch,
+  Send as LSend,
+  ScrollText as LScrollText,
+  ServerCog as LServerCog,
+  Sheet as LSheet,
+  ShieldAlert as LShieldAlert,
+  ShieldCheck as LShieldCheck,
+  ShieldX as LShieldX,
+  SlidersHorizontal as LSlidersHorizontal,
+  Sparkles as LSparkles,
+  Stethoscope as LStethoscope,
+  Sun as LSun,
+  Table2 as LTable2,
+  Target as LTarget,
+  Trash2 as LTrash2,
+  TrendingDown as LTrendingDown,
+  TrendingUp as LTrendingUp,
+  Unlock as LUnlock,
+  Upload as LUpload,
+  UploadCloud as LUploadCloud,
+  UserPlus as LUserPlus,
+  UserRound as LUserRound,
+  Users as LUsers,
+  UserX as LUserX,
+  Wallet as LWallet,
+  Wifi as LWifi,
+  Wrench as LWrench,
+  X as LX,
+  XCircle as LXCircle,
+} from "lucide-react";
+
+void _Loader2;
 
 export interface TileIconProps {
   size?: number;
@@ -19,16 +134,19 @@ export interface TileIconProps {
 
 type Pair = [string, string];
 const G: Record<string, Pair> = {
-  emerald: ["#088838", "#38A838"], // émeraude → kelly
-  kelly: ["#38A838", "#0E7C86"],   // kelly → sarcelle
-  teal: ["#0E7C86", "#186848"],    // sarcelle → forêt
-  forest: ["#186848", "#088838"],  // forêt → émeraude
-  gold: ["#C08A3E", "#E0A83C"],    // or → ambre (signalement)
+  emerald: ["#0AA14E", "#3DDC74"], // émeraude vive → kelly clair
+  kelly: ["#2FBF5B", "#0E9AA7"],   // kelly → sarcelle
+  teal: ["#0E9AA7", "#1FAB89"],    // sarcelle → menthe forêt
+  forest: ["#1FA35C", "#0AA14E"],  // forêt vive → émeraude
+  gold: ["#E09A1F", "#F5C04C"],    // or → ambre
+  red: ["#D92638", "#F4535F"],     // destructif charte, avivé
+  slate: ["#5F7A6B", "#9DBEAC"],   // neutre teinté charte
 };
 
-function Tile({
-  id, pair, size = 18, className, children, glyph,
-}: TileIconProps & { id: string; pair: Pair; children?: React.ReactNode; glyph?: React.ReactNode }) {
+/** Coquille commune : tuile dégradée + reflet glossy + contenu. */
+function TileShell({
+  id, pair, size = 18, className, children,
+}: TileIconProps & { id: string; pair: Pair; children: React.ReactNode }) {
   const [a, b] = pair;
   return (
     <svg
@@ -44,8 +162,24 @@ function Tile({
           <stop offset="0%" stopColor={a} />
           <stop offset="100%" stopColor={b} />
         </linearGradient>
+        <clipPath id={`${id}-c`}>
+          <rect x="1" y="1" width="22" height="22" rx="6" />
+        </clipPath>
       </defs>
       <rect x="1" y="1" width="22" height="22" rx="6" fill={`url(#${id})`} />
+      <g clipPath={`url(#${id}-c)`}>
+        <ellipse cx="12" cy="5.5" rx="10" ry="4.5" fill="#FFFFFF" opacity="0.22" />
+      </g>
+      {children}
+    </svg>
+  );
+}
+
+function Tile({
+  id, pair, size = 18, className, children, glyph,
+}: TileIconProps & { id: string; pair: Pair; children?: React.ReactNode; glyph?: React.ReactNode }) {
+  return (
+    <TileShell id={id} pair={pair} size={size} className={className}>
       <g
         fill="none"
         stroke="#FFFFFF"
@@ -55,13 +189,29 @@ function Tile({
       >
         {glyph ?? children}
       </g>
-    </svg>
+    </TileShell>
   );
 }
 
 const P = (props: TileIconProps & { id: string; pair: Pair; children: React.ReactNode }) => (
   <Tile {...props} />
 );
+
+/**
+ * Enrobe un glyphe Lucide (blanc, épais) dans une tuile vive.
+ * Même composant, même sens — seule la présentation change.
+ */
+function vivid(Icon: LucideIcon, pair: Pair, id: string) {
+  return function VividIcon({ size = 18, className }: TileIconProps) {
+    return (
+      <TileShell id={id} pair={pair} size={size} className={className}>
+        <g transform="translate(4.6,4.6)">
+          <Icon size={14.8} color="#FFFFFF" strokeWidth={2.4} />
+        </g>
+      </TileShell>
+    );
+  };
+}
 
 /* ------------------------------ Pilotage ------------------------------ */
 
@@ -322,3 +472,115 @@ export function SearchIcon({ size = 16, className }: TileIconProps) {
     </svg>
   );
 }
+
+/* ------------------------------ Actions (glyphes Lucide sur tuiles vives) ------------------------------ */
+/* Chaque action garde SA couleur partout : ajout = émeraude, édition = sarcelle,
+   suppression = rouge, alerte = or, info/doc = sarcelle-forêt, validation = émeraude. */
+
+export const Plus = vivid(LPlus, G.emerald, "v-plus");
+export const Pencil = vivid(LPencil, G.teal, "v-pencil");
+export const PencilLine = vivid(LPencilLine, G.teal, "v-pencilline");
+export const Trash2 = vivid(LTrash2, G.red, "v-trash2");
+export const X = vivid(LX, G.slate, "v-x");
+export const Check = vivid(LCheck, G.emerald, "v-check");
+export const CheckCircle2 = vivid(LCheckCircle2, G.emerald, "v-checkcircle2");
+export const XCircle = vivid(LXCircle, G.red, "v-xcircle");
+export const AlertTriangle = vivid(LAlertTriangle, G.gold, "v-alerttriangle");
+export const AlertCircle = vivid(LAlertCircle, G.red, "v-alertcircle");
+export const Info = vivid(LInfo, G.teal, "v-info");
+export const ShieldAlert = vivid(LShieldAlert, G.gold, "v-shieldalert");
+export const ShieldCheck = vivid(LShieldCheck, G.forest, "v-shieldcheck");
+export const ShieldX = vivid(LShieldX, G.red, "v-shieldx");
+export const FileText = vivid(LFileText, G.teal, "v-filetext");
+export const FileSignature = vivid(LFileSignature, G.teal, "v-filesignature");
+export const FileClock = vivid(LFileClock, G.teal, "v-fileclock");
+export const FileCode2 = vivid(LFileCode2, G.teal, "v-filecode2");
+export const FileWarning = vivid(LFileWarning, G.gold, "v-filewarning");
+export const FileSpreadsheet = vivid(LFileSpreadsheet, G.forest, "v-filespreadsheet");
+export const Sheet = vivid(LSheet, G.forest, "v-sheet");
+export const Table2 = vivid(LTable2, G.forest, "v-table2");
+export const BookText = vivid(LBookText, G.teal, "v-booktext");
+export const BookMarked = vivid(LBookMarked, G.forest, "v-bookmarked");
+export const ScrollText = vivid(LScrollText, G.teal, "v-scrolltext");
+export const ClipboardList = vivid(LClipboardList, G.forest, "v-clipboardlist");
+export const ListChecks = vivid(LListChecks, G.teal, "v-listchecks");
+export const LayoutList = vivid(LLayoutList, G.teal, "v-layoutlist");
+export const FileDown = vivid(LFileDown, G.forest, "v-filedown");
+export const Download = vivid(LDownload, G.forest, "v-download");
+export const DownloadCloud = vivid(LDownloadCloud, G.forest, "v-downloadcloud");
+export const Upload = vivid(LUpload, G.teal, "v-upload");
+export const UploadCloud = vivid(LUploadCloud, G.teal, "v-uploadcloud");
+export const ImageUp = vivid(LImageUp, G.teal, "v-imageup");
+export const Eye = vivid(LEye, G.teal, "v-eye");
+export const Printer = vivid(LPrinter, G.slate, "v-printer");
+export const Lock = vivid(LLock, G.forest, "v-lock");
+export const Unlock = vivid(LUnlock, G.gold, "v-unlock");
+export const KeyRound = vivid(LKeyRound, G.gold, "v-keyround");
+export const Camera = vivid(LCamera, G.teal, "v-camera");
+export const Sparkles = vivid(LSparkles, G.gold, "v-sparkles");
+export const Wallet = vivid(LWallet, G.gold, "v-wallet");
+export const Receipt = vivid(LReceipt, G.forest, "v-receipt");
+export const SlidersHorizontal = vivid(LSlidersHorizontal, G.teal, "v-sliders");
+export const Filter = vivid(LFilter, G.teal, "v-filter");
+export const CalendarClock = vivid(LCalendarClock, G.teal, "v-calendarclock");
+export const CalendarDays = vivid(LCalendarDays, G.emerald, "v-calendardays");
+export const Clock = vivid(LClock, G.teal, "v-clock");
+export const Hourglass = vivid(LHourglass, G.gold, "v-hourglass");
+export const History = vivid(LHistory, G.teal, "v-history");
+export const ChevronDown = vivid(LChevronDown, G.teal, "v-chevrondown");
+export const ChevronUp = vivid(LChevronUp, G.teal, "v-chevronup");
+export const ChevronRight = vivid(LChevronRight, G.teal, "v-chevronright");
+export const ArrowRight = vivid(LArrowRight, G.emerald, "v-arrowright");
+export const ArrowUpRight = vivid(LArrowUpRight, G.emerald, "v-arrowupright");
+export const ArrowDownRight = vivid(LArrowDownRight, G.teal, "v-arrowdownright");
+export const TrendingUp = vivid(LTrendingUp, G.emerald, "v-trendingup");
+export const TrendingDown = vivid(LTrendingDown, G.red, "v-trendingdown");
+export const Users = vivid(LUsers, G.kelly, "v-users");
+export const UserPlus = vivid(LUserPlus, G.kelly, "v-userplus");
+export const UserRound = vivid(LUserRound, G.kelly, "v-userround");
+export const UserX = vivid(LUserX, G.gold, "v-userx");
+export const Save = vivid(LSave, G.emerald, "v-save");
+export const RotateCcw = vivid(LRotateCcw, G.teal, "v-rotateccw");
+export const RefreshCw = vivid(LRefreshCw, G.teal, "v-refreshcw");
+export const Copy = vivid(LCopy, G.teal, "v-copy");
+export const ExternalLink = vivid(LExternalLink, G.forest, "v-externallink");
+export const Search = vivid(LSearch, G.teal, "v-search");
+export const Menu = vivid(LMenu, G.slate, "v-menu");
+export const Sun = vivid(LSun, G.gold, "v-sun");
+export const Moon = vivid(LMoon, G.slate, "v-moon");
+export const Languages = vivid(LLanguages, G.teal, "v-languages");
+export const LogIn = vivid(LLogIn, G.emerald, "v-login");
+export const LogOut = vivid(LLogOut, G.slate, "v-logout");
+export const Cloud = vivid(LCloud, G.teal, "v-cloud");
+export const CloudOff = vivid(LCloudOff, G.slate, "v-cloudoff");
+export const Send = vivid(LSend, G.emerald, "v-send");
+export const Paperclip = vivid(LPaperclip, G.teal, "v-paperclip");
+export const Baby = vivid(LBaby, G.teal, "v-baby");
+export const Stethoscope = vivid(LStethoscope, G.teal, "v-stethoscope");
+export const Landmark = vivid(LLandmark, G.teal, "v-landmark");
+export const BadgeCheck = vivid(LBadgeCheck, G.emerald, "v-badgecheck");
+export const Gavel = vivid(LGavel, G.forest, "v-gavel");
+export const Building2 = vivid(LBuilding2, G.teal, "v-building2");
+export const Database = vivid(LDatabase, G.teal, "v-database");
+export const DatabaseZap = vivid(LDatabaseZap, G.teal, "v-databasezap");
+export const DatabaseBackup = vivid(LDatabaseBackup, G.teal, "v-databasebackup");
+export const Gauge = vivid(LGauge, G.teal, "v-gauge");
+export const HelpCircle = vivid(LHelpCircle, G.teal, "v-helpcircle");
+export const Lightbulb = vivid(LLightbulb, G.gold, "v-lightbulb");
+export const DoorOpen = vivid(LDoorOpen, G.slate, "v-dooropen");
+export const CircleSlash = vivid(LCircleSlash, G.red, "v-circleslash");
+export const MinusCircle = vivid(LMinusCircle, G.red, "v-minuscircle");
+export const Radio = vivid(LRadio, G.teal, "v-radio");
+export const Cpu = vivid(LCpu, G.teal, "v-cpu");
+export const Hand = vivid(LHand, G.slate, "v-hand");
+export const Bot = vivid(LBot, G.teal, "v-bot");
+export const ServerCog = vivid(LServerCog, G.emerald, "v-servercog");
+export const Activity = vivid(LActivity, G.kelly, "v-activity");
+export const ScanSearch = vivid(LScanSearch, G.forest, "v-scansearch");
+export const Wrench = vivid(LWrench, G.teal, "v-wrench");
+export const Target = vivid(LTarget, G.gold, "v-target");
+export const Plug = vivid(LPlug, G.teal, "v-plug");
+export const HardHat = vivid(LHardHat, G.gold, "v-hardhat");
+export const Scale = vivid(LScale, G.teal, "v-scale");
+export const Wifi = vivid(LWifi, G.teal, "v-wifi");
+export const Calculator = vivid(LCalculator, G.kelly, "v-calculator");

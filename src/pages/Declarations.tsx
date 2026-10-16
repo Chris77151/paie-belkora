@@ -1,5 +1,13 @@
+import {
+  FileDown,
+  FileText,
+  CalendarClock,
+  Landmark,
+  AlertTriangle,
+  FileSpreadsheet,
+} from "@/components/icons";
 import { useMemo, useState } from "react";
-import { FileDown, FileText, CalendarClock, Landmark, AlertTriangle, FileSpreadsheet } from "lucide-react";
+
 import { useStore, currentFirm, employeesOfFirm, periodsOfFirm, payslipsOfPeriod, actions } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import {

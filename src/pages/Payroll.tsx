@@ -1,9 +1,22 @@
+import {
+  AlertTriangle,
+  Calculator,
+  CheckCircle2,
+  FileDown,
+  FileText,
+  Info,
+  Lock,
+  Printer,
+  Sheet,
+  SlidersHorizontal,
+  Trash2,
+  Unlock,
+  Wallet,
+  X,
+} from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Calculator, FileDown, FileText, Printer, Lock, Unlock, CheckCircle2, X, SlidersHorizontal, Info,
-  Trash2, AlertTriangle, Wallet, Sheet,
-} from "lucide-react";
+
 import {
   actions, currentFirm, employeesOfFirm, getState, payslipsOfPeriod, uid, useStore,
 } from "@/data/store";

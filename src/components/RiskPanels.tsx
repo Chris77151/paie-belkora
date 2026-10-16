@@ -1,5 +1,15 @@
+import {
+  Plus,
+  Trash2,
+  ListChecks,
+  PencilLine,
+  X,
+  TrendingDown,
+  XCircle,
+  Target,
+} from "@/components/icons";
 import { useState } from "react";
-import { Plus, Trash2, ListChecks, PencilLine, X, TrendingDown, XCircle, Target } from "lucide-react";
+
 import { actions, uid } from "@/data/store";
 import {
   CATEGORY_LABEL, STEPS, STEP_LABEL, nextCustomRef,

@@ -1,5 +1,16 @@
+import {
+  FileClock,
+  FileText,
+  Users,
+  CalendarClock,
+  Trash2,
+  TrendingUp,
+  TrendingDown,
+  FileDown,
+  CloudOff,
+} from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
-import { FileClock, FileText, Users, CalendarClock, Trash2, TrendingUp, TrendingDown, FileDown, CloudOff } from "lucide-react";
+
 import { actions, currentFirm, useStore } from "@/data/store";
 import { ADMIN_ROLES, useSession } from "@/lib/auth";
 import { useT, type TKey } from "@/lib/i18n";

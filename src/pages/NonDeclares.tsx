@@ -7,9 +7,19 @@
  *   avec reçus internes et totaux par entité — SANS alimenter BDS, livre
  *   art. 371, écritures ni IR 9421 (étanchéité vérifiée par test).
  */
+import {
+  AlertTriangle,
+  FileDown,
+  FileSpreadsheet,
+  FileSignature,
+  Plus,
+  Receipt,
+  Trash2,
+  UserX,
+} from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, FileDown, FileSpreadsheet, FileSignature, Plus, Receipt, Trash2, UserX } from "lucide-react";
+
 import { actions, currentFirm, employeesOfFirm, uid, useStore } from "@/data/store";
 import { useCanWrite, useSession } from "@/lib/auth";
 import type { ContractType } from "@/data/types";

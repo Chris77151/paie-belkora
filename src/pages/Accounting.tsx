@@ -1,5 +1,21 @@
+import {
+  AlertTriangle,
+  Calculator,
+  CheckCircle2,
+  Cloud,
+  FileCode2,
+  FileDown,
+  FileSpreadsheet,
+  Lock,
+  Search,
+  Sparkles,
+  Table2,
+  Unlock,
+} from "@/components/icons";
 import { useMemo, useState } from "react";
-import { Calculator, FileCode2, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, Sparkles, Lock, Unlock, Table2, Cloud, Loader2, Search } from "lucide-react";
+import {
+  Loader2,
+} from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, payslipsOfPeriod, useStore } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import { useSession, useCanWrite } from "@/lib/auth";

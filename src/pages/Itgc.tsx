@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
 import {
-  ShieldCheck, CheckCircle2, XCircle, HelpCircle, ArrowRight, Gauge, AlertTriangle, ServerCog,
-} from "lucide-react";
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  HelpCircle,
+  ArrowRight,
+  Gauge,
+  AlertTriangle,
+  ServerCog,
+} from "@/components/icons";
+import { useEffect, useMemo, useState } from "react";
+
 import { Link } from "react-router-dom";
 import { useStore } from "@/data/store";
 import { getAiConfig } from "@/lib/ai-agent";

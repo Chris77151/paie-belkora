@@ -1,5 +1,15 @@
+import {
+  CalendarDays,
+  Stethoscope,
+  Hourglass,
+  Baby,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+} from "@/components/icons";
 import { useMemo, useState } from "react";
-import { CalendarDays, Stethoscope, Hourglass, Baby, Plus, Pencil, Trash2, X } from "lucide-react";
+
 import { useStore, currentFirm, employeesOfFirm, uid, actions } from "@/data/store";
 import { useCanWrite } from "@/lib/auth";
 import { useT, type TKey } from "@/lib/i18n";

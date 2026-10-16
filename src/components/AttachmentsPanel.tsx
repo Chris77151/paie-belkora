@@ -1,5 +1,15 @@
+import {
+  Paperclip,
+  Trash2,
+  FileDown,
+  Eye,
+  CloudOff,
+  AlertTriangle,
+} from "@/components/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Paperclip, Trash2, FileDown, Eye, CloudOff, Loader2, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+} from "lucide-react";
 import { actions, useStore } from "@/data/store";
 import { useCanWrite } from "@/lib/auth";
 import { Badge, Button, Field, Input, Select } from "@/components/ui/kit";

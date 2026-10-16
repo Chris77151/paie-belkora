@@ -1,9 +1,22 @@
+import {
+  Activity,
+  ShieldAlert,
+  FileDown,
+  FileSpreadsheet,
+  ChevronDown,
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
+  TrendingDown,
+  Target,
+  Cpu,
+  Hand,
+  Camera,
+  Radio,
+} from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Activity, ShieldAlert, FileDown, FileSpreadsheet, ChevronDown, ChevronRight,
-  CheckCircle2, XCircle, TrendingDown, Target, Cpu, Hand, Camera, Radio,
-} from "lucide-react";
+
 import { actions, currentFirm, useStore } from "@/data/store";
 import { nonDeclaresOfFirm } from "@/lib/non-declares";
 import {

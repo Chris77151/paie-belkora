@@ -1,5 +1,12 @@
+import {
+  FileWarning,
+  HardHat,
+  Info,
+  ShieldAlert,
+  ShieldCheck,
+} from "@/components/icons";
 import { useMemo } from "react";
-import { ShieldAlert, ShieldCheck, Info, HardHat, FileWarning } from "lucide-react";
+
 import { useStore, currentFirm, employeesOfFirm, deriveAlerts } from "@/data/store";
 import { useT, type TKey } from "@/lib/i18n";
 import {

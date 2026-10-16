@@ -1,9 +1,20 @@
+import {
+  Plus,
+  Search,
+  Pencil,
+  UserRound,
+  X,
+  Trash2,
+  DownloadCloud,
+  UploadCloud,
+  ArrowRight,
+  AlertTriangle,
+  CheckCircle2,
+  ShieldCheck,
+} from "@/components/icons";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  Plus, Search, Pencil, UserRound, X, Trash2, DownloadCloud, UploadCloud, Loader2,
-  ArrowRight, AlertTriangle, CheckCircle2, ShieldCheck,
-} from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { actions, currentFirm, employeesOfFirm, uid, useStore } from "@/data/store";
 import { useCanWrite, useSession } from "@/lib/auth";
 import { useT } from "@/lib/i18n";

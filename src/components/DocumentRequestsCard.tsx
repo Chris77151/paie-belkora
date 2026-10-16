@@ -1,5 +1,15 @@
+import {
+  FileText,
+  Send,
+  Clock,
+  Check,
+  X,
+  Trash2,
+} from "@/components/icons";
 import { useMemo, useState } from "react";
-import { FileText, Send, Clock, Check, X, Loader2, Trash2 } from "lucide-react";
+import {
+  Loader2,
+} from "lucide-react";
 import { actions } from "@/data/store";
 import { useCanWrite } from "@/lib/auth";
 import {

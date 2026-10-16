@@ -1,5 +1,13 @@
+import {
+  FileDown,
+  Sheet,
+  BookText,
+  Wallet,
+  MinusCircle,
+  Users,
+} from "@/components/icons";
 import { useMemo, useState } from "react";
-import { FileDown, Sheet, BookText, Wallet, MinusCircle, Users } from "lucide-react";
+
 import { useStore, currentFirm } from "@/data/store";
 import { useT } from "@/lib/i18n";
 import {

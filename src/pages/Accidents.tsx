@@ -1,5 +1,15 @@
+import {
+  AlertTriangle,
+  CalendarClock,
+  HardHat,
+  Pencil,
+  Plus,
+  ShieldAlert,
+  Trash2,
+  X,
+} from "@/components/icons";
 import { useMemo, useState } from "react";
-import { HardHat, Plus, Pencil, Trash2, X, AlertTriangle, CalendarClock, ShieldAlert } from "lucide-react";
+
 import { currentFirm, employeesOfFirm, uid, useStore, actions } from "@/data/store";
 import { useCanWrite } from "@/lib/auth";
 import { useT, type TKey } from "@/lib/i18n";

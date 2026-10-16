@@ -1,5 +1,13 @@
+import {
+  LogIn,
+  AlertCircle,
+  Lock,
+  ShieldCheck,
+} from "@/components/icons";
 import { useState } from "react";
-import { LogIn, Loader2, AlertCircle, Lock, ShieldCheck } from "lucide-react";
+import {
+  Loader2,
+} from "lucide-react";
 import { BrandIcon } from "@/components/icons";
 import { Button, Card, CardContent, Field, Input } from "@/components/ui/kit";
 import { login } from "@/lib/auth";

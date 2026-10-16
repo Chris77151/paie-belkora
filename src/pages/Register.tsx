@@ -8,11 +8,21 @@
  *
  * Tout le calcul vit dans `staff-register.ts` (moteur pur, testé) : cette page n'affiche.
  */
-import { useMemo, useState } from "react";
 import {
-  ArrowDownRight, ArrowUpRight, ClipboardList, FileDown, FileSignature,
-  LogIn, LogOut, ScrollText, Sheet, ShieldAlert, Users,
-} from "lucide-react";
+  ArrowDownRight,
+  ArrowUpRight,
+  ClipboardList,
+  FileDown,
+  FileSignature,
+  LogIn,
+  LogOut,
+  ScrollText,
+  Sheet,
+  ShieldAlert,
+  Users,
+} from "@/components/icons";
+import { useMemo, useState } from "react";
+
 import { useStore, currentFirm } from "@/data/store";
 import type { ContractType } from "@/data/types";
 import {

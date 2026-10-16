@@ -1,7 +1,13 @@
-import { useMemo } from "react";
 import {
-  Users, Wallet, Building2, ShieldAlert, CalendarClock, TrendingUp,
-} from "lucide-react";
+  Users,
+  Wallet,
+  Building2,
+  ShieldAlert,
+  CalendarClock,
+  TrendingUp,
+} from "@/components/icons";
+import { useMemo } from "react";
+
 import {
   Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";

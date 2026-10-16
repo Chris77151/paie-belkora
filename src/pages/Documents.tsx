@@ -1,18 +1,21 @@
-import { useMemo, useRef, useState } from "react";
 import {
-  FileSignature,
-  FileDown,
-  Printer,
   AlertTriangle,
-  ShieldCheck,
+  Baby,
   BadgeCheck,
+  Calculator,
+  Camera,
+  DoorOpen,
+  FileDown,
+  FileSignature,
   FileText,
   Gavel,
-  DoorOpen,
-  Baby,
   Languages,
-  Camera,
-} from "lucide-react";
+  Printer,
+  ShieldCheck,
+  Wallet,
+} from "@/components/icons";
+import { useMemo, useRef, useState } from "react";
+
 import { useStore, currentFirm, employeesOfFirm, actions } from "@/data/store";
 import {
   Card,
@@ -93,7 +96,7 @@ import { mad, num } from "@/lib/format";
 import { exportElementToPdf, previewFileName } from "@/lib/preview-export";
 import { traceDoc, traceAndArchivePdf } from "@/lib/doc-archive";
 import { useT, type TKey } from "@/lib/i18n";
-import { Calculator, Wallet } from "lucide-react";
+
 import {
   MINEUR_TYPES,
   buildMineurDoc,

@@ -1,8 +1,14 @@
-import { useMemo, useState } from "react";
 import {
-  ShieldCheck, ShieldAlert, Loader2, ScanSearch, DatabaseBackup,
-  Lock, Info, AlertTriangle,
-} from "lucide-react";
+  ShieldCheck,
+  ShieldAlert,
+  ScanSearch,
+  DatabaseBackup,
+  Lock,
+  Info,
+  AlertTriangle,
+} from "@/components/icons";
+import { useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { actions, currentFirm, useStore } from "@/data/store";
 import { useSession } from "@/lib/auth";
 import { useT, type TKey } from "@/lib/i18n";

@@ -1,5 +1,9 @@
+import {
+  KeyRound,
+  X,
+} from "@/components/icons";
 import { useState } from "react";
-import { KeyRound, X } from "lucide-react";
+
 import { Button, Input } from "@/components/ui/kit";
 import { verifyPin } from "@/lib/pin";
 import type { Firm } from "@/data/types";
