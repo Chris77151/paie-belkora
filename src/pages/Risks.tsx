@@ -27,6 +27,7 @@ import {
 import { DEFAULT_APPETITE, LEVEL_LABEL, LEVEL_ORDER, MAX_ABATEMENT_POINTS, levelOf, type RiskLevel } from "@/lib/risk-params";
 import { FACT_LABEL, collectRiskFacts } from "@/lib/risk-facts";
 import { exportRiskPdf, exportRiskXlsx } from "@/lib/risk-export";
+import { exportEvaluationPdf } from "@/lib/risk-evaluation-export";
 import { traceAndArchivePdf } from "@/lib/doc-archive";
 import {
   Badge, Button, Card, CardContent, CardHeader, CardTitle, Kpi, PageHeader, Select, Table, Td, Th,
@@ -125,6 +126,18 @@ export default function Risks() {
     }
   }
 
+  async function onEvalPdf() {
+    setBusy(true);
+    try {
+      await traceAndArchivePdf(
+        { firm, docType: "regularisation", format: "pdf", subject: `Formulaire d'évaluation des risques - ${asOf}` },
+        () => exportEvaluationPdf({ firm, asOf, appetite, risks: all, s }),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -136,6 +149,14 @@ export default function Risks() {
         </Button>
         <Button onClick={() => void onPdf()} disabled={busy}>
           <FileDown size={16} /> PDF
+        </Button>
+        <Button
+          variant="sage"
+          onClick={() => void onEvalPdf()}
+          disabled={busy}
+          title="Formulaire exhaustif d'évaluation : 16 fiches action du plan 2.4 avec indicateurs Tableau 13 relevés en direct."
+        >
+          <FileDown size={16} /> Formulaire d'évaluation
         </Button>
         <Button
           variant="sage"
