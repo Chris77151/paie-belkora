@@ -15,6 +15,11 @@ import {
   ShieldAlert,
   Cloud,
   Database,
+  DatabaseBackup,
+  FileSpreadsheet,
+  FileText,
+  FileDown,
+  Download,
   Copy,
   CloudOff,
   History,
@@ -27,9 +32,10 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
-  useStore, currentFirm, actions, uid,
+  useStore, currentFirm, actions, uid, getState,
   subscribeSync, getSyncStatus, getSyncError, hydrateFromRemote, type SyncStatus,
 } from "@/data/store";
+import { buildBackupZip } from "@/lib/backup-zip";
 import {
   getSupabaseConfig, setSupabaseConfig, testConnection, SUPABASE_SQL,
   isSupabaseConfigured, type SupabaseConfig,
@@ -250,6 +256,7 @@ export default function Settings() {
 
       <FirmsCard />
       <CloudSyncCard />
+      <BackupCard />
       <OdooCard />
 
       <Card className="mb-6">
@@ -1537,5 +1544,135 @@ function BrandColorField({
         </span>
       </div>
     </div>
+  );
+}
+
+/* ================================================================= Sauvegarde ZIP (volet Administration) ================================================================= */
+
+/**
+ * Sauvegarde complète de la base locale dans un ZIP organisé en sous-dossiers
+ * (PDF + Excel + JSON + binaires locaux).
+ *
+ * - Réservée aux administrateurs (la page Paramètres l'est déjà via ROUTE_ACCESS ;
+ *   l'inclusion des comptes reste réservée au super administrateur).
+ * - Périmètre : toutes les sociétés OU la société active (utile pour un export ciblé).
+ * - Formats : PDF (lecture/visa), Excel (contrôle), JSON (restauration) + binaires
+ *   IndexedDB présents sur ce poste (best-effort, absents listés dans le manifest).
+ */
+function BackupCard() {
+  const s = useStore();
+  const session = useSession();
+  const firm = currentFirm(s);
+  const isSuperAdmin = session?.role === "super_admin";
+  const [scope, setScope] = useState<"all" | "firm">("all");
+  const [withPdf, setWithPdf] = useState(true);
+  const [withExcel, setWithExcel] = useState(true);
+  const [withJson, setWithJson] = useState(true);
+  const [withBinaries, setWithBinaries] = useState(true);
+  const [withUsers, setWithUsers] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function run() {
+    setMsg(null);
+    if (!withPdf && !withExcel && !withJson) {
+      setMsg({ ok: false, text: "Cochez au moins un format (PDF, Excel ou JSON)." });
+      return;
+    }
+    setBusy(true);
+    try {
+      const scopeFirmId = scope === "firm" ? firm.id : null;
+      const { blob, filename, manifest } = await buildBackupZip(getState(), {
+        scopeFirmId,
+        includePdf: withPdf,
+        includeExcel: withExcel,
+        includeJson: withJson,
+        includeBinaries: withBinaries,
+        includeUsers: withUsers && isSuperAdmin,
+        includeRaw: true,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      const sizeMo = (blob.size / 1_048_576).toFixed(2);
+      setMsg({
+        ok: true,
+        text: `Sauvegarde ${filename} téléchargée (${sizeMo} Mo, ${manifest.files.length} fichiers). ${manifest.missingBinaries.length ? `${manifest.missingBinaries.length} binaire(s) absent(s) de ce poste (voir manifest).` : "Binaires locaux inclus."}`,
+      });
+    } catch (e) {
+      setMsg({ ok: false, text: `Échec de la sauvegarde : ${(e as Error).message}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>
+          <span className="inline-flex items-center gap-2">
+            <DatabaseBackup size={16} className="text-primary" />
+            Sauvegarde complète (ZIP organisé)
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="mb-3 text-[13px] text-muted-foreground">
+          Exporte toute la base locale dans un <b className="text-foreground">fichier ZIP</b> organisé en
+          sous-dossiers <code className="font-mono">01_Societes … 99_Brut</code>, chacun en{" "}
+          <span className="inline-flex items-center gap-1"><FileText size={13} /> PDF</span>,{" "}
+          <span className="inline-flex items-center gap-1"><FileSpreadsheet size={13} /> Excel</span> et{" "}
+          <span className="inline-flex items-center gap-1"><FileDown size={13} /> JSON</span>.
+          Le dossier <code className="font-mono">99_Brut/AppState.json</code> permet la restauration.
+          Les pièces jointes ne sont embarquées que si elles sont <b>présentes sur ce poste</b> (IndexedDB local).
+        </p>
+        <div className="mb-3 flex flex-wrap items-center gap-4 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="radio" name="bk-scope" checked={scope === "all"} onChange={() => setScope("all")} />
+            Toutes les sociétés ({s.firms.length})
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="bk-scope" checked={scope === "firm"} onChange={() => setScope("firm")} />
+            Société active : <b>{firm.name}</b>
+          </label>
+        </div>
+        <div className="mb-4 flex flex-wrap gap-4 text-sm">
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={withPdf} onChange={(e) => setWithPdf(e.target.checked)} /> PDF
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={withExcel} onChange={(e) => setWithExcel(e.target.checked)} /> Excel
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={withJson} onChange={(e) => setWithJson(e.target.checked)} /> JSON
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={withBinaries} onChange={(e) => setWithBinaries(e.target.checked)} /> Pièces binaires locales
+          </label>
+          {isSuperAdmin && (
+            <label className="flex items-center gap-1.5" title="Hashes SHA-256 uniquement, jamais de mot de passe en clair">
+              <input type="checkbox" checked={withUsers} onChange={(e) => setWithUsers(e.target.checked)} /> Comptes utilisateurs
+            </label>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => void run()} disabled={busy}>
+            {busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+            {busy ? "Construction du ZIP…" : "Télécharger la sauvegarde ZIP"}
+          </Button>
+          {msg && <span className={`text-xs ${msg.ok ? "text-success" : "text-destructive"}`}>{msg.text}</span>}
+        </div>
+        {!isSuperAdmin && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Comptes utilisateurs exclus (réservé au super administrateur). RIB et salaires inclus : archive sensible, à conserver en lieu sûr.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
